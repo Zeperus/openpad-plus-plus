@@ -1,20 +1,15 @@
 # Current task
 
-**Milestone 3 (Favorites + Recent): implemented, instrumented tests UNCONFIRMED.**
-**Milestone 4 (open documents / session / startup): IN PROGRESS. Only the emulator-independent core is done.**
-Do not mark either milestone complete yet.
+**Milestone 3 (Favorites + Recent): COMPLETE and CONFIRMED.** Instrumented tests 9/9 green on GitHub (run
+37376144550 on push and run 37379121023 via `workflow_dispatch`, both on commit `bcd7c97`, 1 ColdStartTest + 8
+NotesFlowTest, 0 failures). Regular CI (build/unit/lint) green.
+**Milestone 4 (open documents / session / startup): IN PROGRESS.** Core done; UI integration is being built next.
+Do not mark Milestone 4 complete until its own instrumented tests are green on GitHub.
 
 ## Status of Milestone 3
-- Code, unit tests (all green) and the regular CI (build/unit/lint) were fine on the last runs that could execute.
-- **The corrected instrumented tests (9 total) have NOT been confirmed 9/9.** The last full local run was 6/9; the 3
-  failures were test bugs (a new note is listed under RECENT *and* FILES; a drawer-close helper), fixed in commit
-  `ce9eaf8`, but no emulator run has happened since. Every job on GitHub failed to get a runner ("job was not
-  acquired by Runner of type hosted") during the GitHub Actions major outage of 2026-10-05 (githubstatus.com).
-- **First action once Actions works again:**
-  1. `gh workflow run instrumented.yml` (also re-run `ci.yml` if its last run failed for the same reason),
-  2. confirm **9/9**,
-  3. if anything fails: decide test bug vs app bug, fix, rerun - do not continue until understood,
-  4. record the result here, **then** continue with the Milestone 4 UI integration.
+- Earlier failures were test bugs (a new note is listed under RECENT *and* FILES; a drawer-close helper), fixed in
+  `ce9eaf8`. The GitHub Actions outage of 2026-10-05 (runners not acquired) delayed the confirmation; it ended
+  around 21:55 UTC.
 
 ## Milestone 4 - done so far (core only, no UI / no ViewModel / no Compose / no instrumented changes)
 - `domain/OpenDocuments` (pure): ordered saved-note ids, at most one transient blank draft (always last tab),
@@ -27,7 +22,7 @@ Do not mark either milestone complete yet.
 - Tests: 227 JVM unit tests total, 0 failing (43 OpenDocuments incl. a randomized 300x60-operation invariant test,
   15 StartupPlanner, 18 FileSessionStore, 5 DataStore). Mutation-checked (neighbour rule).
 
-## Next: Milestone 4 UI integration (only after Milestone 3 is confirmed)
+## Next: Milestone 4 UI integration (Milestone 3 is confirmed; this is the current work)
 Design decisions already taken, so they do not need to be re-derived:
 - `NotesViewModel` keeps ONE active `NoteEditor`; switching tabs = flush + load the other note from the repository
   (cursor/undo state is not kept per tab for now). Unsaved text exists only in the active editor.
