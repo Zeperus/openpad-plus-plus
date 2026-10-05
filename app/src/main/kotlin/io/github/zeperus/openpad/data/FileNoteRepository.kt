@@ -70,10 +70,12 @@ class FileNoteRepository internal constructor(
         val updatedAt: Long,
         val trashedAt: Long? = null,
         val autoTitle: Boolean = true,
+        val favorite: Boolean = false,
+        val lastOpenedAt: Long? = null,
         /** Only present in version-1 indexes, where files were named after their title. Never written. */
         val fileName: String? = null,
     ) {
-        fun toInfo() = NoteInfo(NoteId(id), title, createdAt, updatedAt, trashedAt, autoTitle)
+        fun toInfo() = NoteInfo(NoteId(id), title, createdAt, updatedAt, trashedAt, autoTitle, favorite, lastOpenedAt)
     }
 
     override suspend fun createNote(text: String): NoteInfo = locked { notes ->
@@ -84,7 +86,7 @@ class FileNoteRepository internal constructor(
         )
         AtomicFiles.writeText(noteFile(id), text) // the file first: a crash now leaves an adoptable `<id>.md`
         val now = clock()
-        val entry = Entry(id, title, createdAt = now, updatedAt = now)
+        val entry = Entry(id, title, createdAt = now, updatedAt = now, lastOpenedAt = now)
         notes[id] = entry
         persist(notes)
         entry.toInfo()
@@ -138,6 +140,22 @@ class FileNoteRepository internal constructor(
         notes[entry.id] = renamed
         persist(notes) // a single atomic write: the rename either happened completely or not at all
         renamed.toInfo()
+    }
+
+    override suspend fun setFavorite(id: NoteId, favorite: Boolean): NoteInfo = locked { notes ->
+        val entry = activeEntry(notes, id)
+        if (entry.favorite == favorite) return@locked entry.toInfo()
+        val updated = entry.copy(favorite = favorite)
+        notes[entry.id] = updated
+        persist(notes)
+        updated.toInfo()
+    }
+
+    override suspend fun markOpened(id: NoteId): NoteInfo = locked { notes ->
+        val updated = activeEntry(notes, id).copy(lastOpenedAt = clock())
+        notes[updated.id] = updated
+        persist(notes)
+        updated.toInfo()
     }
 
     override suspend fun moveToTrash(id: NoteId): NoteInfo = locked { notes ->
@@ -227,7 +245,12 @@ class FileNoteRepository internal constructor(
         val result = LinkedHashMap<String, Entry>()
         var changed = false
 
-        for (entry in readIndex()) {
+        val index = readIndex()
+        // Versions before 3 had no lastOpenedAt: treat the last edit as the last use so Recent is not empty.
+        val seedLastOpened = index.version < INDEX_VERSION
+        if (seedLastOpened && index.notes.isNotEmpty()) changed = true
+
+        for (entry in index.notes) {
             if (!ID_PATTERN.matches(entry.id) || entry.id in result) { changed = true; continue }
             var inNotes = noteFile(entry.id).isFile
             var inTrash = trashFile(entry.id).isFile
@@ -255,7 +278,11 @@ class FileNoteRepository internal constructor(
                 legacy?.let { NoteFileName.titleOf(it) }?.let { NoteFileName.sanitizeOrNull(it) }
                     ?: NoteFileName.DEFAULT_TITLE
             }
-            val base = entry.copy(title = title, fileName = null)
+            val base = entry.copy(
+                title = title,
+                fileName = null,
+                lastOpenedAt = entry.lastOpenedAt ?: if (seedLastOpened) entry.updatedAt else null,
+            )
             when {
                 // The index may be one step behind a crashed move, so the file's location wins.
                 inNotes -> result[entry.id] = base.copy(trashedAt = null)
@@ -299,19 +326,19 @@ class FileNoteRepository internal constructor(
     private fun readTextOrNull(file: File): String? =
         try { AtomicFiles.readTextStrict(file) } catch (_: Exception) { null }
 
-    private fun readIndex(): List<Entry> {
-        if (!indexFile.isFile) return emptyList()
+    private fun readIndex(): IndexData {
+        if (!indexFile.isFile) return IndexData(version = INDEX_VERSION)
         return try {
-            json.decodeFromString(IndexData.serializer(), indexFile.readText(Charsets.UTF_8)).notes
+            json.decodeFromString(IndexData.serializer(), indexFile.readText(Charsets.UTF_8))
         } catch (e: Exception) {
             // Keep the damaged index for inspection; notes are re-adopted from the directories.
             runCatching { indexFile.copyTo(File(root, "index.json.corrupt"), overwrite = true) }
-            emptyList()
+            IndexData(version = INDEX_VERSION)
         }
     }
 
     private companion object {
-        const val INDEX_VERSION = 2
+        const val INDEX_VERSION = 3
         val ID_PATTERN = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
     }
 }

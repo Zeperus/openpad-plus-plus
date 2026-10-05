@@ -25,6 +25,12 @@ interface NoteRepository {
     /** Renames an active note. Throws [InvalidNoteNameException] or [NoteNameConflictException]. */
     suspend fun renameNote(id: NoteId, newTitle: String): NoteInfo
 
+    /** Marks/unmarks an active note as favorite. Pure metadata: the `.md` file is not touched. */
+    suspend fun setFavorite(id: NoteId, favorite: Boolean): NoteInfo
+
+    /** Records that an active note just became the open note (feeds Recent). */
+    suspend fun markOpened(id: NoteId): NoteInfo
+
     suspend fun moveToTrash(id: NoteId): NoteInfo
 
     suspend fun restoreFromTrash(id: NoteId): NoteInfo

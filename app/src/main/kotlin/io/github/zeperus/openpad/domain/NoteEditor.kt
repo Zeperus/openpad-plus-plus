@@ -71,6 +71,16 @@ class NoteEditor(
         }
     }
 
+    /** Sets the favorite flag, creating the note first if it is a draft with real content. False for blank drafts. */
+    suspend fun setFavorite(favorite: Boolean): Boolean {
+        save()
+        return mutex.withLock {
+            val current = info ?: return@withLock false
+            info = repository.setFavorite(current.id, favorite)
+            true
+        }
+    }
+
     /** Moves the note to the Trash after writing pending changes. Returns the trashed note, or null for a draft. */
     suspend fun moveToTrash(): NoteInfo? {
         save()

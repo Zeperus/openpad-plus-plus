@@ -15,6 +15,13 @@ data class NoteInfo(
     val trashedAt: Long?,
     /** True until the user renames the note; while true the title follows the first line of text. */
     val autoTitle: Boolean,
+    /** Favorite state is metadata only; it never touches the Markdown file. */
+    val favorite: Boolean = false,
+    /**
+     * When the note last became the open note (or was created). Not updated by editing. Null for notes that were
+     * never opened in this app, e.g. adopted files; such notes never show up in Recent.
+     */
+    val lastOpenedAt: Long? = null,
 ) {
     val isTrashed: Boolean get() = trashedAt != null
 

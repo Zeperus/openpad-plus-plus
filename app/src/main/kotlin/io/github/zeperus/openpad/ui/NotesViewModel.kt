@@ -6,9 +6,11 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import io.github.zeperus.openpad.domain.Autosaver
 import io.github.zeperus.openpad.domain.InvalidNoteNameException
+import io.github.zeperus.openpad.domain.NoteContent
 import io.github.zeperus.openpad.domain.NoteEditor
 import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteInfo
+import io.github.zeperus.openpad.domain.NoteLists
 import io.github.zeperus.openpad.domain.NoteNameConflictException
 import io.github.zeperus.openpad.domain.NoteRepository
 import io.github.zeperus.openpad.domain.NoteStorageException
@@ -45,7 +47,16 @@ class NotesViewModel(
     var current by mutableStateOf<NoteInfo?>(null)
         private set
 
+    /** All active notes (the FILES section). */
     var notes by mutableStateOf<List<NoteInfo>>(emptyList())
+        private set
+
+    /** FAVORITES section; the UI shows it only when this is not empty. */
+    var favorites by mutableStateOf<List<NoteInfo>>(emptyList())
+        private set
+
+    /** RECENT section: the last 3 opened notes that are not favorites. */
+    var recent by mutableStateOf<List<NoteInfo>>(emptyList())
         private set
 
     var trash by mutableStateOf<List<NoteInfo>>(emptyList())
@@ -84,7 +95,10 @@ class NotesViewModel(
         if (current?.id == id) return@act
         saveNow()
         try {
-            switchTo(NoteEditor(repository, repository.openNote(id)))
+            val content = repository.openNote(id)
+            // Becoming the open note is what counts as "use" for Recent (editing does not).
+            switchTo(NoteEditor(repository, NoteContent(repository.markOpened(id), content.text)))
+            refreshLists()
         } catch (e: NoteUnreadableException) {
             message = UserMessage.NoteUnreadable
         }
@@ -102,6 +116,15 @@ class NotesViewModel(
             RenameResult.NameTaken
         } catch (e: NoteStorageException) {
             RenameResult.Failed
+        }
+    }
+
+    /** Favorites or unfavorites the open note (creating it first if it is a draft with text). */
+    fun toggleFavorite() = act {
+        val favorite = !(editor.info?.favorite ?: false)
+        if (editor.setFavorite(favorite)) {
+            current = editor.info
+            refreshLists()
         }
     }
 
@@ -156,7 +179,10 @@ class NotesViewModel(
     }
 
     private suspend fun refreshLists() {
-        notes = repository.listNotes()
+        val all = repository.listNotes()
+        notes = all
+        favorites = NoteLists.favorites(all)
+        recent = NoteLists.recent(all)
         trash = repository.listTrash()
     }
 

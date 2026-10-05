@@ -33,9 +33,11 @@ class NotesViewModelTest {
     private fun mdFiles() = root.walkTopDown().filter { it.isFile && it.name.endsWith(".md") }.toList()
 
     /** A view model over real files in [root]; "restarting the app" is just calling this again. */
+    private var tick = 1_000L // deterministic, strictly increasing clock shared across "restarts"
+
     private fun TestScope.newViewModel(): NotesViewModel {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
-        val repo = FileNoteRepository(root, dispatcher = dispatcher)
+        val repo = FileNoteRepository(root, clock = { tick++ }, dispatcher = dispatcher)
         return NotesViewModel(repo, CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()))
     }
 
@@ -189,5 +191,150 @@ class NotesViewModelTest {
         vm.onTextChange("Stay"); vm.newNote()
         assertEquals(listOf("Stay"), vm.notes.map { it.title })
         assertTrue(vm.trash.isEmpty())
+    }
+
+    // ---- Favorites -------------------------------------------------------------------------------------------
+
+    private fun NotesViewModel.titles(list: List<io.github.zeperus.openpad.domain.NoteInfo>) = list.map { it.title }
+
+    /** Creates notes titled [titles] (each saved) and leaves a blank page open. */
+    private fun NotesViewModel.createNotes(vararg titles: String) {
+        titles.forEach { onTextChange(it); newNote() }
+    }
+
+    private fun NotesViewModel.open(title: String) = openNote(notes.first { it.title == title }.id)
+
+    @Test fun `no favorites means the favorites list is empty`() = runTest {
+        val vm = newViewModel()
+        vm.createNotes("A", "B")
+        assertTrue(vm.favorites.isEmpty())
+    }
+
+    @Test fun `toggle favorite adds and removes a note from favorites without duplicating it in files`() = runTest {
+        val vm = newViewModel()
+        vm.createNotes("A", "B")
+        vm.open("A")
+        vm.toggleFavorite()
+        assertEquals(listOf("A"), vm.titles(vm.favorites))
+        assertEquals(true, vm.current?.favorite)
+        assertEquals(listOf("A", "B"), vm.titles(vm.notes)) // FILES stays the complete list
+
+        vm.toggleFavorite()
+        assertTrue(vm.favorites.isEmpty())
+        assertEquals(false, vm.current?.favorite)
+    }
+
+    @Test fun `favoriting a draft with text creates the note and favorites it`() = runTest {
+        val vm = newViewModel()
+        vm.onTextChange("Fresh idea")
+        vm.toggleFavorite()
+        assertEquals(listOf("Fresh idea"), vm.titles(vm.favorites))
+        assertEquals("Fresh idea", vm.noteFile("Fresh idea").readText())
+    }
+
+    @Test fun `favoriting a blank page does nothing`() = runTest {
+        val vm = newViewModel()
+        vm.toggleFavorite()
+        assertTrue(vm.favorites.isEmpty())
+        assertTrue(mdFiles().isEmpty())
+    }
+
+    @Test fun `favorite state persists across restarts and the markdown stays untouched`() = runTest {
+        val first = newViewModel()
+        first.onTextChange("# Pinned\nbody")
+        first.toggleFavorite()
+        val file = first.noteFile("Pinned")
+        val bytes = file.readBytes()
+
+        val second = newViewModel()
+        assertEquals(listOf("Pinned"), second.titles(second.favorites))
+        assertTrue(bytes.contentEquals(file.readBytes()))
+    }
+
+    @Test fun `renaming keeps the favorite`() = runTest {
+        val vm = newViewModel()
+        vm.onTextChange("Old"); vm.toggleFavorite()
+        assertEquals(RenameResult.Ok, vm.rename("Fresh name"))
+        assertEquals(listOf("Fresh name"), vm.titles(vm.favorites))
+    }
+
+    @Test fun `deleting a favorite removes it from favorites and restoring brings it back`() = runTest {
+        val vm = newViewModel()
+        vm.onTextChange("Star"); vm.toggleFavorite()
+        vm.deleteCurrent()
+        assertTrue(vm.favorites.isEmpty())
+        assertTrue(vm.recent.isEmpty())
+        vm.restore(vm.trash.single().id)
+        assertEquals(listOf("Star"), vm.titles(vm.favorites))
+    }
+
+    // ---- Recent ----------------------------------------------------------------------------------------------
+
+    @Test fun `a new note counts as used and is recent`() = runTest {
+        val vm = newViewModel()
+        assertTrue(vm.recent.isEmpty())
+        vm.onTextChange("First"); vm.flush(); runCurrent()
+        assertEquals(listOf("First"), vm.titles(vm.recent))
+    }
+
+    @Test fun `opening a note moves it to the top of recent`() = runTest {
+        val vm = newViewModel()
+        vm.createNotes("A", "B", "C")
+        assertEquals(listOf("C", "B", "A"), vm.titles(vm.recent))
+        vm.open("A")
+        assertEquals(listOf("A", "C", "B"), vm.titles(vm.recent))
+    }
+
+    @Test fun `recent is limited to three`() = runTest {
+        val vm = newViewModel()
+        vm.createNotes("A", "B", "C", "D", "E")
+        assertEquals(listOf("E", "D", "C"), vm.titles(vm.recent))
+        assertEquals(5, vm.notes.size)
+    }
+
+    @Test fun `favorites never appear in recent and unfavoriting returns them`() = runTest {
+        val vm = newViewModel()
+        vm.createNotes("A", "B", "C")
+        vm.open("C"); vm.toggleFavorite()
+        assertEquals(listOf("C"), vm.titles(vm.favorites))
+        assertEquals(listOf("B", "A"), vm.titles(vm.recent))
+
+        vm.toggleFavorite() // C is still the open note, and was used most recently
+        assertEquals(listOf("C", "B", "A"), vm.titles(vm.recent))
+    }
+
+    @Test fun `typing in a note does not reorder recent`() = runTest {
+        val vm = newViewModel()
+        vm.createNotes("A", "B")
+        vm.open("A"); vm.newNote(); vm.open("B")
+        vm.onTextChange("B\nedit edit"); vm.flush(); runCurrent()
+        assertEquals(listOf("B", "A"), vm.titles(vm.recent))
+        vm.open("A") // A used again, B only edited
+        vm.onTextChange("A\nlots of typing"); vm.flush(); runCurrent()
+        assertEquals(listOf("A", "B"), vm.titles(vm.recent))
+    }
+
+    @Test fun `deleted notes leave recent and renamed notes keep their place`() = runTest {
+        val vm = newViewModel()
+        vm.createNotes("A", "B", "C")
+        vm.open("B")
+        assertEquals(RenameResult.Ok, vm.rename("Bee"))
+        assertEquals(listOf("Bee", "C", "A"), vm.titles(vm.recent))
+        vm.deleteCurrent()
+        assertEquals(listOf("C", "A"), vm.titles(vm.recent))
+    }
+
+    @Test fun `recent and favorites are identical after an app restart`() = runTest {
+        val first = newViewModel()
+        first.createNotes("A", "B", "C", "D")
+        first.open("B"); first.toggleFavorite()
+        first.open("A")
+        val recent = first.titles(first.recent)
+        val favorites = first.titles(first.favorites)
+
+        val second = newViewModel()
+        assertEquals(recent, second.titles(second.recent))
+        assertEquals(favorites, second.titles(second.favorites))
+        assertEquals(listOf("A", "D", "C"), second.titles(second.recent))
     }
 }

@@ -133,4 +133,27 @@ class NoteEditorTest {
         assertNull(editor.moveToTrash())
         assertTrue(mdFiles().isEmpty())
     }
+
+    @Test fun `favorite on a draft with content creates the note first`() = runBlocking {
+        val editor = NoteEditor(repo())
+        editor.onTextChanged("Starred")
+        assertTrue(editor.setFavorite(true))
+        assertEquals(true, editor.info!!.favorite)
+        assertEquals("Starred", noteFile(editor).readText())
+    }
+
+    @Test fun `favorite on a blank draft does nothing`() = runBlocking {
+        val editor = NoteEditor(repo())
+        assertFalse(editor.setFavorite(true))
+        assertTrue(mdFiles().isEmpty())
+    }
+
+    @Test fun `saving after favoriting keeps the favorite`() = runBlocking {
+        val editor = NoteEditor(repo())
+        editor.onTextChanged("Starred")
+        editor.setFavorite(true)
+        editor.onTextChanged("Starred\nmore")
+        editor.save()
+        assertEquals(true, editor.info!!.favorite)
+    }
 }
