@@ -3,6 +3,7 @@ package io.github.zeperus.openpad
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.hasClickAction
@@ -41,8 +42,9 @@ class NotesFlowTest {
         scenario?.close()
     }
 
-    /** A drawer entry: clickable, unlike the same words in the title bar or the editor. */
-    private fun drawerEntry(title: String) = hasText(title) and hasClickAction() and !hasSetTextAction()
+    /** A drawer entry: clickable, unlike the same words in the title bar or the editor - and not an open tab. */
+    private fun drawerEntry(title: String) =
+        hasText(title) and hasClickAction() and !hasSetTextAction() and !hasTestTag("tab")
 
     @Before fun emptyStore() = runBlocking {
         val repo = app.repository
