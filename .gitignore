@@ -30,3 +30,6 @@ keystore.properties
 
 # AI tooling local state
 .claude/
+
+# Kotlin compiler session data
+.kotlin/
