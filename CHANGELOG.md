@@ -9,6 +9,8 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
   note's id even if the app crashes mid-operation. Older layouts are migrated automatically.
 
 ### Added
+- (Milestone 4, in progress) Pure `OpenDocuments` session model, `StartupPlanner` with the three startup modes
+  (default: Resume + blank note), atomic `session.json` store and a DataStore-backed startup setting. Not yet used by the UI.
 - Favorites and Recent in the drawer (order: FAVORITES, RECENT, FILES, TRASH). Favorite/Unfavorite via the overflow menu.
   Recent = last 3 opened non-favorite notes. Pure metadata; Markdown files are never modified.
 - Process-isolated cold-start regression test (Android Test Orchestrator + UiAutomator) and an emulator CI workflow.
