@@ -25,7 +25,7 @@ observing (seen on a cold start), so do not move `appScope` off the main dispatc
 
 Persistence rules and data-safety details: see [storage.md](storage.md).
 
-## Open documents and sessions (Milestone 4, core only - not yet wired into the UI)
+## Open documents and sessions (Milestone 4)
 
 The "mobile tabs" are a pure, immutable model in `domain/OpenDocuments.kt`; nothing in it knows about Compose,
 files or Android.
@@ -52,7 +52,30 @@ files or Android.
 - **Recent vs tab order are separate concepts:** activating a tab never reorders tabs; "used" for Recent stays
   "created or opened" (docs/storage.md).
 
-Still to do for this milestone: integrate the model into `NotesViewModel`, the tab strip and the settings screen.
+### Integration in `NotesViewModel` and the UI
+
+- **One live editor** - the active tab's. Switching tabs saves it and loads the other note from the repository, so
+  unsaved text exists only in the active editor (cursor/undo state is therefore not kept per tab).
+- **One mutex for everything:** user actions *and* autosave run under the same `actions` lock, so a draft becoming a
+  note can never interleave with a tab operation. Session writes go through a conflated channel: the latest state
+  wins and writes are strictly ordered; a failed write is ignored (the session is disposable).
+- **Draft -> note:** whenever a save creates the note while the blank tab is active (autosave, switching, rename,
+  favorite), the VM calls `materializeDraft(id)`; the tab keeps its place and focus. Delete on a blank page with text
+  saves it first, so that text ends up in Trash.
+- **Startup** runs once per view model (process start, or relaunch after the activity was finished): read the
+  setting and `session.json`, list existing notes, `StartupPlanner.initial`, **persist the result immediately**
+  (so "Blank note" replaces the old session instead of letting it resurface), then load the active note. The editor
+  and tab strip stay hidden behind a `ready` flag so nothing can be typed into a blank page that is about to be replaced.
+- **"Used" and Recent:** activating a saved note during a run (drawer, tab tap, neighbour after a close) records
+  `lastOpenedAt`; restoring the session at startup does not. Tab order and Recent order are independent.
+- **Closing** never deletes: it only changes the open-document model (the `.md` file, Favorites, Recent and FILES are
+  untouched). Closing the active tab activates the next tab, else the previous one, else a fresh blank page.
+  Delete (to Trash) additionally removes the tab; Restore from Trash does not reopen the note.
+- **Notes that cannot be loaded** when a tab is activated (deleted meanwhile, not valid UTF-8) are dropped from the
+  session, a message is shown, and the next tab is tried - ending at the latest with a blank page.
+- **UI:** `TabStrip` (compact `LazyRow`, truncated titles, active tab scrolled into view, **no close button on tabs**;
+  long press opens Close / Close others / Close all; the overflow menu has Close too) and a minimal `SettingsScreen`
+  (Startup: Resume session / Resume + blank note / Blank note). The blank tab is labelled "New note".
 
 Principles: constructor injection by hand (no DI framework), no layer without a purpose, Compose-independent
 domain/markdown code, build entirely from the terminal with `./gradlew`.

@@ -126,7 +126,7 @@ start (including when the file was already renamed but the index not yet rewritt
 title in the meantime the restored note gets a numeric suffix (`Plan 2`) - it never overwrites or renames another note. *Delete permanently* works only
 on notes that are already in Trash. Trashed notes can be read but not saved or renamed.
 
-## Session and settings (Milestone 4 core)
+## Session and settings (Milestone 4)
 
 - **`session.json`** (next to `index.json`, but a separate file on purpose): `version`, the ordered `noteIds` of the
   open saved notes and the `activeNoteId` (absent while the blank page is active). The transient blank page is never
@@ -139,7 +139,8 @@ on notes that are already in Trash. Trashed notes can be read but not saved or r
 - **Startup setting:** `startup_mode` in a Jetpack DataStore (preferences) file. Default (new installation, missing,
   corrupted or unknown stored value): `ResumeAndBlank` ("Resume + blank note"). The other values are
   `ResumeSession` and `BlankNote`.
-- Not wired into the app yet: nothing writes `session.json` or reads the setting until the UI integration.
+- The view model rewrites `session.json` after every change to the open documents (open, close, switch, draft
+  becoming a note, delete) and once at startup, right after the plan for the chosen mode was made.
 
 ## Not implemented yet
 

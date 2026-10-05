@@ -1,60 +1,53 @@
 # Current task
 
-**Milestone 3 (Favorites + Recent): COMPLETE and CONFIRMED.** Instrumented tests 9/9 green on GitHub (run
-37376144550 on push and run 37379121023 via `workflow_dispatch`, both on commit `bcd7c97`, 1 ColdStartTest + 8
-NotesFlowTest, 0 failures). Regular CI (build/unit/lint) green.
-**Milestone 4 (open documents / session / startup): IN PROGRESS.** Core done; UI integration is being built next.
-Do not mark Milestone 4 complete until its own instrumented tests are green on GitHub.
+**Milestone 4 (open documents, sessions, startup modes): COMPLETE and CONFIRMED.**
+**Milestone 3 (Favorites + Recent): COMPLETE and CONFIRMED** (9/9 on 2026-10-05).
+Next: Milestone 5 (rich Markdown editor). **Do not start it without being asked.**
 
-## Status of Milestone 3
-- Earlier failures were test bugs (a new note is listed under RECENT *and* FILES; a drawer-close helper), fixed in
-  `ce9eaf8`. The GitHub Actions outage of 2026-10-05 (runners not acquired) delayed the confirmation; it ended
-  around 21:55 UTC.
+## Verification
+- Unit tests: 276, 0 failing (`./gradlew test`); lint clean; `assembleDebug` and `assembleDebugAndroidTest` build.
+- Instrumented tests on GitHub (`Instrumented tests` workflow, API 36 emulator, Test Orchestrator = fresh process per
+  test): **25/25 green** (1 ColdStartTest, 8 NotesFlowTest, 16 SessionFlowTest), run 37380496887 on commit `870ea35`.
+- Regular CI (`ci.yml`: build, unit tests, lint) green on the same commit.
+- Mutation checks: unit level (neighbour rule, draft materialization, startup persistence) and instrumented level
+  (default startup mode, close-neighbour rule, run on a throwaway branch: 4 tests failed as they should; branch deleted).
 
-## Milestone 4 - done so far (core only, no UI / no ViewModel / no Compose / no instrumented changes)
-- `domain/OpenDocuments` (pure): ordered saved-note ids, at most one transient blank draft (always last tab),
-  active tab; `open` (no duplicates), `activate`, `newDraft`, `materializeDraft`, `close` (next, else previous, else
-  blank), `closeOthers`, `closeAll`, `remove`, `retainOnly`, `items` (titles for display), `toPersisted`.
-- `domain/Startup`: `StartupMode` (ResumeSession, ResumeAndBlank = default, BlankNote), `StartupPlanner`,
-  `SessionStore` / `SettingsStore` interfaces.
-- `data/FileSessionStore`: separate atomic `session.json`, lenient reading that never throws.
-- `data/DataStoreSettingsStore`: startup mode in DataStore (default ResumeAndBlank; corrupt/unknown -> default).
-- Tests: 227 JVM unit tests total, 0 failing (43 OpenDocuments incl. a randomized 300x60-operation invariant test,
-  15 StartupPlanner, 18 FileSessionStore, 5 DataStore). Mutation-checked (neighbour rule).
-
-## Next: Milestone 4 UI integration (Milestone 3 is confirmed; this is the current work)
-Design decisions already taken, so they do not need to be re-derived:
-- `NotesViewModel` keeps ONE active `NoteEditor`; switching tabs = flush + load the other note from the repository
-  (cursor/undo state is not kept per tab for now). Unsaved text exists only in the active editor.
-- All VM state changes (session, editor, lists) and `autosave` must run under the existing `actions` mutex
-  (split `saveNow()` into a locked variant used by actions and a locking wrapper for the Autosaver) so draft
-  materialization cannot interleave with tab operations. Session writes go through a conflated channel so the
-  latest state wins and ordering is safe.
-- Draft -> note: after any save that creates the note while the draft tab is active, call
-  `session.materializeDraft(id)`. Delete on a draft with text saves it first (it ends up in Trash).
-- `markOpened` on every activation of a saved note during a run (drawer open, tab tap, neighbour after close), but
-  NOT when restoring the session at startup. Recent order and tab order stay independent.
-- Startup runs once per ViewModel (process start or after the activity was finished): load setting + session +
-  existing note ids -> `StartupPlanner.initial` -> persist immediately (so "Blank note" overwrites the old session)
-  -> load the active note. Gate the editor behind a `ready` flag so nothing can be typed into a draft that is about
-  to be replaced.
-- Tab strip: horizontally scrollable `LazyRow`, compact, truncated titles, no permanent close "X"; long-press menu
-  Close / Close others / Close all; overflow menu gets "Close"; draft tab title "New note". Settings: a minimal
-  screen with "Startup": Resume session / Resume + blank note / Blank note.
-- Instrumented tests for M4 (restoration, default startup mode, close vs delete, no duplicate tab) are to be added
-  and verified through GitHub CI only.
+## What Milestone 4 delivered
+- `OpenDocuments` (pure): ordered saved-note ids, at most one transient blank draft (always last), active tab; open
+  without duplicates, activate, close (next, else previous, else blank), close others, close all, remove, retainOnly,
+  materializeDraft. `StartupPlanner` + `StartupMode` (ResumeSession, ResumeAndBlank = default, BlankNote).
+- `FileSessionStore` (own atomic `session.json`, lenient reads), `DataStoreSettingsStore` (startup mode).
+- `NotesViewModel`: one live editor, one mutex for actions and autosave, startup restore + immediate persist, `ready`
+  gate, draft -> note transition, Delete closes the tab, Restore does not reopen, unreadable/stale notes dropped.
+- UI: compact tab strip (no per-tab close button; long press = Close / Close others / Close all; overflow has Close),
+  Settings screen (Startup options), blank tab labelled "New note".
+- Details: docs/architecture.md ("Open documents and sessions"), docs/storage.md ("Session and settings").
 
 ## Architecture decisions (details in docs/)
-- File name = note id; the id is recoverable from the file even if the index is lost (docs/storage.md).
-- "Used" for Recent = created or opened, not edited. Favorites/recency are index metadata only.
+- File name = note id; the id is recoverable from the file even if the index is lost.
+- "Used" for Recent = created or opened/activated during a run, not edited, not restored at startup.
 - Session = its own disposable `session.json`; settings = DataStore. Neither can affect note files.
-- `appScope` MUST stay on `Dispatchers.Main.immediate` (Compose state; docs/architecture.md); `ColdStartTest` guards it.
+- Tab order and Recent order are independent. Closing never deletes anything.
+- `appScope` MUST stay on `Dispatchers.Main.immediate`; `ColdStartTest` guards it.
 - No DI framework, no Room.
 
 ## Known issues / gaps
 - **Never run the Android emulator on the dev laptop** (hard-froze twice with emulator + Gradle). Instrumented tests
-  run only via the `Instrumented tests` GitHub workflow. Local checks: `./gradlew test lint assembleDebug`.
-  `source ~/.openpad-env.sh` sets JAVA_HOME/ANDROID_HOME.
-- The instrumented workflow is separate from `ci.yml` and not a required gate; it cancels superseded runs on a ref.
-- `index.json` is rewritten on every save/open (fine for small note counts).
-- UI strings are English only. The overflow menu is the only Favorite control.
+  run only via the `Instrumented tests` GitHub workflow (`gh workflow run instrumented.yml`). Local checks:
+  `./gradlew test lint assembleDebug`. `source ~/.openpad-env.sh` sets JAVA_HOME/ANDROID_HOME.
+- Switching tabs reloads the note from disk: cursor position and undo history are not kept per tab.
+- A true "kill the process and relaunch" cannot be done inside one instrumented test; persistence is covered from both
+  sides (what the UI writes, and what a relaunch does with such a file) - see SessionFlowTest's header comment.
+- Opening a note while only an untouched blank tab exists leaves that blank tab open ("Ideas | New note"); it is
+  never duplicated and never becomes a file, but it is not auto-replaced either.
+- If the process dies in the instant between a draft becoming a note and `session.json` being rewritten, the new note
+  is not in the stored session (it is still in FILES and Recent; no text is lost).
+- `index.json` is rewritten on every save/open (fine for small note counts). UI strings are English only.
+- The instrumented workflow is separate from `ci.yml`, not a required gate, skips docs-only changes and cancels
+  superseded runs on a ref. GitHub had an Actions outage on 2026-10-05 (runners not acquired); if jobs fail with
+  "not acquired by Runner", check githubstatus.com before suspecting the code.
+
+## Suggested next milestone
+Milestone 5: the rich Markdown editor (parser -> document model -> Compose editor -> serializer), starting with
+paragraph, heading, bold, italic and lists, with aggressive round-trip tests. Evaluate maintained Markdown libraries
+first (CommonMark/GFM). Keep the model Compose-independent; unknown Markdown must be preserved.
