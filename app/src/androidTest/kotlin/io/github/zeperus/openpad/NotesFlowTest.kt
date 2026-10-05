@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -73,7 +74,8 @@ class NotesFlowTest {
         assertEquals("# Shopping\nmilk", noteFile("Shopping").readText())
         openDrawer()
         rule.onNodeWithText("FILES").assertIsDisplayed()
-        rule.onNode(drawerEntry("Shopping")).assertIsDisplayed()
+        // a new note is "used", so it is listed under RECENT and under FILES
+        rule.onAllNodes(drawerEntry("Shopping")).onFirst().assertIsDisplayed()
     }
 
     @Test fun anExistingNoteShowsUpInFilesAndOpensWithItsText() {
@@ -82,7 +84,7 @@ class NotesFlowTest {
         launch() // cold start: the list must be loaded from disk and shown
 
         openDrawer()
-        rule.onNode(drawerEntry("Earlier note")).assertIsDisplayed().performClick()
+        rule.onAllNodes(drawerEntry("Earlier note")).onFirst().assertIsDisplayed().performClick()
         rule.onNode(hasSetTextAction()).assertTextEquals("Earlier note\nbody text")
     }
 
@@ -133,9 +135,9 @@ class NotesFlowTest {
     private fun drawerEntryCount(title: String) =
         rule.onAllNodes(drawerEntry(title)).fetchSemanticsNodes().size
 
-    private fun closeDrawer() {
-        androidx.test.uiautomator.UiDevice.getInstance(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation())
-            .pressBack()
+    /** Selecting the already-open note just closes the drawer. */
+    private fun closeDrawerVia(title: String) {
+        rule.onAllNodes(drawerEntry(title)).onFirst().performClick()
         rule.waitForIdle()
     }
 
@@ -186,7 +188,7 @@ class NotesFlowTest {
         rule.onNodeWithText("FAVORITES").assertIsDisplayed()
         assertEquals(2, drawerEntryCount("Pinned")) // Favorites + Files; not in Recent
         assertTrue(before.contentEquals(noteFile("Pinned").readBytes())) // Markdown untouched
-        closeDrawer()
+        closeDrawerVia("Pinned")
 
         rule.onNodeWithContentDescription("More options").performClick()
         rule.onNodeWithText("Remove from Favorites").performClick()
