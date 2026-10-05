@@ -7,7 +7,8 @@ package io.github.zeperus.openpad.domain
 object NoteFileName {
     const val EXTENSION = ".md"
     const val DEFAULT_TITLE = "Untitled"
-    private const val MAX_BASE_LENGTH = 100
+    // File systems limit names to 255 bytes; leave room for " 123.md" suffixes and multi-byte characters.
+    private const val MAX_BASE_BYTES = 120
 
     // Characters that are illegal or troublesome on common file systems / document providers.
     private val forbidden = Regex("""[\\/:*?"<>|\u0000-\u001F]""")
@@ -18,7 +19,10 @@ object NoteFileName {
     )
 
     /** Returns a sanitized base name (without extension); never empty. */
-    fun sanitize(title: String): String {
+    fun sanitize(title: String): String = sanitizeOrNull(title) ?: DEFAULT_TITLE
+
+    /** Like [sanitize] but returns null when nothing usable is left (blank, only dots/illegal characters). */
+    fun sanitizeOrNull(title: String): String? {
         var base = title.replace(forbidden, " ")
             .replace(Regex("\\s+"), " ")
             .trim()
@@ -27,10 +31,29 @@ object NoteFileName {
         if (base.endsWith(EXTENSION, ignoreCase = true)) {
             base = base.dropLast(EXTENSION.length).trim().trim('.').trim()
         }
-        if (base.length > MAX_BASE_LENGTH) base = base.take(MAX_BASE_LENGTH).trim()
-        if (base.isEmpty()) base = DEFAULT_TITLE
+        base = truncateUtf8(base, MAX_BASE_BYTES).trim().trim('.').trim()
+        if (base.isEmpty()) return null
         if (base.uppercase() in reservedWindowsNames) base = "$base-"
         return base
+    }
+
+    /** True if [name] can be used as a single path segment without escaping its directory. */
+    fun isSafeFileName(name: String): Boolean =
+        name.isNotEmpty() && name != "." && name != ".." &&
+            name.none { it == '/' || it == '\\' || it == '\u0000' } &&
+            name.toByteArray(Charsets.UTF_8).size <= 255
+
+    private fun truncateUtf8(text: String, maxBytes: Int): String {
+        var bytes = 0
+        var end = 0
+        while (end < text.length) {
+            val cp = text.codePointAt(end)
+            val size = String(Character.toChars(cp)).toByteArray(Charsets.UTF_8).size
+            if (bytes + size > maxBytes) break
+            bytes += size
+            end += Character.charCount(cp)
+        }
+        return text.substring(0, end)
     }
 
     fun toFileName(title: String): String = sanitize(title) + EXTENSION

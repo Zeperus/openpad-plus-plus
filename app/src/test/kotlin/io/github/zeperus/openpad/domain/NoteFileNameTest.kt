@@ -1,6 +1,5 @@
-package io.github.zeperus.openpad
+package io.github.zeperus.openpad.domain
 
-import io.github.zeperus.openpad.domain.NoteFileName
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -33,5 +32,34 @@ class NoteFileNameTest {
     @Test fun `title of file name strips extension`() {
         assertEquals("Shopping", NoteFileName.titleOf("Shopping.md"))
         assertEquals("readme.txt", NoteFileName.titleOf("readme.txt"))
+    }
+}
+
+class NoteFileNameSafetyTest {
+    @Test fun `sanitizeOrNull rejects names without usable characters`() {
+        assertEquals(null, NoteFileName.sanitizeOrNull(""))
+        assertEquals(null, NoteFileName.sanitizeOrNull("???"))
+        assertEquals(null, NoteFileName.sanitizeOrNull(" . .. "))
+        assertEquals("a", NoteFileName.sanitizeOrNull("a?"))
+    }
+
+    @Test fun `path traversal attempts cannot produce separators`() {
+        val result = NoteFileName.toFileName("../../etc/passwd")
+        assertEquals(false, result.contains('/'))
+        assertEquals(false, result.startsWith("."))
+        assertEquals("etc passwd.md", result)
+    }
+
+    @Test fun `long multi-byte titles stay within the file system limit`() {
+        val name = NoteFileName.toFileName("ä".repeat(300))
+        assertEquals(true, name.toByteArray(Charsets.UTF_8).size <= 255)
+        assertEquals(true, NoteFileName.isSafeFileName(NoteFileName.unique("😀".repeat(200), emptyList())))
+    }
+
+    @Test fun `isSafeFileName rejects traversal and separators`() {
+        for (bad in listOf("", ".", "..", "a/b.md", "a\\b.md", "x\u0000.md")) {
+            assertEquals("'$bad'", false, NoteFileName.isSafeFileName(bad))
+        }
+        assertEquals(true, NoteFileName.isSafeFileName("Shopping.md"))
     }
 }
