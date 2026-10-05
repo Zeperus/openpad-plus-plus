@@ -27,6 +27,20 @@ export ANDROID_HOME=~/Android/Sdk      # or create local.properties with sdk.dir
 ./gradlew testDebugUnitTest lintDebug   # unit tests + Android lint
 ```
 
+## Permissions
+
+openPad++ requests **no permissions**: no `INTERNET`, no storage permissions. (Android lists one signature-level
+`...DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` that the AndroidX libraries add automatically; it is private to the
+app.) Cloud backup of app data is disabled. External files will be accessed through Android's file picker
+(Storage Access Framework) rather than broad file access.
+
+## Tests
+
+```sh
+./gradlew testDebugUnitTest lintDebug     # JVM unit tests + lint (run in CI)
+./gradlew connectedDebugAndroidTest       # UI tests; needs a running emulator/device (not run in CI yet)
+```
+
 ## Documentation
 
 - [Architecture](docs/architecture.md)

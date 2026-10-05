@@ -10,6 +10,21 @@ io.github.zeperus.openpad
 └── markdown/  (later) parser, document model, serializer
 ```
 
+## Current structure (Milestone 2)
+
+- `domain/` - `NoteId`/`NoteInfo`/`NoteContent`, `NoteRepository` (interface + exceptions), `NoteFileName`,
+  `NoteTitles`, `NoteEditor` (draft rules, save/clear/rename/trash for one open note), `Autosaver` (debounce).
+- `data/` - `FileNoteRepository` (files + `index.json`), `AtomicFiles` (atomic write/move, strict UTF-8 read).
+- `ui/` - `NotesViewModel` (open note, Files/Trash lists, user actions), `NotesScreen` (drawer, editor, dialogs).
+- `OpenPadApplication` - hand-wired dependencies and the application-lifetime `appScope`.
+
+**Threading rule:** `appScope` runs on `Dispatchers.Main.immediate` because the view model publishes Compose
+state. Blocking file I/O happens inside the repository on its own dispatcher (`Dispatchers.IO`). Writing Compose
+state from a background thread can leave the UI showing stale data when it happens before Compose has started
+observing (seen on a cold start), so do not move `appScope` off the main dispatcher.
+
+Persistence rules and data-safety details: see [storage.md](storage.md).
+
 Principles: constructor injection by hand (no DI framework), no layer without a purpose, Compose-independent
 domain/markdown code, build entirely from the terminal with `./gradlew`.
 
