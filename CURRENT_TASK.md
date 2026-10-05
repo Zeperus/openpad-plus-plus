@@ -30,8 +30,13 @@ session / startup modes). Do not start it without being asked.
   `source ~/.openpad-env.sh` sets JAVA_HOME/ANDROID_HOME.
 - The instrumented workflow is separate from `ci.yml` (it is slower and emulators are occasionally flaky on shared
   runners); it is not a required gate. It cancels superseded runs on the same ref.
-- Favorites/Recent could not be re-inspected on a device manually after the last UI change for the reason above;
-  they are covered by the instrumented tests instead.
+- **Open item: the final instrumented run is unverified.** Last known results: the cold-start test and 6 of 9
+  tests passed; 3 `NotesFlowTest` cases failed for test-side reasons (a new note is now listed under RECENT *and*
+  FILES, so lookups were ambiguous; one helper did not close the drawer). Those test fixes compile and are pushed
+  (commit "test: fix drawer assertions ..."), but four consecutive `Instrumented tests` runs on GitHub could not get
+  a runner ("job was not acquired by Runner of type hosted"; githubstatus.com showed an Actions incident on
+  2026-10-05). First action next session: `gh workflow run instrumented.yml` and confirm 9/9 pass.
+- Favorites/Recent were not inspected manually on a device after the last UI change (no local emulator, see above).
 - `index.json` is rewritten on every save/open (fine for small note counts).
 - UI strings are English only (all in resources).
 - The overflow menu is the only Favorite control (deliberately uncluttered); no long-press/swipe actions yet.
