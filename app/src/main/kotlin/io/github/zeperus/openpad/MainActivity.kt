@@ -21,7 +21,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             OpenPadTheme {
                 val vm: NotesViewModel = viewModel(
-                    factory = viewModelFactory { initializer { NotesViewModel(app.repository, app.appScope) } },
+                    factory = viewModelFactory { initializer { NotesViewModel(app.repository, app.sessionStore, app.settings, app.appScope) } },
                 )
                 // Whatever the reason for leaving the screen, pending edits go to disk first.
                 LifecycleEventEffect(Lifecycle.Event.ON_STOP) { vm.flush() }

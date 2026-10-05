@@ -1,6 +1,12 @@
 package io.github.zeperus.openpad.ui
 
 import io.github.zeperus.openpad.data.FileNoteRepository
+import io.github.zeperus.openpad.data.FileSessionStore
+import io.github.zeperus.openpad.domain.DocumentTab
+import io.github.zeperus.openpad.domain.NoteId
+import io.github.zeperus.openpad.domain.SettingsStore
+import io.github.zeperus.openpad.domain.StartupMode
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -35,10 +41,29 @@ class NotesViewModelTest {
     /** A view model over real files in [root]; "restarting the app" is just calling this again. */
     private var tick = 1_000L // deterministic, strictly increasing clock shared across "restarts"
 
-    private fun TestScope.newViewModel(): NotesViewModel {
+    /** Survives "restarts" like the DataStore file does. */
+    private class InMemorySettings(var mode: StartupMode = StartupMode.Default) : SettingsStore {
+        override suspend fun startupMode() = mode
+        override suspend fun setStartupMode(mode: StartupMode) { this.mode = mode }
+    }
+
+    private val settings = InMemorySettings()
+
+    private val sessionFile get() = File(root, "session.json")
+
+    /** The session as it is on disk right now. */
+    private fun storedSession() = runBlocking { FileSessionStore(sessionFile).load() }
+
+    private fun TestScope.newViewModel(mode: StartupMode? = null): NotesViewModel {
+        mode?.let { settings.mode = it }
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         val repo = FileNoteRepository(root, clock = { tick++ }, dispatcher = dispatcher)
-        return NotesViewModel(repo, CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()))
+        return NotesViewModel(
+            repo,
+            FileSessionStore(sessionFile, dispatcher),
+            settings,
+            CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()),
+        )
     }
 
     @Test fun `starts with a blank draft and no files`() = runTest {
