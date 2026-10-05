@@ -1,6 +1,26 @@
 package io.github.zeperus.openpad.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import io.github.zeperus.openpad.domain.DocumentTab
+import io.github.zeperus.openpad.domain.StartupMode
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -65,9 +85,19 @@ private sealed interface Dialog {
     data class Purge(val note: NoteInfo) : Dialog
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotesScreen(vm: NotesViewModel) {
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+    if (showSettings) {
+        SettingsScreen(vm, onBack = { showSettings = false })
+    } else {
+        NotesContent(vm, onOpenSettings = { showSettings = true })
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -147,33 +177,44 @@ fun NotesScreen(vm: NotesViewModel) {
                                 onClick = { menuOpen = false; dialog = Dialog.Clear },
                             )
                             DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_close)) },
+                                onClick = { menuOpen = false; vm.closeCurrent() },
+                            )
+                            DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_delete)) },
                                 enabled = vm.hasNote,
                                 onClick = { menuOpen = false; dialog = Dialog.Delete },
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_settings)) },
+                                onClick = { menuOpen = false; onOpenSettings() },
                             )
                         }
                     },
                 )
             },
         ) { padding ->
-            // Temporary raw-Markdown editor; replaced by the formatted editor in a later milestone.
-            TextField(
-                value = vm.text,
-                onValueChange = vm::onTextChange,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .imePadding(),
-                placeholder = { Text(stringResource(R.string.editor_hint)) },
-                textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.background,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.background,
-                    focusedIndicatorColor = MaterialTheme.colorScheme.background,
-                    unfocusedIndicatorColor = MaterialTheme.colorScheme.background,
-                ),
-            )
+            Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
+                if (vm.ready) {
+                    TabStrip(vm)
+                    // Temporary raw-Markdown editor; replaced by the formatted editor in a later milestone.
+                    TextField(
+                        value = vm.text,
+                        onValueChange = vm::onTextChange,
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        placeholder = { Text(stringResource(R.string.editor_hint)) },
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.background,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.background,
+                            focusedIndicatorColor = MaterialTheme.colorScheme.background,
+                            unfocusedIndicatorColor = MaterialTheme.colorScheme.background,
+                        ),
+                    )
+                }
+            }
         }
     }
 
@@ -357,4 +398,121 @@ private fun RenameDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) } },
     )
+}
+
+/**
+ * The open documents as a compact, horizontally scrollable strip. There is deliberately no close button on the
+ * tabs (too easy to mis-tap): a long press opens Close / Close others / Close all instead.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun TabStrip(vm: NotesViewModel) {
+    val tabs = vm.tabs
+    val listState = rememberLazyListState()
+    val activeIndex = tabs.indexOfFirst { it.isActive }
+    LaunchedEffect(activeIndex, tabs.size) {
+        if (activeIndex >= 0) listState.animateScrollToItem(activeIndex)
+    }
+    LazyRow(
+        state = listState,
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        items(tabs, key = { tabKey(it.tab) }) { item ->
+            var menuOpen by remember { mutableStateOf(false) }
+            val title = if (item.tab == DocumentTab.Draft) stringResource(R.string.tab_new_note) else item.title
+            val optionsLabel = stringResource(R.string.tab_options)
+            Box {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (item.isActive) MaterialTheme.colorScheme.secondaryContainer
+                    else MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier
+                        .testTag("tab")
+                        .semantics { selected = item.isActive }
+                        .combinedClickable(
+                            onClick = { vm.selectTab(item.tab) },
+                            onLongClick = { menuOpen = true },
+                            onLongClickLabel = optionsLabel,
+                            role = Role.Tab,
+                        ),
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 160.dp).padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.action_close)) },
+                        onClick = { menuOpen = false; vm.closeTab(item.tab) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.action_close_others)) },
+                        enabled = tabs.size > 1,
+                        onClick = { menuOpen = false; vm.closeOthers(item.tab) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.action_close_all)) },
+                        onClick = { menuOpen = false; vm.closeAll() },
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun tabKey(tab: DocumentTab): String = when (tab) {
+    is DocumentTab.Saved -> "note-" + tab.id.value
+    DocumentTab.Draft -> "draft"
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsScreen(vm: NotesViewModel, onBack: () -> Unit) {
+    BackHandler(onBack = onBack)
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.settings_title)) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.settings_back))
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            SectionHeader(stringResource(R.string.settings_startup))
+            val options = listOf(
+                StartupMode.ResumeSession to R.string.startup_resume_session,
+                StartupMode.ResumeAndBlank to R.string.startup_resume_blank,
+                StartupMode.BlankNote to R.string.startup_blank_note,
+            )
+            Column(Modifier.selectableGroup()) {
+                for ((mode, label) in options) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = vm.startupMode == mode,
+                                onClick = { vm.chooseStartupMode(mode) },
+                                role = Role.RadioButton,
+                            )
+                            .padding(horizontal = 24.dp, vertical = 12.dp),
+                    ) {
+                        RadioButton(selected = vm.startupMode == mode, onClick = null)
+                        Text(stringResource(label), modifier = Modifier.padding(start = 16.dp))
+                    }
+                }
+            }
+        }
+    }
 }
