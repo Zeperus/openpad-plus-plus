@@ -1,4 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">openPad++</string>
+
+    <string name="new_note">+ New Note</string>
+    <string name="section_files">FILES</string>
+    <string name="section_trash">TRASH</string>
+    <string name="files_empty">No notes yet</string>
+    <string name="trash_empty">Trash is empty</string>
+
+    <string name="untitled">Untitled</string>
+    <string name="editor_hint">Start typing…</string>
+    <string name="open_drawer">Open navigation</string>
+    <string name="more_options">More options</string>
+
+    <string name="action_rename">Rename…</string>
+    <string name="action_clear">Clear note…</string>
+    <string name="action_delete">Delete note…</string>
+    <string name="action_restore">Restore</string>
+    <string name="action_delete_permanently">Delete permanently</string>
+
+    <string name="dialog_cancel">Cancel</string>
+    <string name="dialog_rename_title">Rename note</string>
+    <string name="dialog_rename_label">Name</string>
+    <string name="dialog_rename_confirm">Rename</string>
+    <string name="rename_invalid">Please enter a name.</string>
+    <string name="rename_taken">A note with this name already exists.</string>
+    <string name="rename_failed">Could not rename the note.</string>
+
+    <string name="dialog_clear_title">Clear this note?</string>
+    <string name="dialog_clear_message">All text will be removed. The note itself stays.</string>
+    <string name="dialog_clear_confirm">Clear</string>
+
+    <string name="dialog_delete_title">Move to Trash?</string>
+    <string name="dialog_delete_message">“%1$s” will be moved to Trash. You can restore it from there.</string>
+    <string name="dialog_delete_confirm">Move to Trash</string>
+
+    <string name="dialog_purge_title">Delete permanently?</string>
+    <string name="dialog_purge_message">“%1$s” will be deleted for good. This cannot be undone.</string>
+
+    <string name="message_save_failed">Could not save your note. Changes are kept and will be retried.</string>
+    <string name="message_note_unreadable">This file is not valid UTF-8 text and was not opened.</string>
+    <string name="message_action_failed">That did not work. Your notes were not changed.</string>
 </resources>

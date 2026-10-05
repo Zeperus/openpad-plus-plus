@@ -44,7 +44,7 @@ class FileNoteRepository(
     private val notesDir = File(root, "notes")
     private val trashDir = File(root, "trash")
     private val indexFile = File(root, "index.json")
-    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true; encodeDefaults = true }
 
     private val mutex = Mutex()
     private var entries: MutableMap<String, Entry>? = null
