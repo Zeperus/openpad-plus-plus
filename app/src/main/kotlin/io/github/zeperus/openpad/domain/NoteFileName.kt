@@ -63,18 +63,22 @@ object NoteFileName {
         if (fileName.endsWith(EXTENSION, ignoreCase = true)) fileName.dropLast(EXTENSION.length) else fileName
 
     /**
-     * Picks a file name based on [title] that does not collide with [existing] (compared case-insensitively):
-     * `Shopping.md`, `Shopping 2.md`, `Shopping 3.md`, ...
+     * Picks a title based on [title] that does not collide with [existingTitles] (compared case-insensitively):
+     * `Shopping`, `Shopping 2`, `Shopping 3`, ...
      */
-    fun unique(title: String, existing: Collection<String>): String {
-        val taken = existing.mapTo(HashSet()) { it.lowercase() }
+    fun uniqueTitle(title: String, existingTitles: Collection<String>): String {
+        val taken = existingTitles.mapTo(HashSet()) { it.lowercase() }
         val base = sanitize(title)
-        var candidate = base + EXTENSION
+        var candidate = base
         var n = 2
         while (candidate.lowercase() in taken) {
-            candidate = "$base $n$EXTENSION"
+            candidate = "$base $n"
             n++
         }
         return candidate
     }
+
+    /** Like [uniqueTitle] but returns a file name (`Shopping 2.md`) checked against existing *file names*. */
+    fun unique(title: String, existing: Collection<String>): String =
+        uniqueTitle(title, existing.map { titleOf(it) }) + EXTENSION
 }

@@ -8,26 +8,28 @@ the `.md` files. Note text is never stored in a database or in settings.
 Below the app-private directory `filesDir/openpad/`:
 
 ```
-notes/Shopping.md        active notes - plain UTF-8 Markdown, exactly what the user typed
-trash/Old idea.md        trashed notes
-index.json               metadata only: id, fileName, createdAt, updatedAt, trashedAt, autoTitle
+notes/<id>.md            active notes - plain UTF-8 Markdown, exactly what the user typed
+trash/<id>.md            trashed notes (same file name; only the directory differs)
+index.json               metadata only: id, title, createdAt, updatedAt, trashedAt, autoTitle
 ```
 
-The code lives behind `domain/NoteRepository`; `data/FileNoteRepository` is the implementation.
-The editor and UI only know the interface, so storage can change without touching them.
+`<id>` is a random UUID. The code lives behind `domain/NoteRepository`; `data/FileNoteRepository` is the
+implementation, so the editor and UI never see paths.
 
-## Identity and names
+## Identity and titles
 
-- A note is identified by a random **`NoteId`** (UUID) kept in `index.json`. The file name is *not* the identity,
-  so renaming never invalidates references to a note.
-- The file name is the title plus `.md`. Titles are sanitized by `NoteFileName`: illegal characters, control
-  characters and reserved names are replaced, leading/trailing dots are dropped, and names are limited to
-  120 UTF-8 bytes so they fit file-system limits. Callers never pass paths: every file access goes through
-  `fileIn()`, which rejects separators, `.`/`..` and anything resolving outside its directory.
-- Collisions are compared case-insensitively. Create/restore/auto-title add a suffix (`Todo 2.md`); an explicit
-  rename to a taken name fails with `NoteNameConflictException` instead of silently renaming something else.
-- **Auto-title:** until the user renames a note, its title follows the first non-blank line (block markers such as
-  `#`, `-`, `[ ]` removed). Emptying a note keeps its name. A manual rename switches this off for good.
+- **The file name is the note's identity.** Renaming a note, auto-retitling it, or moving it to/from Trash never
+  gives it a new id, and a file can always be tied to its note even if `index.json` is lost.
+- The **title** lives in the index only. It is restricted to what would be a legal file name
+  (`NoteFileName`): illegal and control characters and reserved names are replaced, leading/trailing dots dropped,
+  max. 120 UTF-8 bytes. When a note leaves the app (Share, later) it is exported as `<title>.md`
+  (`NoteInfo.exportFileName`), e.g. `Shopping.md`.
+- Ids are validated as UUIDs before they are ever used to build a path, so ids read from a damaged or tampered
+  index cannot contain separators or `..`.
+- Titles of active notes are unique (case-insensitive). Create/restore/auto-title add a suffix (`Todo 2`); an
+  explicit rename to a taken title fails with `NoteNameConflictException`.
+- **Auto-title:** until the user renames a note, its title follows the first non-blank line (block markers such
+  as `#`, `-`, `[ ]` removed). Emptying a note keeps its title. A manual rename switches this off for good.
 
 ## Drafts (no `Untitled` clutter)
 
@@ -54,25 +56,53 @@ something other than whitespace; the first autosave then creates the note. Conse
   (`NoteUnreadableException`) and never opened for editing, because saving would corrupt it.
 - All repository operations are serialized by one mutex.
 
-## Crash and metadata recovery
+## Crash consistency
 
-On first use the repository reconciles `index.json` with the directories. The directories are the source of truth:
+Every repository operation does **at most one file-system step that matters, then one atomic index write**:
+
+| Operation | File step | Index write | Crash between the two |
+|-----------|-----------|-------------|-----------------------|
+| create | write `notes/<id>.md` | add entry | file is adopted under the **same id**, title re-derived from its first line |
+| save | atomic rewrite of the file | `updatedAt`, auto-title | new text is kept; only the timestamp/title update is lost |
+| **rename** | *none* | new title | old *or* new title - never a different id |
+| Trash / Restore | move `<id>.md` between directories | `trashedAt` | the file's location wins; same id |
+| delete permanently | delete the file | remove entry | entry is dropped |
+
+Because rename (and auto-retitling) needs no file step at all, the old "file renamed but index not updated"
+window no longer exists: there is nothing to get out of sync. Trash moves keep the file name, so there is no name
+collision to resolve either.
+
+If a step fails inside a running app, the in-memory state is discarded and re-read (and re-reconciled) from disk
+on the next operation, so the app never continues on state that is ahead of the disk.
+
+On first use the repository reconciles `index.json` with the directories. The directories are the source of truth
+for which notes exist and whether they are trashed; the index supplies titles and timestamps:
 
 | Situation | Result |
 |-----------|--------|
-| `.md` file without index entry (index lost/corrupt, file dropped in by hand) | adopted as a new note |
+| `<uuid>.md` without index entry (index lost/corrupt, crash after create) | adopted with that **same id**; title from the first line |
+| `.md` file with any other name (placed by hand) | renamed to `<newid>.md` and adopted; title from its name |
 | index entry whose file is gone | entry dropped |
-| file in `trash/` but index says active (crash between move and index write) or vice versa | follows the file |
+| file in the other directory than the index says (crash during Trash/Restore) | follows the file |
+| the same id present in both directories | the indexed location wins; the stray copy is kept as a separate note, never deleted |
 | unreadable index | kept as `index.json.corrupt`, notes adopted from the directories |
-| index entry with an unsafe file name | ignored |
+| index entry with an invalid id | ignored |
+| leftover `*.tmp` files (interrupted atomic write) | deleted; the previous content is intact |
 
-Known limitation: a crash exactly between a *rename* and the index write makes the renamed file look like a new
-note (new id). Text is not lost.
+What is lost if `index.json` is lost entirely: custom titles (re-derived from the first line), timestamps, and any
+future metadata such as favorites. Note text and ids are not lost.
+
+## Migration from the version-1 layout
+
+Version 1 (Milestone 2) named files after their title (`notes/Shopping.md`) and stored `fileName` in the index.
+On load, each such entry's file is renamed to `<id>.md`, the title is taken from the old name, and the index is
+rewritten as version 2 without `fileName`. The step is idempotent, so a crash in the middle just resumes on the next
+start (including when the file was already renamed but the index not yet rewritten).
 
 ## Trash
 
-*Delete* moves the file to `trash/` (name made unique there) and sets `trashedAt`. *Restore* moves it back,
-adding a numeric suffix if the name has since been taken - it never overwrites. *Delete permanently* works only
+*Delete* moves the file to `trash/` and sets `trashedAt`. *Restore* moves it back; if another note has taken the
+title in the meantime the restored note gets a numeric suffix (`Plan 2`) - it never overwrites or renames another note. *Delete permanently* works only
 on notes that are already in Trash. Trashed notes can be read but not saved or renamed.
 
 ## Not implemented yet

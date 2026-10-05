@@ -7,7 +7,7 @@ import java.io.IOException
  * All operations are safe to call from any coroutine.
  */
 interface NoteRepository {
-    /** Creates a note with [text] (may be empty) and returns it. The file name is derived from the first line. */
+    /** Creates a note with [text] (may be empty) and returns it. The title is derived from the first line. */
     suspend fun createNote(text: String): NoteInfo
 
     /** Active (non-trashed) notes, sorted by title. */
@@ -43,6 +43,6 @@ class InvalidNoteNameException(name: String) : NoteStorageException("Invalid not
 
 class NoteNameConflictException(name: String) : NoteStorageException("A note named '$name' already exists")
 
-/** The file exists but is not valid UTF-8; it is left untouched so nothing gets corrupted by an overwrite. */
-class NoteUnreadableException(fileName: String, cause: Throwable? = null) :
-    NoteStorageException("Cannot read '$fileName' as UTF-8 text", cause)
+/** The note's file is not valid UTF-8; it is left untouched so nothing gets corrupted by an overwrite. */
+class NoteUnreadableException(title: String, cause: Throwable? = null) :
+    NoteStorageException("Cannot read '$title' as UTF-8 text", cause)

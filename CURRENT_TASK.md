@@ -21,7 +21,7 @@
   regression (all tests share one process; fix idea: AndroidX Test Orchestrator with `clearPackageData`; an
   attempt was started but not verified, so it was reverted).
 - Index.json is rewritten on every save (fine for small note counts).
-- Rename crash window creates a new note id (text is kept) - documented.
+- (fixed) Rename crash window: notes are now named by id, see docs/storage.md.
 - The dev laptop is memory-tight (~2-6 GB available) and froze once while Gradle + the emulator were running.
   Run the emulator and Gradle one at a time; `~/.openpad-env.sh` sets JAVA_HOME/ANDROID_HOME.
 - Everything in the UI is English only; strings are in resources.

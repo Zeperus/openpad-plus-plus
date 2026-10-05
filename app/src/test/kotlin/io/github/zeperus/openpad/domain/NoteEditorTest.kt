@@ -17,6 +17,7 @@ class NoteEditorTest {
 
     private val root get() = File(tmp.root, "store")
     private fun repo() = FileNoteRepository(root)
+    private fun noteFile(e: NoteEditor) = File(root, "notes/${e.info!!.id.value}.md")
     private fun mdFiles() = root.walkTopDown().filter { it.isFile && it.name.endsWith(".md") }.toList()
 
     @Test fun `blank draft never creates a file`() = runBlocking {
@@ -43,13 +44,13 @@ class NoteEditorTest {
         assertTrue(editor.hasUnsavedChanges)
         assertTrue(editor.save())
         assertFalse(editor.isDraft)
-        assertEquals("Plan.md", editor.info!!.fileName)
+        assertEquals("Plan", editor.info!!.title)
 
         editor.onTextChanged("# Plan\nstep 1")
         assertTrue(editor.save())
         assertFalse(editor.save()) // nothing changed: no write
         assertEquals(1, mdFiles().size)
-        assertEquals("# Plan\nstep 1", File(root, "notes/Plan.md").readText())
+        assertEquals("# Plan\nstep 1", noteFile(editor).readText())
     }
 
     @Test fun `text typed and erased before the first save creates nothing`() = runBlocking {
@@ -66,7 +67,7 @@ class NoteEditorTest {
         editor.save()
         editor.onTextChanged("")
         assertTrue(editor.save())
-        assertEquals("", File(root, "notes/Keep.md").readText())
+        assertEquals("", noteFile(editor).readText())
         assertEquals(1, repo().listNotes().size)
     }
 
@@ -77,7 +78,7 @@ class NoteEditorTest {
         editor.clear()
         assertEquals("", editor.text)
         assertNotNull(editor.info)
-        assertEquals("", File(root, "notes/Important.md").readText())
+        assertEquals("", noteFile(editor).readText())
         assertEquals(1, repo().listNotes().size)
     }
 
@@ -105,8 +106,8 @@ class NoteEditorTest {
         val editor = NoteEditor(repo())
         editor.onTextChanged("some words")
         assertTrue(editor.rename("Named"))
-        assertEquals("Named.md", editor.info!!.fileName)
-        assertEquals("some words", File(root, "notes/Named.md").readText())
+        assertEquals("Named", editor.info!!.title)
+        assertEquals("some words", noteFile(editor).readText())
     }
 
     @Test fun `rename of a blank draft does nothing`() = runBlocking {

@@ -24,53 +24,68 @@ import java.nio.charset.CharacterCodingException
 import java.util.UUID
 
 /**
- * Notes as real `.md` files below [root]:
+ * Notes as real `.md` files below [root]. **The file name is the note's id**, so a file can always be tied back
+ * to its note and nothing but the index ever changes when a note is renamed:
  *
  * ```
- * root/notes/Shopping.md     active notes
- * root/trash/Old idea.md     trashed notes
- * root/index.json            metadata only (ids, timestamps) - never note text
+ * root/notes/<id>.md     active notes (plain UTF-8 Markdown, exactly what the user typed)
+ * root/trash/<id>.md     trashed notes
+ * root/index.json        metadata only: id, title, timestamps - never note text
  * ```
  *
- * The directories are the source of truth for which notes exist; the index adds identity and timestamps.
- * If the index is missing or damaged, files are adopted as new notes, so no text is ever lost to metadata loss.
+ * Every operation changes at most one file *name* (Trash/Restore move `<id>.md` between the two directories) and
+ * then rewrites the index atomically. Whatever the moment of a crash, [load] can reconstruct a consistent state
+ * from the directories without ever assigning a new id to an existing file.
  */
-class FileNoteRepository(
+class FileNoteRepository internal constructor(
     private val root: File,
-    private val clock: () -> Long = System::currentTimeMillis,
-    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val newId: () -> String = { UUID.randomUUID().toString() },
+    private val clock: () -> Long,
+    private val dispatcher: CoroutineDispatcher,
+    private val newId: () -> String,
+    private val indexWriter: (File, String) -> Unit,
 ) : NoteRepository {
+    constructor(
+        root: File,
+        clock: () -> Long = System::currentTimeMillis,
+        dispatcher: CoroutineDispatcher = Dispatchers.IO,
+        newId: () -> String = { UUID.randomUUID().toString() },
+    ) : this(root, clock, dispatcher, newId, AtomicFiles::writeText)
+
     private val notesDir = File(root, "notes")
     private val trashDir = File(root, "trash")
     private val indexFile = File(root, "index.json")
-    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true; encodeDefaults = true }
+    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true; encodeDefaults = true; explicitNulls = false }
 
     private val mutex = Mutex()
     private var entries: MutableMap<String, Entry>? = null
 
     @Serializable
-    private data class IndexData(val version: Int = 1, val notes: List<Entry> = emptyList())
+    private data class IndexData(val version: Int = 0, val notes: List<Entry> = emptyList())
 
     @Serializable
     private data class Entry(
         val id: String,
-        val fileName: String,
+        val title: String = "",
         val createdAt: Long,
         val updatedAt: Long,
         val trashedAt: Long? = null,
         val autoTitle: Boolean = true,
+        /** Only present in version-1 indexes, where files were named after their title. Never written. */
+        val fileName: String? = null,
     ) {
-        fun toInfo() = NoteInfo(NoteId(id), fileName, createdAt, updatedAt, trashedAt, autoTitle)
+        fun toInfo() = NoteInfo(NoteId(id), title, createdAt, updatedAt, trashedAt, autoTitle)
     }
 
     override suspend fun createNote(text: String): NoteInfo = locked { notes ->
-        val used = namesIn(notes, trashed = false)
-        val fileName = NoteFileName.unique(NoteTitles.derive(text) ?: NoteFileName.DEFAULT_TITLE, used)
-        AtomicFiles.writeText(fileIn(notesDir, fileName), text)
+        val id = newId().also(::requireValidId)
+        val title = NoteFileName.uniqueTitle(
+            NoteTitles.derive(text) ?: NoteFileName.DEFAULT_TITLE,
+            activeTitles(notes),
+        )
+        AtomicFiles.writeText(noteFile(id), text) // the file first: a crash now leaves an adoptable `<id>.md`
         val now = clock()
-        val entry = Entry(newId(), fileName, createdAt = now, updatedAt = now)
-        notes[entry.id] = entry
+        val entry = Entry(id, title, createdAt = now, updatedAt = now)
+        notes[id] = entry
         persist(notes)
         entry.toInfo()
     }
@@ -87,123 +102,121 @@ class FileNoteRepository(
 
     override suspend fun openNote(id: NoteId): NoteContent = locked { notes ->
         val entry = notes[id.value] ?: throw NoteNotFoundException(id)
-        val file = fileIn(dirOf(entry), entry.fileName)
         val text = try {
-            AtomicFiles.readTextStrict(file)
+            AtomicFiles.readTextStrict(fileOf(entry))
         } catch (e: CharacterCodingException) {
-            throw NoteUnreadableException(entry.fileName, e)
+            throw NoteUnreadableException(entry.title, e)
         }
         NoteContent(entry.toInfo(), text)
     }
 
     override suspend fun saveNote(id: NoteId, text: String): NoteInfo = locked { notes ->
         var entry = activeEntry(notes, id)
-        AtomicFiles.writeText(fileIn(notesDir, entry.fileName), text)
+        AtomicFiles.writeText(noteFile(entry.id), text)
         entry = entry.copy(updatedAt = clock())
-        notes[id.value] = entry
-        // Follow the first line while the user has not chosen a name, then rename the (already saved) file.
+        // Follow the first line while the user has not chosen a name. Only the index changes.
         if (entry.autoTitle) {
             val wanted = NoteTitles.derive(text)?.let { NoteFileName.sanitizeOrNull(it) }
-            if (wanted != null && !isSameTitleFamily(entry.fileName, wanted)) {
-                val others = namesIn(notes, trashed = false) - entry.fileName
-                val newName = NoteFileName.unique(wanted, others)
-                AtomicFiles.move(fileIn(notesDir, entry.fileName), fileIn(notesDir, newName))
-                entry = entry.copy(fileName = newName)
-                notes[id.value] = entry
+            if (wanted != null && !isSameTitleFamily(entry.title, wanted)) {
+                val others = activeTitles(notes) - entry.title
+                entry = entry.copy(title = NoteFileName.uniqueTitle(wanted, others))
             }
         }
-        persist(notes)
+        notes[entry.id] = entry
+        persist(notes) // if this fails the text is already safe; only the timestamp/title update is lost
         entry.toInfo()
     }
 
     override suspend fun renameNote(id: NoteId, newTitle: String): NoteInfo = locked { notes ->
-        var entry = activeEntry(notes, id)
-        val base = NoteFileName.sanitizeOrNull(newTitle) ?: throw InvalidNoteNameException(newTitle)
-        val newName = base + NoteFileName.EXTENSION
+        val entry = activeEntry(notes, id)
+        val title = NoteFileName.sanitizeOrNull(newTitle) ?: throw InvalidNoteNameException(newTitle)
         val clash = notes.values.any {
-            it.id != entry.id && it.trashedAt == null && it.fileName.equals(newName, ignoreCase = true)
+            it.id != entry.id && it.trashedAt == null && it.title.equals(title, ignoreCase = true)
         }
-        if (clash) throw NoteNameConflictException(base)
-        if (newName != entry.fileName) {
-            AtomicFiles.move(fileIn(notesDir, entry.fileName), fileIn(notesDir, newName))
-        }
-        entry = entry.copy(fileName = newName, autoTitle = false)
-        notes[id.value] = entry
-        persist(notes)
-        entry.toInfo()
+        if (clash) throw NoteNameConflictException(title)
+        val renamed = entry.copy(title = title, autoTitle = false)
+        notes[entry.id] = renamed
+        persist(notes) // a single atomic write: the rename either happened completely or not at all
+        renamed.toInfo()
     }
 
     override suspend fun moveToTrash(id: NoteId): NoteInfo = locked { notes ->
-        var entry = activeEntry(notes, id)
-        val newName = NoteFileName.unique(entry.title(), namesIn(notes, trashed = true))
-        AtomicFiles.move(fileIn(notesDir, entry.fileName), fileIn(trashDir, newName))
-        entry = entry.copy(fileName = newName, trashedAt = clock())
-        notes[id.value] = entry
+        val entry = activeEntry(notes, id)
+        AtomicFiles.move(noteFile(entry.id), trashFile(entry.id))
+        val trashed = entry.copy(trashedAt = clock())
+        notes[entry.id] = trashed
         persist(notes)
-        entry.toInfo()
+        trashed.toInfo()
     }
 
     override suspend fun restoreFromTrash(id: NoteId): NoteInfo = locked { notes ->
-        var entry = notes[id.value]?.takeIf { it.trashedAt != null } ?: throw NoteNotInTrashException(id)
-        val newName = NoteFileName.unique(entry.title(), namesIn(notes, trashed = false))
-        AtomicFiles.move(fileIn(trashDir, entry.fileName), fileIn(notesDir, newName))
-        entry = entry.copy(fileName = newName, trashedAt = null)
-        notes[id.value] = entry
+        val entry = notes[id.value]?.takeIf { it.trashedAt != null } ?: throw NoteNotInTrashException(id)
+        AtomicFiles.move(trashFile(entry.id), noteFile(entry.id))
+        // The title may have been taken meanwhile; resolve in the index, never by touching another note.
+        val restored = entry.copy(
+            trashedAt = null,
+            title = NoteFileName.uniqueTitle(entry.title, activeTitles(notes)),
+        )
+        notes[entry.id] = restored
         persist(notes)
-        entry.toInfo()
+        restored.toInfo()
     }
 
     override suspend fun deletePermanently(id: NoteId): Unit = locked { notes ->
         val entry = notes[id.value]?.takeIf { it.trashedAt != null } ?: throw NoteNotInTrashException(id)
-        fileIn(trashDir, entry.fileName).delete()
-        notes.remove(id.value)
+        trashFile(entry.id).delete()
+        notes.remove(entry.id)
         persist(notes)
     }
 
     // ---- internals -------------------------------------------------------------------------------------------
 
-    private fun Entry.title() = NoteFileName.titleOf(fileName)
+    private fun requireValidId(id: String) {
+        if (!ID_PATTERN.matches(id)) throw NoteStorageException("Invalid note id")
+    }
 
-    private fun dirOf(entry: Entry) = if (entry.trashedAt != null) trashDir else notesDir
+    // Ids are validated as UUIDs before they ever reach a path, so they cannot contain separators or "..".
+    private fun noteFile(id: String) = File(notesDir, idToFileName(id).also { requireValidId(id) })
+    private fun trashFile(id: String) = File(trashDir, idToFileName(id).also { requireValidId(id) })
+    private fun fileOf(e: Entry) = if (e.trashedAt != null) trashFile(e.id) else noteFile(e.id)
+    private fun idToFileName(id: String) = id + NoteFileName.EXTENSION
 
     private fun activeEntry(notes: Map<String, Entry>, id: NoteId): Entry =
         notes[id.value]?.takeIf { it.trashedAt == null } ?: throw NoteNotFoundException(id)
 
-    private fun namesIn(notes: Map<String, Entry>, trashed: Boolean): Set<String> =
-        notes.values.filter { (it.trashedAt != null) == trashed }.mapTo(HashSet()) { it.fileName }
+    private fun activeTitles(notes: Map<String, Entry>): Set<String> =
+        notes.values.filter { it.trashedAt == null }.mapTo(HashSet()) { it.title }
 
-    /** True if [fileName] is [base] or [base] plus a collision suffix (`Shopping 2.md`). */
-    private fun isSameTitleFamily(fileName: String, base: String): Boolean {
-        val stem = NoteFileName.titleOf(fileName)
-        return stem == base || Regex(Regex.escape(base) + """ \d+""").matches(stem)
-    }
-
-    /** Resolves [name] inside [dir], refusing anything that could escape it. */
-    private fun fileIn(dir: File, name: String): File {
-        if (!NoteFileName.isSafeFileName(name)) throw InvalidNoteNameException(name)
-        val file = File(dir, name)
-        if (file.canonicalFile.parentFile != dir.canonicalFile) throw InvalidNoteNameException(name)
-        return file
-    }
+    /** True if [title] is [base] or [base] plus a collision suffix (`Shopping 2`). */
+    private fun isSameTitleFamily(title: String, base: String): Boolean =
+        title == base || Regex(Regex.escape(base) + """ \d+""").matches(title)
 
     private suspend fun <T> locked(block: (MutableMap<String, Entry>) -> T): T = withContext(dispatcher) {
         mutex.withLock {
             try {
                 block(entries ?: load().also { entries = it })
-            } catch (e: NoteStorageException) {
-                throw e
-            } catch (e: java.io.IOException) {
-                throw NoteStorageException(e.message ?: "I/O error", e)
+            } catch (e: Throwable) {
+                // The in-memory map may be ahead of the disk after a failed step: reload (and re-reconcile)
+                // from disk on the next operation instead of trusting it.
+                entries = null
+                when (e) {
+                    is NoteStorageException -> throw e
+                    is java.io.IOException -> throw NoteStorageException(e.message ?: "I/O error", e)
+                    else -> throw e
+                }
             }
         }
     }
 
     private fun persist(notes: Map<String, Entry>) {
-        val data = IndexData(notes = notes.values.sortedBy { it.createdAt })
-        AtomicFiles.writeText(indexFile, json.encodeToString(IndexData.serializer(), data))
+        val data = IndexData(version = INDEX_VERSION, notes = notes.values.sortedBy { it.createdAt })
+        indexWriter(indexFile, json.encodeToString(IndexData.serializer(), data))
     }
 
-    /** Loads the index and reconciles it with what is really on disk. */
+    /**
+     * Loads the index and reconciles it with what is really on disk. The directories decide which notes exist and
+     * whether they are trashed; the index supplies titles and timestamps.
+     */
     private fun load(): MutableMap<String, Entry> {
         notesDir.mkdirs()
         trashDir.mkdirs()
@@ -211,45 +224,80 @@ class FileNoteRepository(
             dir.listFiles { f -> f.isFile && f.name.endsWith(AtomicFiles.TEMP_SUFFIX) }?.forEach { it.delete() }
         }
 
-        val indexed = readIndex()
         val result = LinkedHashMap<String, Entry>()
-        val claimed = HashSet<String>() // "notes/<name>" or "trash/<name>" already matched to an entry
         var changed = false
 
-        for (entry in indexed) {
-            if (!NoteFileName.isSafeFileName(entry.fileName) || entry.id in result) { changed = true; continue }
-            val expectedTrashed = entry.trashedAt != null
-            val inExpected = File(if (expectedTrashed) trashDir else notesDir, entry.fileName).isFile
-            val inOther = File(if (expectedTrashed) notesDir else trashDir, entry.fileName).isFile
-            when {
-                inExpected -> result[entry.id] = entry
-                inOther -> { // crash between file move and index write: trust the file system
-                    changed = true
-                    result[entry.id] = if (expectedTrashed) entry.copy(trashedAt = null)
-                    else entry.copy(trashedAt = clock())
+        for (entry in readIndex()) {
+            if (!ID_PATTERN.matches(entry.id) || entry.id in result) { changed = true; continue }
+            var inNotes = noteFile(entry.id).isFile
+            var inTrash = trashFile(entry.id).isFile
+
+            // Version 1: the file may still carry its title as name. Rename it to `<id>.md` (idempotent: if a
+            // crash interrupted this, `<id>.md` exists already and the legacy name is simply gone).
+            val legacy = entry.fileName
+            if (!inNotes && !inTrash && legacy != null && NoteFileName.isSafeFileName(legacy)) {
+                val firstDir = if (entry.trashedAt != null) trashDir else notesDir
+                val secondDir = if (firstDir == trashDir) notesDir else trashDir
+                for (dir in listOf(firstDir, secondDir)) {
+                    val old = File(dir, legacy)
+                    if (old.isFile) {
+                        AtomicFiles.move(old, File(dir, idToFileName(entry.id)))
+                        break
+                    }
                 }
-                else -> changed = true // file is gone: drop metadata
+                inNotes = noteFile(entry.id).isFile
+                inTrash = trashFile(entry.id).isFile
+                changed = true
             }
-            result[entry.id]?.let { claimed += dirKey(it) }
+
+            val title = entry.title.ifBlank {
+                changed = true
+                legacy?.let { NoteFileName.titleOf(it) }?.let { NoteFileName.sanitizeOrNull(it) }
+                    ?: NoteFileName.DEFAULT_TITLE
+            }
+            val base = entry.copy(title = title, fileName = null)
+            when {
+                // The index may be one step behind a crashed move, so the file's location wins.
+                inNotes -> result[entry.id] = base.copy(trashedAt = null)
+                inTrash -> result[entry.id] = base.copy(trashedAt = entry.trashedAt ?: clock())
+                else -> changed = true // the file is gone: drop its metadata
+            }
+            if (result[entry.id] != entry) changed = true
         }
 
+        // Files the index does not know about: crash right after creating a note, a lost/corrupt index, or an
+        // `.md` file placed there by hand.
         for (trashed in listOf(false, true)) {
             val dir = if (trashed) trashDir else notesDir
-            dir.listFiles { f -> f.isFile && f.name.endsWith(NoteFileName.EXTENSION, ignoreCase = true) }
-                ?.sortedBy { it.name }?.forEach { file ->
-                    if ((if (trashed) "trash/" else "notes/") + file.name in claimed) return@forEach
-                    if (!NoteFileName.isSafeFileName(file.name)) return@forEach
-                    changed = true
-                    val modified = file.lastModified().takeIf { it > 0 } ?: clock()
-                    val e = Entry(newId(), file.name, modified, modified, if (trashed) modified else null)
-                    result[e.id] = e
+            val files = dir.listFiles { f -> f.isFile && f.name.endsWith(NoteFileName.EXTENSION, ignoreCase = true) }
+            for (file in files.orEmpty().sortedBy { it.name }) {
+                val stem = NoteFileName.titleOf(file.name)
+                val known = result[stem]
+                if (known != null && (known.trashedAt != null) == trashed) continue // already claimed
+
+                val modified = file.lastModified().takeIf { it > 0 } ?: clock()
+                val id: String
+                val title: String
+                if (ID_PATTERN.matches(stem) && stem !in result) {
+                    id = stem // keeps the identity of a note whose index entry was lost
+                    title = readTextOrNull(file)?.let { NoteTitles.derive(it) }
+                        ?.let { NoteFileName.sanitizeOrNull(it) } ?: NoteFileName.DEFAULT_TITLE
+                } else {
+                    id = newId().also(::requireValidId)
+                    AtomicFiles.move(file, File(dir, idToFileName(id)))
+                    title = NoteFileName.sanitizeOrNull(stem) ?: NoteFileName.DEFAULT_TITLE
                 }
+                val unique = NoteFileName.uniqueTitle(title, activeTitles(result))
+                result[id] = Entry(id, unique, modified, modified, if (trashed) modified else null)
+                changed = true
+            }
         }
         if (changed) persist(result)
         return result
     }
 
-    private fun dirKey(e: Entry) = (if (e.trashedAt != null) "trash/" else "notes/") + e.fileName
+    private fun readTextOrNull(file: File): String? =
+        try { AtomicFiles.readTextStrict(file) } catch (_: Exception) { null }
 
     private fun readIndex(): List<Entry> {
         if (!indexFile.isFile) return emptyList()
@@ -260,5 +308,10 @@ class FileNoteRepository(
             runCatching { indexFile.copyTo(File(root, "index.json.corrupt"), overwrite = true) }
             emptyList()
         }
+    }
+
+    private companion object {
+        const val INDEX_VERSION = 2
+        val ID_PATTERN = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
     }
 }

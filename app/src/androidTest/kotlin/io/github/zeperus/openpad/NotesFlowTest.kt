@@ -54,6 +54,15 @@ class NotesFlowTest {
         rule.waitForIdle()
     }
 
+    // Files on disk are named after the note's id, so look the id up by title.
+    private fun noteFile(title: String) = runBlocking {
+        File(notesDir, app.repository.listNotes().first { it.title == title }.id.value + ".md")
+    }
+
+    private fun trashFile(title: String) = runBlocking {
+        File(app.filesDir, "openpad/trash/" + app.repository.listTrash().first { it.title == title }.id.value + ".md")
+    }
+
     private fun mdFiles() = notesDir.listFiles { f -> f.name.endsWith(".md") }.orEmpty().toList()
 
     @Test fun typingCreatesARealMarkdownFileAndListsItUnderFiles() {
@@ -61,7 +70,7 @@ class NotesFlowTest {
         rule.onNode(hasSetTextAction()).performTextInput("# Shopping\nmilk")
         rule.waitUntil(timeoutMillis = 5_000) { mdFiles().isNotEmpty() }
 
-        assertEquals("# Shopping\nmilk", File(notesDir, "Shopping.md").readText())
+        assertEquals("# Shopping\nmilk", noteFile("Shopping").readText())
         openDrawer()
         rule.onNodeWithText("FILES").assertIsDisplayed()
         rule.onNode(drawerEntry("Shopping")).assertIsDisplayed()
@@ -97,12 +106,12 @@ class NotesFlowTest {
         rule.onNodeWithText("Delete note…").performClick()
         rule.onNodeWithText("Move to Trash").performClick()
         rule.waitUntil(timeoutMillis = 5_000) { mdFiles().isEmpty() }
-        assertTrue(File(app.filesDir, "openpad/trash/Doomed.md").exists())
+        assertTrue(trashFile("Doomed").exists())
 
         openDrawer()
         rule.onNodeWithContentDescription("Restore: Doomed").performClick()
         rule.waitUntil(timeoutMillis = 5_000) { mdFiles().isNotEmpty() }
-        assertEquals("Doomed", File(notesDir, "Doomed.md").readText())
+        assertEquals("Doomed", noteFile("Doomed").readText())
     }
 
     @Test fun clearKeepsTheNoteButEmptiesIt() {
@@ -113,7 +122,7 @@ class NotesFlowTest {
         rule.onNodeWithContentDescription("More options").performClick()
         rule.onNodeWithText("Clear note…").performClick()
         rule.onNodeWithText("Clear", substring = false).performClick()
-        rule.waitUntil(timeoutMillis = 5_000) { File(notesDir, "Keep me.md").readText().isEmpty() }
-        assertTrue(File(notesDir, "Keep me.md").exists())
+        rule.waitUntil(timeoutMillis = 5_000) { noteFile("Keep me").readText().isEmpty() }
+        assertTrue(noteFile("Keep me").exists())
     }
 }

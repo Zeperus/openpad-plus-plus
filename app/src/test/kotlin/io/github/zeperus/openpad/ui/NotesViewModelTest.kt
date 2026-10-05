@@ -24,6 +24,12 @@ class NotesViewModelTest {
     @get:Rule val tmp = TemporaryFolder()
 
     private val root get() = File(tmp.root, "store")
+    private fun NotesViewModel.noteFile(title: String) =
+        File(root, "notes/${notes.first { it.title == title }.id.value}.md")
+
+    private fun NotesViewModel.trashFile(title: String) =
+        File(root, "trash/${trash.first { it.title == title }.id.value}.md")
+
     private fun mdFiles() = root.walkTopDown().filter { it.isFile && it.name.endsWith(".md") }.toList()
 
     /** A view model over real files in [root]; "restarting the app" is just calling this again. */
@@ -47,7 +53,7 @@ class NotesViewModelTest {
         vm.onTextChange("# Shopping\n- milk")
         advanceTimeBy(1_000); runCurrent()
         assertEquals("Shopping", vm.current?.title)
-        assertEquals("# Shopping\n- milk", File(root, "notes/Shopping.md").readText())
+        assertEquals("# Shopping\n- milk", vm.noteFile("Shopping").readText())
         assertEquals(listOf("Shopping"), vm.notes.map { it.title })
     }
 
@@ -62,7 +68,7 @@ class NotesViewModelTest {
         val vm = newViewModel()
         vm.onTextChange("quick")
         vm.flush(); runCurrent()
-        assertEquals("quick", File(root, "notes/quick.md").readText())
+        assertEquals("quick", vm.noteFile("quick").readText())
     }
 
     @Test fun `note is still there after restarting the app`() = runTest {
@@ -90,7 +96,7 @@ class NotesViewModelTest {
         vm.newNote()
         assertEquals("", vm.text)
         assertNull(vm.current)
-        assertEquals("First", File(root, "notes/First.md").readText())
+        assertEquals("First", vm.noteFile("First").readText())
         assertEquals(1, mdFiles().size)
     }
 
@@ -103,7 +109,7 @@ class NotesViewModelTest {
         vm.onTextChange("One\nedited") // not yet autosaved
         vm.openNote(vm.notes.first { it.title == "Two" }.id)
         assertEquals("Two", vm.text)
-        assertEquals("One\nedited", File(root, "notes/One.md").readText())
+        assertEquals("One\nedited", vm.noteFile("One").readText())
     }
 
     @Test fun `rename updates title and file`() = runTest {
@@ -111,7 +117,7 @@ class NotesViewModelTest {
         vm.onTextChange("Draft text"); vm.flush(); runCurrent()
         assertEquals(RenameResult.Ok, vm.rename("Better name"))
         assertEquals("Better name", vm.current?.title)
-        assertTrue(File(root, "notes/Better name.md").exists())
+        assertTrue(vm.noteFile("Better name").exists())
         assertEquals(listOf("Better name"), vm.notes.map { it.title })
     }
 
@@ -136,7 +142,7 @@ class NotesViewModelTest {
         vm.clear()
         assertEquals("", vm.text)
         assertNotNull(vm.current)
-        assertEquals("", File(root, "notes/Keep.md").readText())
+        assertEquals("", vm.noteFile("Keep").readText())
         assertEquals(listOf("Keep"), vm.notes.map { it.title })
         assertTrue(vm.trash.isEmpty())
     }
@@ -149,14 +155,14 @@ class NotesViewModelTest {
         assertNull(vm.current)
         assertTrue(vm.notes.isEmpty())
         assertEquals(listOf("Doomed"), vm.trash.map { it.title })
-        assertEquals("Doomed\nbody", File(root, "trash/Doomed.md").readText())
+        assertEquals("Doomed\nbody", vm.trashFile("Doomed").readText())
     }
 
     @Test fun `deleting a page with unsaved text still puts that text in Trash`() = runTest {
         val vm = newViewModel()
         vm.onTextChange("typed just now")
         vm.deleteCurrent()
-        assertEquals("typed just now", File(root, "trash/typed just now.md").readText())
+        assertEquals("typed just now", vm.trashFile("typed just now").readText())
     }
 
     @Test fun `restore returns a trashed note to Files`() = runTest {
@@ -166,7 +172,7 @@ class NotesViewModelTest {
         vm.restore(vm.trash.single().id)
         assertTrue(vm.trash.isEmpty())
         assertEquals(listOf("Comeback"), vm.notes.map { it.title })
-        assertTrue(File(root, "notes/Comeback.md").exists())
+        assertTrue(vm.noteFile("Comeback").exists())
     }
 
     @Test fun `permanent delete removes a trashed note for good`() = runTest {
