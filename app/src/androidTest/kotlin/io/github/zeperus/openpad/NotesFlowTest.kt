@@ -125,4 +125,75 @@ class NotesFlowTest {
         rule.waitUntil(timeoutMillis = 5_000) { noteFile("Keep me").readText().isEmpty() }
         assertTrue(noteFile("Keep me").exists())
     }
+
+    // ---- Favorites and Recent --------------------------------------------------------------------------------
+
+    private fun top(text: String) = rule.onNodeWithText(text).fetchSemanticsNode().boundsInRoot.top
+
+    private fun drawerEntryCount(title: String) =
+        rule.onAllNodes(drawerEntry(title)).fetchSemanticsNodes().size
+
+    private fun closeDrawer() {
+        androidx.test.uiautomator.UiDevice.getInstance(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation())
+            .pressBack()
+        rule.waitForIdle()
+    }
+
+    @Test fun drawerSectionsAppearInOrderAndEmptyOnesAreHidden() {
+        runBlocking {
+            val repo = app.repository
+            val fav = repo.createNote("Pinned")
+            repo.createNote("Alpha")
+            repo.createNote("Beta")
+            repo.setFavorite(fav.id, true)
+        }
+        launch()
+        openDrawer()
+        rule.onNodeWithText("FAVORITES").assertIsDisplayed()
+        assertTrue(top("FAVORITES") < top("RECENT"))
+        assertTrue(top("RECENT") < top("FILES"))
+        assertTrue(top("FILES") < top("TRASH"))
+        // FILES is the complete list: the favorite is there too, but not twice in Recent
+        assertEquals(2, drawerEntryCount("Pinned")) // Favorites + Files
+        assertEquals(2, drawerEntryCount("Alpha")) // Recent + Files
+    }
+
+    @Test fun favoritesAndRecentAreHiddenWhenThereIsNothingToShow() {
+        // Only a trashed favorite exists: neither Favorites nor Recent has anything to list.
+        runBlocking {
+            val note = app.repository.createNote("Binned")
+            app.repository.setFavorite(note.id, true)
+            app.repository.moveToTrash(note.id)
+        }
+        launch()
+        openDrawer()
+        rule.onNodeWithText("FAVORITES").assertDoesNotExist()
+        rule.onNodeWithText("RECENT").assertDoesNotExist()
+        rule.onNodeWithText("FILES").assertIsDisplayed()
+        rule.onNodeWithText("TRASH").assertIsDisplayed()
+    }
+
+    @Test fun favoriteToggleInTheMenuShowsAndHidesTheFavoritesSection() {
+        launch()
+        rule.onNode(hasSetTextAction()).performTextInput("Pinned")
+        rule.waitUntil(timeoutMillis = 5_000) { mdFiles().isNotEmpty() }
+        val before = noteFile("Pinned").readBytes()
+
+        rule.onNodeWithContentDescription("More options").performClick()
+        rule.onNodeWithText("Add to Favorites").performClick()
+        rule.waitUntil(timeoutMillis = 5_000) { runBlocking { app.repository.listNotes().single().favorite } }
+        openDrawer()
+        rule.onNodeWithText("FAVORITES").assertIsDisplayed()
+        assertEquals(2, drawerEntryCount("Pinned")) // Favorites + Files; not in Recent
+        assertTrue(before.contentEquals(noteFile("Pinned").readBytes())) // Markdown untouched
+        closeDrawer()
+
+        rule.onNodeWithContentDescription("More options").performClick()
+        rule.onNodeWithText("Remove from Favorites").performClick()
+        rule.waitUntil(timeoutMillis = 5_000) { runBlocking { !app.repository.listNotes().single().favorite } }
+        openDrawer()
+        rule.onNodeWithText("FAVORITES").assertDoesNotExist()
+        rule.onNodeWithText("RECENT").assertIsDisplayed() // unfavorited note is a recent note again
+        assertEquals(2, drawerEntryCount("Pinned")) // Recent + Files
+    }
 }

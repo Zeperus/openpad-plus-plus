@@ -13,7 +13,7 @@ io.github.zeperus.openpad
 ## Current structure (Milestone 2)
 
 - `domain/` - `NoteId`/`NoteInfo`/`NoteContent`, `NoteRepository` (interface + exceptions), `NoteFileName`,
-  `NoteTitles`, `NoteEditor` (draft rules, save/clear/rename/trash for one open note), `Autosaver` (debounce).
+  `NoteTitles`, `NoteLists` (pure Favorites/Recent calculation), `NoteEditor` (draft rules, save/clear/rename/trash for one open note), `Autosaver` (debounce).
 - `data/` - `FileNoteRepository` (`<id>.md` files + `index.json`), `AtomicFiles` (atomic write/move, strict UTF-8 read).
 - `ui/` - `NotesViewModel` (open note, Files/Trash lists, user actions), `NotesScreen` (drawer, editor, dialogs).
 - `OpenPadApplication` - hand-wired dependencies and the application-lifetime `appScope`.

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -53,6 +54,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.zeperus.openpad.R
+import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteInfo
 import kotlinx.coroutines.launch
 
@@ -122,6 +124,18 @@ fun NotesScreen(vm: NotesViewModel) {
                             Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more_options))
                         }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        stringResource(
+                                            if (vm.current?.favorite == true) R.string.action_unfavorite
+                                            else R.string.action_favorite,
+                                        ),
+                                    )
+                                },
+                                enabled = vm.hasNote,
+                                onClick = { menuOpen = false; vm.toggleFavorite() },
+                            )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_rename)) },
                                 enabled = vm.hasNote,
@@ -211,24 +225,26 @@ private fun DrawerContent(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             ) { Text(stringResource(R.string.new_note)) }
         }
-        item { SectionHeader(stringResource(R.string.section_files)) }
+        // Favorites and Recent appear only when they have entries; a note may be in FILES and in one of them.
+        if (vm.favorites.isNotEmpty()) {
+            item(key = "header-favorites") { SectionHeader(stringResource(R.string.section_favorites)) }
+            noteRows("favorite", vm.favorites, vm.current?.id, onOpen)
+        }
+        if (vm.recent.isNotEmpty()) {
+            item(key = "header-recent") { SectionHeader(stringResource(R.string.section_recent)) }
+            noteRows("recent", vm.recent, vm.current?.id, onOpen)
+        }
+        item(key = "header-files") { SectionHeader(stringResource(R.string.section_files)) }
         if (vm.notes.isEmpty()) {
-            item { EmptyHint(stringResource(R.string.files_empty)) }
+            item(key = "files-empty") { EmptyHint(stringResource(R.string.files_empty)) }
         }
-        items(vm.notes, key = { it.id.value }) { note ->
-            NavigationDrawerItem(
-                label = { Text(note.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                selected = note.id == vm.current?.id,
-                onClick = { onOpen(note) },
-                modifier = Modifier.padding(horizontal = 12.dp),
-            )
-        }
-        item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
-        item { SectionHeader(stringResource(R.string.section_trash)) }
+        noteRows("file", vm.notes, vm.current?.id, onOpen)
+        item(key = "divider") { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+        item(key = "header-trash") { SectionHeader(stringResource(R.string.section_trash)) }
         if (vm.trash.isEmpty()) {
-            item { EmptyHint(stringResource(R.string.trash_empty)) }
+            item(key = "trash-empty") { EmptyHint(stringResource(R.string.trash_empty)) }
         }
-        items(vm.trash, key = { it.id.value }) { note ->
+        items(vm.trash, key = { "trash-" + it.id.value }) { note ->
             val restoreLabel = stringResource(R.string.action_restore)
             val purgeLabel = stringResource(R.string.action_delete_permanently)
             Column(Modifier.padding(horizontal = 28.dp, vertical = 4.dp)) {
@@ -245,6 +261,23 @@ private fun DrawerContent(
                 }
             }
         }
+    }
+}
+
+/** One drawer row per note. [section] namespaces the lazy-list keys: the same note can appear in two sections. */
+private fun LazyListScope.noteRows(
+    section: String,
+    notes: List<NoteInfo>,
+    selected: NoteId?,
+    onOpen: (NoteInfo) -> Unit,
+) {
+    items(notes, key = { "$section-${it.id.value}" }) { note ->
+        NavigationDrawerItem(
+            label = { Text(note.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            selected = note.id == selected,
+            onClick = { onOpen(note) },
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
     }
 }
 

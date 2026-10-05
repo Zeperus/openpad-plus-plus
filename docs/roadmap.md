@@ -5,7 +5,7 @@
 | 0 | Environment | done |
 | 1 | Repository/bootstrap (Compose app, CI, docs) | done |
 | 2 | Storage vertical slice (internal `.md` notes, autosave, trash, rename) | done |
-| 3 | Application shell (Favorites, Recent, Files, Trash sections) | planned |
+| 3 | Application shell (Favorites, Recent, Files, Trash sections) | done |
 | 4 | Session / open documents / startup modes | planned |
 | 5 | Rich Markdown editor (structured document model) | planned |
 | 6 | Checklist mode (completed items sink to the bottom) | planned |

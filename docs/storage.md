@@ -10,7 +10,7 @@ Below the app-private directory `filesDir/openpad/`:
 ```
 notes/<id>.md            active notes - plain UTF-8 Markdown, exactly what the user typed
 trash/<id>.md            trashed notes (same file name; only the directory differs)
-index.json               metadata only: id, title, createdAt, updatedAt, trashedAt, autoTitle
+index.json               metadata only: id, title, createdAt, updatedAt, trashedAt, autoTitle, favorite, lastOpenedAt
 ```
 
 `<id>` is a random UUID. The code lives behind `domain/NoteRepository`; `data/FileNoteRepository` is the
@@ -30,6 +30,27 @@ implementation, so the editor and UI never see paths.
   explicit rename to a taken title fails with `NoteNameConflictException`.
 - **Auto-title:** until the user renames a note, its title follows the first non-blank line (block markers such
   as `#`, `-`, `[ ]` removed). Emptying a note keeps its title. A manual rename switches this off for good.
+
+## Favorites and Recent
+
+Both are **metadata in `index.json`**, keyed by the note id; the `.md` file is never touched (a test compares
+the bytes and the modification time before and after). They therefore survive renames, auto-retitling, Trash and Restore.
+
+- `favorite` (boolean, default false). The Favorites section lists active favorites alphabetically and is shown
+  only when there is at least one.
+- `lastOpenedAt` (millis, nullable). Set when a note is **created** and whenever it **becomes the open note**
+  (`markOpened`). Editing does not change it, so typing never reorders Recent.
+- `NoteLists.recent()` (a pure function) = active, non-favorite notes with a `lastOpenedAt`, newest first,
+  ties broken by `updatedAt`, then title (case-insensitive), then id, limited to 3. Favorites are excluded, so a
+  note is never in both Favorites and Recent; unfavoriting a note that was used recently puts it back in Recent.
+  Notes without a timestamp (files adopted from disk) were never used and are not recent. Trashed notes are in
+  neither list but keep their flags, so Restore brings them back as they were.
+- FILES is always the complete list of active notes, so a favorite or recent note also appears there.
+
+Index versions: v1 (title-named files), v2 (id-named files), v3 (adds `favorite`, `lastOpenedAt`). Entries from an
+older index load with `favorite = false` and `lastOpenedAt = updatedAt` (the last edit is the best available
+"last use"); the index is then rewritten as v3 once. Unknown fields are ignored, so an index written by a newer
+version still loads.
 
 ## Drafts (no `Untitled` clutter)
 
@@ -89,8 +110,8 @@ for which notes exist and whether they are trashed; the index supplies titles an
 | index entry with an invalid id | ignored |
 | leftover `*.tmp` files (interrupted atomic write) | deleted; the previous content is intact |
 
-What is lost if `index.json` is lost entirely: custom titles (re-derived from the first line), timestamps, and any
-future metadata such as favorites. Note text and ids are not lost.
+What is lost if `index.json` is lost entirely: custom titles (re-derived from the first line), timestamps,
+favorites and recency. Note text and ids are not lost.
 
 ## Migration from the version-1 layout
 
@@ -107,5 +128,5 @@ on notes that are already in Trash. Trashed notes can be read but not saved or r
 
 ## Not implemented yet
 
-External `.md` files via the Storage Access Framework, favorites, recents and the open-document session
-(Milestones 3, 4, 7). Those will add metadata (URIs, favorite flags, session) next to, not inside, the notes.
+External `.md` files via the Storage Access Framework and the open-document session (Milestones 4, 7). Those will
+add metadata (URIs, session) next to, not inside, the notes.
