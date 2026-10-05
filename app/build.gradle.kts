@@ -14,7 +14,9 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "io.github.zeperus.openpad.OpenPadTestRunner"
+        // Each instrumented test gets a fresh process and cleared app data, so "cold start" tests are real.
+        testInstrumentationRunnerArguments["clearPackageData"] = "true"
     }
 
     buildTypes {
@@ -32,6 +34,11 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    testOptions {
+        execution = "ANDROIDX_TEST_ORCHESTRATOR"
+        animationsDisabled = true
     }
 
     lint {
@@ -62,5 +69,7 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.uiautomator)
+    androidTestUtil(libs.androidx.test.orchestrator)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
