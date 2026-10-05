@@ -38,7 +38,8 @@ app.) Cloud backup of app data is disabled. External files will be accessed thro
 
 ```sh
 ./gradlew testDebugUnitTest lintDebug     # JVM unit tests + lint (run in CI)
-./gradlew connectedDebugAndroidTest       # UI tests; needs a running emulator/device (separate CI workflow)
+./gradlew connectedDebugAndroidTest       # UI tests via Android Test Orchestrator; needs an emulator/device
+                                          # (also runs in the separate `Instrumented tests` CI workflow)
 ```
 
 ## Documentation
