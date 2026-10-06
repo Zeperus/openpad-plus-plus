@@ -52,10 +52,10 @@ class ColdStartTest {
             entry.click()
 
             // the formatted editor shows one text field per row, without any Markdown syntax
-            val rows = { device.findObjects(By.clazz("android.widget.EditText")).map { (it.text ?: "").removePrefix("\u200B") } }
+            val fields = { device.findObjects(By.clazz("android.widget.EditText")).map { it.text ?: "" } }
             val deadline = System.currentTimeMillis() + TIMEOUT
-            while (rows() != listOf("Cold start", "body text", "item") && System.currentTimeMillis() < deadline) Thread.sleep(200)
-            assertEquals(listOf("Cold start", "body text", "item"), rows())
+            while (fields() != listOf("Cold start\nbody text\nitem") && System.currentTimeMillis() < deadline) Thread.sleep(200)
+            assertEquals(listOf("Cold start\nbody text\nitem"), fields()) // one text field holds all the lines
         }
     }
 

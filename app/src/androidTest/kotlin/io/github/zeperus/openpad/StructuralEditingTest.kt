@@ -11,7 +11,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performKeyInput
-import androidx.compose.ui.test.performTextInputSelection
+import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.text.TextRange
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -115,7 +115,7 @@ class StructuralEditingTest {
         rule.typeInLastRow("hello")
         rule.formatButton(button).performClick()
         waitFor("a list row", { "markers=${markers()} boxes=${checkboxes()}" }) { rowIsList() }
-        rule.row(0).performTextInputSelection(TextRange(1)) // caret at the very start of the text
+        rule.placeCaret(0, 0) // the caret at the very start of the text
         val before = disposed
         backspace(0)
         waitFor("a paragraph", { "markers=${markers()} boxes=${checkboxes()}" }) { !rowIsList() }
@@ -136,7 +136,7 @@ class StructuralEditingTest {
         seed("- a\n- b\n\npara\n")
         launch()
         waitForRows(listOf("a", "b", "para"))
-        rule.row(2).performTextInputSelection(TextRange(1))
+        rule.placeCaret(2, 0)
         rule.waitForIdle()
         val before = disposed
         // a=list item, b=list item, then the paragraph; the simulated key repeat: every press must leave the same field focused
@@ -153,7 +153,7 @@ class StructuralEditingTest {
             waitFor("rows $rows after press ${n + 1}", { rule.rowTexts().toString() }) { rule.rowTexts() == rows }
             rule.editorRows().onLast().assertIsFocused()
         }
-        assertEquals("only the two rows that were joined away may be disposed", before + 2, disposed)
+        assertEquals("one text field holds all the rows: no field is ever replaced, whatever the rows do", before, disposed)
         assertEquals(0, markers())
     }
 
@@ -235,8 +235,8 @@ class StructuralEditingTest {
         launch()
         waitForRows(listOf("A", "B", "C"))
         overflow("Smart checklist: off (turn on)")
-        rule.row(0).performTextInputSelection(TextRange(2)) // caret in "A"; the field is the one that must keep it
-        rule.row(0).performClick()
+        rule.placeCaret(0, 1) // caret in "A"; the field is the one that must keep it
+        rule.field().requestFocus()
         rule.onAllNodes(hasTestTag("checkbox"))[1].performClick() // B moves down
         waitForRows(listOf("A", "C", "B"))
         rule.row(0).assertIsFocused() // still in A

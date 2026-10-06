@@ -95,7 +95,6 @@ import androidx.compose.ui.unit.dp
 import io.github.zeperus.openpad.R
 import io.github.zeperus.openpad.ui.editor.FormattingBar
 import io.github.zeperus.openpad.ui.editor.RichEditor
-import io.github.zeperus.openpad.ui.editor.SelectionBar
 import io.github.zeperus.openpad.domain.FolderInfo
 import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteInfo
@@ -223,16 +222,11 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false; editPage = false }) {
                             if (editPage) {
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.selection_all)) },
-                                onClick = { menuOpen = false; editPage = false; vm.selectAll() },
-                            )
-                            DropdownMenuItem(
                                 text = { Text(stringResource(R.string.selection_copy_markdown)) },
                                 onClick = {
                                     menuOpen = false
                                     // the selection, or - without one - the whole note
-                                    if (vm.docSelection == null && vm.ui.cursor?.isCollapsed != false) vm.selectAll()
-                                    vm.selectedText(markdown = true)?.let { clipboard.copy("Markdown", it) }
+                                    vm.markdownToCopy()?.let { clipboard.copy("Markdown", it) }
                                 },
                             )
                             DropdownMenuItem(
@@ -363,7 +357,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                         }
                     }
                     RichEditor(vm, Modifier.fillMaxWidth().weight(1f))
-                    if (vm.docSelection != null) SelectionBar(vm) else if (!vm.readOnly) FormattingBar(vm)
+                    if (!vm.readOnly) FormattingBar(vm)
                 }
                 }
             }

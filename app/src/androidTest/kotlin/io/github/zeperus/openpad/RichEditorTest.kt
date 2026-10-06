@@ -88,7 +88,7 @@ class RichEditorTest {
     private fun mdFiles() = notesDir.listFiles { f -> f.name.endsWith(".md") }.orEmpty().toList()
 
     private fun select(row: Int, from: Int, to: Int) {
-        rule.row(row).performTextInputSelection(TextRange(from + 1, to + 1)) // +1: the invisible marker in front of the text
+        rule.field().performTextInputSelection(TextRange(from, to))
     }
 
     private fun buttonEnabled(description: String) =
@@ -220,8 +220,8 @@ class RichEditorTest {
         rule.typeInLastRow("item")
         rule.formatButton("Bulleted list").performClick()
         waitForOnlyFile("- item\n")
-        rule.row(0).performTextInputSelection(TextRange(1))
-        rule.row(0).performKeyInput { keyDown(Key.Backspace); keyUp(Key.Backspace) }
+        rule.placeCaret(0, 0)
+        rule.field().performKeyInput { keyDown(Key.Backspace); keyUp(Key.Backspace) }
         waitForOnlyFile("item\n")
     }
 

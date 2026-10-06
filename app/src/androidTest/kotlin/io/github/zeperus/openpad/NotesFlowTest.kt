@@ -89,7 +89,7 @@ class NotesFlowTest {
 
         openDrawer()
         rule.onAllNodes(drawerEntry("Earlier note")).onFirst().assertIsDisplayed().performClick()
-        rule.waitUntil(timeoutMillis = 5_000) { rule.rowTexts() == listOf("Earlier note\nbody text") }
+        rule.waitUntil(timeoutMillis = 5_000) { rule.rowTexts() == listOf("Earlier note", "body text") }
     }
 
     @Test fun blankNewNotesLeaveNothingBehind() {

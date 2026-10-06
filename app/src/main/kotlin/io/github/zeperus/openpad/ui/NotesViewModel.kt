@@ -45,6 +45,9 @@ import io.github.zeperus.openpad.editor.Cursor
 import io.github.zeperus.openpad.editor.DocumentSelection
 import io.github.zeperus.openpad.editor.DocumentSelections
 import io.github.zeperus.openpad.editor.EditorDocument
+import io.github.zeperus.openpad.editor.Segment
+import io.github.zeperus.openpad.editor.SegmentEditing
+import io.github.zeperus.openpad.editor.SegmentOp
 import io.github.zeperus.openpad.editor.EditorSession
 import io.github.zeperus.openpad.editor.RowKind
 import io.github.zeperus.openpad.editor.SpanKind
@@ -127,6 +130,13 @@ class NotesViewModel(
     var searchResults by mutableStateOf<List<SearchHit>>(emptyList())
         private set
     private var searchJob: Job? = null
+
+    /**
+     * Counts the times the *model* moved the caret (an operation, Undo, a focus request, a new document). A text field that sees a
+     * new number puts its caret where the model says; carets the user moves are only reported to the model, never the other way.
+     */
+    var cursorEpoch by mutableIntStateOf(0)
+        private set
 
     /** Changes whenever a different document (or a cleared one) is loaded into the editor; row ids restart then. */
     var epoch by mutableIntStateOf(0)
@@ -255,6 +265,35 @@ class NotesViewModel(
         markStateDirty()
     }
 
+    /**
+     * A change in a text field that holds [Segment]s of rows was interpreted as [op]: it is applied to the document. The field is
+     * the one the user is typing in, so no focus request is made (it has the focus already).
+     */
+    fun applyFieldOp(op: SegmentOp): Boolean {
+        var changed = false
+        edit(focus = false) { changed = SegmentEditing.apply(it, op); changed }
+        return changed
+    }
+
+    /** The selection of a segment's text field moved: [start]..[end] in the field's text. A range may reach across rows. */
+    fun onFieldSelection(segment: Segment, start: Int, end: Int) {
+        if (!ready) return
+        val a = segment.position(minOf(start, end))
+        val b = segment.position(maxOf(start, end))
+        if (a == b) {
+            docSelection = null
+            onSelection(a.rowId, a.offset, a.offset)
+            return
+        }
+        val selection = DocumentSelection(a, b)
+        val cursor = Cursor(a.rowId, a.offset, if (a.rowId == b.rowId) b.offset else a.offset)
+        if (docSelection == selection && rich.cursor == cursor) return
+        docSelection = selection
+        rich.moveCursor(cursor)
+        publish()
+        markStateDirty()
+    }
+
     // ---- Find in note and global search ----------------------------------------------------------------------
 
     fun startFind(query: String = find?.query.orEmpty()) {
@@ -324,16 +363,8 @@ class NotesViewModel(
 
     // ---- Selections that span rows -----------------------------------------------------------------------------
 
-    /** The selection gesture / handles report the selection. A collapsed one is no selection. */
-    fun setDocumentSelection(selection: DocumentSelection?) {
-        if (!ready) return
-        docSelection = selection?.takeUnless { it.isCollapsed }?.let { DocumentSelections.validated(rich.doc, it) }
-    }
-
-    fun selectAll() {
-        if (!ready) return
-        docSelection = DocumentSelections.selectAll(rich.doc)
-    }
+    /** What "Copy as Markdown" from the menu copies: the selection, or - without one - the whole note. */
+    fun markdownToCopy(): String? = selectedText(markdown = true) ?: text.trimEnd('\n').takeIf { it.isNotEmpty() }
 
     fun clearSelection() {
         docSelection = null
@@ -392,7 +423,10 @@ class NotesViewModel(
         return DocumentSelection(io.github.zeperus.openpad.editor.DocumentPosition(c.rowId, minOf(c.start, c.end)), io.github.zeperus.openpad.editor.DocumentPosition(c.rowId, maxOf(c.start, c.end)))
     }
 
-    fun toggleStyle(kind: SpanKind) = edit { it.toggleStyle(kind) }
+    fun toggleStyle(kind: SpanKind) {
+        val selection = docSelection
+        if (selection != null && selection.anchor.rowId != selection.focus.rowId) edit { it.toggleStyleOver(selection, kind) } else edit { it.toggleStyle(kind) }
+    }
 
     fun setLink(href: String) = edit { it.setLink(href.trim()) }
 
@@ -422,6 +456,7 @@ class NotesViewModel(
         val row = rich.doc.rows.lastOrNull { it.isTextual } ?: return
         rich.moveCursor(Cursor(row.id, row.text.length))
         publish()
+        cursorEpoch++
         requestFocus(row.id)
     }
 
@@ -431,6 +466,7 @@ class NotesViewModel(
         val row = rich.doc.row(rowId) ?: return
         rich.moveCursor(Cursor(rowId, row.text.length))
         publish()
+        cursorEpoch++
         requestFocus(rowId)
     }
 
@@ -442,7 +478,7 @@ class NotesViewModel(
      * Runs one editing operation. An exception in the editor never reaches the file: the last Markdown that was handed to
      * the autosave stays as it is, and the user is told.
      */
-    private inline fun edit(operation: (EditorSession) -> Boolean) {
+    private inline fun edit(focus: Boolean = true, operation: (EditorSession) -> Boolean) {
         if (!ready || readOnly) return
         val before = rich.cursor?.rowId
         val changed = try {
@@ -453,9 +489,10 @@ class NotesViewModel(
         }
         publish()
         if (changed) { docSelection = null; commitMarkdown() }
+        cursorEpoch++
         markStateDirty()
         val row = rich.cursor?.rowId
-        if (row != null && row != before) requestFocus(row)
+        if (focus && row != null && row != before) requestFocus(row)
     }
 
     private fun commitMarkdown() {
@@ -930,6 +967,7 @@ class NotesViewModel(
         find = null
         rich = sessionFor(next)
         rich.smartChecklist = next.info?.smartChecklist ?: next.smartOnCreate
+        cursorEpoch++
         if (rich.smartChecklist && !next.readOnly && rich.settleLoaded()) commitMarkdown() // loading puts a smart checklist in order
         epoch++
         focusRequest = null

@@ -12,22 +12,42 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextInputSelection
 
-/** Helpers for the rich editor: one text field per row, tagged "row", whose text starts with an invisible marker. */
-internal const val ZWSP = "​"
+/**
+ * Helpers for the rich editor. Consecutive paragraphs, headings and list items share **one** text field ("segment"); a rule or a
+ * table splits the note into several. [rowTexts] lists the lines of all fields (a soft line break inside a paragraph counts as a
+ * line, as it does on screen).
+ */
+internal fun ComposeTestRule.fields(): SemanticsNodeInteractionCollection = onAllNodes(hasTestTag("segment"))
 
-internal fun ComposeTestRule.editorRows(): SemanticsNodeInteractionCollection = onAllNodes(hasTestTag("row"))
+/** The text field that holds the rows (the first one: most notes are a single segment). */
+internal fun ComposeTestRule.field(index: Int = 0): SemanticsNodeInteraction = fields()[index]
 
-internal fun ComposeTestRule.row(index: Int): SemanticsNodeInteraction = editorRows()[index]
+/** Legacy name: the field that holds the row. There is no longer one field per row. */
+internal fun ComposeTestRule.row(@Suppress("UNUSED_PARAMETER") index: Int = 0): SemanticsNodeInteraction = field(0)
 
-/** The text of every row as the user sees it (without the invisible marker), top to bottom. */
-internal fun ComposeTestRule.rowTexts(): List<String> = editorRows().fetchSemanticsNodes().map { node ->
-    (node.config.getOrNull(SemanticsProperties.EditableText)?.text ?: "").removePrefix(ZWSP)
+internal fun ComposeTestRule.editorRows(): SemanticsNodeInteractionCollection = fields()
+
+internal fun ComposeTestRule.fieldTexts(): List<String> = fields().fetchSemanticsNodes().map { node ->
+    node.config.getOrNull(SemanticsProperties.EditableText)?.text ?: ""
 }
 
-/** Types at the caret of the last row (an untouched row has its caret at the end). */
+/** The text of every line, top to bottom. */
+internal fun ComposeTestRule.rowTexts(): List<String> = fieldTexts().flatMap { it.split("\n") }
+
+/** The caret to [offset] characters into the line [row] (of the first field). The field keeps its focus if it has it. */
+internal fun ComposeTestRule.placeCaret(row: Int, offset: Int, fieldIndex: Int = 0) {
+    val lines = fieldTexts()[fieldIndex].split("\n")
+    val at = lines.take(row).sumOf { it.length + 1 } + offset
+    field(fieldIndex).performTextInputSelection(androidx.compose.ui.text.TextRange(at))
+}
+
+internal fun ComposeTestRule.selectionRange(fieldIndex: Int = 0): androidx.compose.ui.text.TextRange? =
+    field(fieldIndex).fetchSemanticsNode().config.getOrNull(SemanticsProperties.TextSelectionRange)
+
 internal fun ComposeTestRule.typeInLastRow(text: String) {
-    editorRows().onLast().performTextInput(text)
+    fields().onLast().performTextInput(text)
 }
 
 internal fun ComposeTestRule.formatButton(description: String): SemanticsNodeInteraction =

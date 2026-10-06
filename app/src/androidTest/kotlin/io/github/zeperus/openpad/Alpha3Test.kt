@@ -155,13 +155,13 @@ class Alpha3Test {
         t.seed("Hello world\n")
         launch()
         rule.waitForRowTexts(listOf("Hello world"))
-        // a caret inside "world" (the field text starts with an invisible marker; Android drops a range when the field loses focus)
-        rule.row(0).performTextInputSelection(TextRange(8))
-        rule.waitFor("the caret", { "${selection()}" }) { selection() == TextRange(8, 8) }
+        // a caret inside "world" (Android drops a range when the field loses focus)
+        rule.placeCaret(0, 7)
+        rule.waitFor("the caret", { "${selection()}" }) { selection() == TextRange(7, 7) }
         rule.waitFor("the remembered state", { "" }) { editorStateFile().isFile && editorStateFile().readText().contains("\"start\":7") }
         restart()
         rule.waitForRowTexts(listOf("Hello world"))
-        rule.waitFor("the caret", { "${selection()}" }) { selection() == TextRange(8, 8) } // not the end of the text (12)
+        rule.waitFor("the caret", { "${selection()}" }) { selection() == TextRange(7, 7) } // not the end of the text (11)
     }
 
     @Test fun undoStillWorksAfterARestart() {

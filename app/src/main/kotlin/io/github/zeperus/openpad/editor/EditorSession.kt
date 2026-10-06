@@ -119,6 +119,9 @@ class EditorSession(
 
     fun backspaceAtStart(rowId: Long): Boolean = commit(EditorOps.backspaceAtStart(doc, rowId))
 
+    /** Delete at the end of a row (the row below is joined onto it). */
+    fun joinWithNext(rowId: Long): Boolean = commit(EditorOps.joinWithNext(doc, rowId))
+
     fun toggleStyle(kind: SpanKind): Boolean {
         val c = cursor ?: return false
         if (c.isCollapsed) { // nothing selected: applies to what is typed next
@@ -182,6 +185,10 @@ class EditorSession(
     /** Replaces the selection by pasted [text] (plain text) as one undo step. */
     fun replaceSelection(sel: DocumentSelection, text: String): Boolean =
         withSelectionStart(sel) { DocumentSelections.replace(doc, sel, text, smartChecklist) }
+
+    /** Inline formatting over a selection across rows (the caret stays where it was). */
+    fun toggleStyleOver(selection: DocumentSelection, kind: SpanKind): Boolean =
+        EditorOps.toggleStyleOver(doc, selection, kind)?.let { commit(it, keepCursor = true) } ?: false
 
     /** Paste as Markdown: parses [markdown] and inserts its blocks at the caret row (or over [sel]). One undo step. */
     fun pasteMarkdown(markdown: String, sel: DocumentSelection? = null): Boolean {

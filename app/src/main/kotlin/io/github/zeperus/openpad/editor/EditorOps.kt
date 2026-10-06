@@ -438,4 +438,34 @@ object EditorOps {
         val last = inserted.last { it.kind != RowKind.Rule }
         return Edit(doc.withRows(rows, next), Cursor(last.id, last.text.length))
     }
+
+    /** Delete at the end of a row: the next row's text is appended to this one (kinds that are text only; never into code or raw). */
+    fun joinWithNext(doc: EditorDocument, rowId: Long): Edit {
+        val index = doc.indexOf(rowId)
+        val row = doc.rows[index]
+        val next = doc.rows.getOrNull(index + 1) ?: return Edit(doc, Cursor(rowId, row.text.length))
+        fun textual(r: EditorRow) = r.kind == RowKind.Paragraph || r.kind is RowKind.Heading || r.kind == RowKind.Quote || r.kind is RowKind.ListItem
+        if (!textual(row) || !textual(next)) return Edit(doc, Cursor(rowId, row.text.length))
+        val at = row.text.length
+        val joined = collapseBlankLines(row.text.plus(next.text)).let { if (row.kind is RowKind.Heading) singleLine(it) else it }
+        val rows = doc.rows.toMutableList()
+        rows[index] = row.copy(text = joined, touched = true)
+        rows.removeAt(index + 1)
+        return Edit(doc.withRows(rows), Cursor(rowId, minOf(at, joined.length)))
+    }
+
+    /** Bold / italic / strike / code over a selection that reaches across rows: on if any part lacks it, off if every part has it. */
+    fun toggleStyleOver(doc: EditorDocument, selection: DocumentSelection, kind: SpanKind): Edit? {
+        val slices = DocumentSelections.slices(doc, selection)
+            .filter { it.to > it.from && it.row.kind != RowKind.Rule && it.row.kind != RowKind.Raw && it.row.kind !is RowKind.Code }
+        if (slices.isEmpty()) return null
+        val allHave = slices.all { it.row.text.hasKind(kind, it.from, it.to) }
+        val rows = doc.rows.toMutableList()
+        for (s in slices) {
+            val text = if (allHave) s.row.text.remove(kind, s.from, s.to) else s.row.text.add(kind, s.from, s.to)
+            rows[s.index] = s.row.copy(text = text, touched = true)
+        }
+        val (start, _) = DocumentSelections.ordered(doc, selection) ?: return null
+        return Edit(doc.withRows(rows), Cursor(start.rowId, start.offset))
+    }
 }
