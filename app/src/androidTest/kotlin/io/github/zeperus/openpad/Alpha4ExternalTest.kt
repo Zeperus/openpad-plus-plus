@@ -5,6 +5,7 @@ import android.provider.DocumentsContract
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -89,9 +90,16 @@ class Alpha4ExternalTest {
         assertEquals("locked\n", content("readonly.md"))
     }
 
-    @Test fun aProviderThatSaysItCanWriteButRefusesIsReadOnlyToo() {
+    /**
+     * The capability flag is trusted when a write grant exists: probing by opening for writing can truncate on providers that treat
+     * the mode loosely, so it is only used when the flag is missing. A provider that lies is therefore not caught on open - but
+     * the failed save is reported, nothing is lost and nothing is written.
+     */
+    @Test fun aProviderThatClaimsWriteSupportButRefusesFailsLoudlyOnSave() {
         open("liar.md", write = true)
-        rule.waitFor("the banner", { "rows=${rule.rowTexts()}" }) { banner() == 1 }
+        rule.waitFor("the document", { "rows=${rule.rowTexts()}" }) { rule.rowTexts().firstOrNull() == "x" }
+        rule.typeInLastRow("!")
+        rule.waitFor("the save failure is reported", { "" }) { rule.onAllNodesWithText("Could not save", substring = true).fetchSemanticsNodes().isNotEmpty() }
         assertEquals("x\n", content("liar.md"))
     }
 

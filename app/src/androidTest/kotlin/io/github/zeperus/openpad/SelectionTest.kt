@@ -75,25 +75,38 @@ class SelectionTest {
         rule.waitFor("a selected word", { "${selection()}" }) { !selection().collapsed }
     }
 
-    /** Takes the end handle (it sits under the end of the selection) and drags it to [target] on the screen. */
-    private fun dragEndHandleTo(target: Offset) {
+    /**
+     * Grabs a selection handle - which sits just under the edge of the selection - and drags it to [target] on the screen. Where
+     * exactly the system's handle window is differs by a few pixels between versions and densities, so a few grip points under the
+     * edge are tried until one moves the selection (an attempt that grabs nothing only touches the text and changes nothing).
+     */
+    private fun dragHandle(edgeOffset: Int, target: Offset) {
+        val before = selection()
         val b = bounds()
-        val layout = layout()
-        val end = layout.getCursorRect(selection().max)
-        val handle = Offset(b.left + end.left, b.top + end.bottom + 12 * density)
-        device.swipe(handle.x.toInt(), handle.y.toInt(), target.x.toInt(), (target.y + 12 * density).toInt(), 40)
-        rule.waitForIdle()
+        val rect = layout().getCursorRect((edgeOffset + 1).coerceIn(0, layout().layoutInput.text.length))
+        for (below in listOf(10f, 18f, 4f, 26f)) {
+            val x = b.left + rect.left
+            val y = b.top + rect.bottom + below * density
+            device.swipe(x.toInt(), y.toInt(), target.x.toInt(), (target.y + below * density).toInt(), 60)
+            rule.waitForIdle()
+            Thread.sleep(300)
+            if (selection() != before) return
+        }
     }
 
-    private fun dragStartHandleTo(target: Offset) {
-        val b = bounds()
-        val start = layout().getCursorRect(selection().min)
-        val handle = Offset(b.left + start.left, b.top + start.bottom + 12 * density)
-        device.swipe(handle.x.toInt(), handle.y.toInt(), target.x.toInt(), (target.y + 12 * density).toInt(), 40)
-        rule.waitForIdle()
+    private fun dragEndHandleTo(target: Offset) = dragHandle(selection().max, target)
+
+    private fun dragStartHandleTo(target: Offset) = dragHandle(selection().min, target)
+
+    /** The floating toolbar's item [label]; looks into its overflow too. Null if it is not offered at all. */
+    private fun toolbar(label: String): androidx.test.uiautomator.UiObject2? {
+        device.wait(Until.findObject(By.text(label)), 3_000)?.let { return it }
+        device.findObject(By.clazz("android.widget.ImageButton").desc("More options"))?.click()
+        return device.wait(Until.findObject(By.text(label)), 3_000)
     }
 
-    private fun toolbar(label: String) = device.wait(Until.findObject(By.text(label)), 5_000)
+    private fun toolbarItems(): String =
+        device.findObjects(By.clazz("android.widget.TextView")).mapNotNull { it.text }.joinToString(" | ")
 
     // ---- A: paragraph -> paragraph -------------------------------------------------------------------------------
 
@@ -112,7 +125,7 @@ class SelectionTest {
         assertTrue("the selection starts in the first paragraph (${range})", range.min < secondStart)
         assertTrue("and now reaches into the second paragraph (${range})", range.max >= secondStart + "Paragraph two".length - 1)
         // copy through the system toolbar: readable text of both paragraphs
-        val copy = toolbar("Copy") ?: throw AssertionError("the selection toolbar did not show Copy")
+        val copy = toolbar("Copy") ?: throw AssertionError("the selection toolbar did not show Copy; on screen: ${toolbarItems()}")
         copy.click()
         rule.waitFor("the clipboard", { "${t.clipboardText()}" }) { t.clipboardText()?.contains("Paragraph two") == true }
         assertTrue(t.clipboardText()!!.startsWith("one") || t.clipboardText()!!.startsWith("Paragraph one"))
@@ -154,7 +167,7 @@ class SelectionTest {
         longPressWord("one")
         dragEndHandleTo(point(text().indexOf("Gamma") + 3, rightEdge = true))
         assertTrue(selection().max > text().indexOf("Gamma"))
-        val cut = toolbar("Cut") ?: throw AssertionError("the selection toolbar did not show Cut")
+        val cut = toolbar("Cut") ?: throw AssertionError("the selection toolbar did not show Cut; on screen: ${toolbarItems()}")
         cut.click()
         rule.waitFor("the text is gone", { rule.rowTexts().toString() }) { rule.rowTexts().size == 1 }
         rule.waitFor("the file follows", { files[0].readText() }) { files[0].readText() != "Alpha one\n\nBeta two\n\nGamma three\n" }
@@ -172,7 +185,7 @@ class SelectionTest {
         rule.waitForRowTexts(listOf("Shopping", "Milk", "Bread"))
         longPressWord("Shopping")
         dragEndHandleTo(point(text().indexOf("Bread") + 4, rightEdge = true))
-        val copy = toolbar("Copy as Markdown") ?: throw AssertionError("the selection toolbar did not show Copy as Markdown")
+        val copy = toolbar("Copy as Markdown") ?: throw AssertionError("the selection toolbar did not show Copy as Markdown; on screen: ${toolbarItems()}; selection ${selection()} of \"${text()}\"")
         copy.click()
         rule.waitFor("the clipboard", { "${t.clipboardText()}" }) { t.clipboardText()?.contains("- [x] Bread") == true }
         assertTrue(t.clipboardText()!!.contains("# Shopping"))
