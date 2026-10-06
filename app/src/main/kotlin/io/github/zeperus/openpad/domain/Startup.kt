@@ -57,4 +57,9 @@ interface SettingsStore {
     suspend fun startupMode(): StartupMode
 
     suspend fun setStartupMode(mode: StartupMode)
+
+    /** The chosen language of the app's screens; [AppLanguage.System] if none was chosen or the stored value is unusable. */
+    suspend fun language(): AppLanguage = AppLanguage.Default
+
+    suspend fun setLanguage(language: AppLanguage) = Unit
 }

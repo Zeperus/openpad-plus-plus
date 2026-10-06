@@ -145,4 +145,9 @@
     <string name="read_only_reason_provider">Schreibgeschützt: Der Anbieter dieser Datei erlaubt kein Schreiben.</string>
     <string name="read_only_reason_unknown">Schreibgeschützt: Der Schreibzugriff konnte nicht geprüft werden.</string>
     <string name="action_open_writable">Mit Schreibzugriff öffnen …</string>
+
+    <string name="settings_language">Sprache / Language</string>
+    <string name="language_system">Systemstandard</string>
+    <string name="language_german">Deutsch</string>
+    <string name="language_english">English</string>
 </resources>

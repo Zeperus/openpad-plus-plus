@@ -163,4 +163,9 @@
     <string name="read_only_reason_provider">Read only: this file\'s provider does not allow writing.</string>
     <string name="read_only_reason_unknown">Read only: write access could not be checked.</string>
     <string name="action_open_writable">Open with write access…</string>
+
+    <string name="settings_language">Language / Sprache</string>
+    <string name="language_system">System default</string>
+    <string name="language_german">Deutsch</string>
+    <string name="language_english">English</string>
 </resources>

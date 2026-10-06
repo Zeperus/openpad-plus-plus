@@ -1,6 +1,9 @@
 package io.github.zeperus.openpad
 
 import android.app.Application
+import android.os.Build
+import io.github.zeperus.openpad.data.AppCompatLocaleApplier
+import io.github.zeperus.openpad.domain.LanguageManager
 import io.github.zeperus.openpad.data.ContentResolverDocuments
 import io.github.zeperus.openpad.data.DataStoreSettingsStore
 import io.github.zeperus.openpad.data.FileEditorStateStore
@@ -32,6 +35,11 @@ class OpenPadApplication : Application() {
 
     /** Caret and recent undo history per open note (disposable, never inside the notes). */
     val editorStates: EditorStateStore by lazy { FileEditorStateStore(File(filesDir, "openpad/editor-state.json")) }
+
+    /** The language setting (system default / German / English) on top of Android's per-app locales. */
+    val languageManager: LanguageManager by lazy {
+        LanguageManager(settings, AppCompatLocaleApplier, systemOwnsLocale = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+    }
 
     /** Simple settings (startup mode). DataStore does its own I/O, so it gets an IO scope, not [appScope]. */
     val settings: SettingsStore by lazy {

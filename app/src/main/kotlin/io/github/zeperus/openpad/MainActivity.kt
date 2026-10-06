@@ -2,7 +2,7 @@ package io.github.zeperus.openpad
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.LaunchedEffect
@@ -16,7 +16,7 @@ import io.github.zeperus.openpad.ui.NotesScreen
 import io.github.zeperus.openpad.ui.NotesViewModel
 import io.github.zeperus.openpad.ui.theme.OpenPadTheme
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
     private var viewModel: NotesViewModel? = null
     private var pendingIntent: Intent? = null
 
@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             OpenPadTheme {
                 val vm: NotesViewModel = viewModel(
-                    factory = viewModelFactory { initializer { NotesViewModel(app.repository, app.sessionStore, app.settings, app.appScope, app.editorStates) } },
+                    factory = viewModelFactory { initializer { NotesViewModel(app.repository, app.sessionStore, app.settings, app.appScope, app.editorStates, app.languageManager) } },
                 )
                 viewModel = vm
                 LaunchedEffect(vm) {

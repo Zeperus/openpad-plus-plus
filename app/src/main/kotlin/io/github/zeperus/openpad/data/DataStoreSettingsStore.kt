@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
+import io.github.zeperus.openpad.domain.AppLanguage
 import io.github.zeperus.openpad.domain.SettingsStore
 import io.github.zeperus.openpad.domain.StartupMode
 import kotlinx.coroutines.CoroutineScope
@@ -28,7 +29,19 @@ class DataStoreSettingsStore(private val dataStore: DataStore<Preferences>) : Se
         dataStore.edit { it[STARTUP_MODE] = mode.name }
     }
 
+    override suspend fun language(): AppLanguage {
+        val stored = dataStore.data
+            .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+            .first()[LANGUAGE]
+        return AppLanguage.fromStored(stored)
+    }
+
+    override suspend fun setLanguage(language: AppLanguage) {
+        dataStore.edit { it[LANGUAGE] = language.name }
+    }
+
     companion object {
+        private val LANGUAGE = stringPreferencesKey("language")
         private val STARTUP_MODE = stringPreferencesKey("startup_mode")
 
         /** At most one DataStore may be active per [file]; [scope] bounds its lifetime. */

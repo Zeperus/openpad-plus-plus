@@ -66,4 +66,25 @@ class DataStoreSettingsStoreTest {
         withStore { it.setStartupMode(StartupMode.BlankNote) }
         assertEquals(StartupMode.BlankNote, withStore { it.startupMode() })
     }
+
+    @Test fun `the language defaults to the system, can be chosen and survives a restart`() {
+        assertEquals(io.github.zeperus.openpad.domain.AppLanguage.System, withStore { it.language() })
+        for (language in io.github.zeperus.openpad.domain.AppLanguage.entries) {
+            withStore { it.setLanguage(language) }
+            assertEquals(language, withStore { it.language() })
+        }
+    }
+
+    @Test fun `an unusable stored language falls back to the system default`() {
+        withStore { it.setStartupMode(StartupMode.BlankNote) }
+        runBlocking {
+            val job = Job()
+            try {
+                val store = PreferenceDataStoreFactory.create(scope = CoroutineScope(Dispatchers.IO + job), produceFile = { file })
+                store.edit { it[stringPreferencesKey("language")] = "Klingon" }
+            } finally { job.cancelAndJoin() }
+        }
+        assertEquals(io.github.zeperus.openpad.domain.AppLanguage.System, withStore { it.language() })
+        assertEquals(StartupMode.BlankNote, withStore { it.startupMode() }) // the other settings are untouched
+    }
 }

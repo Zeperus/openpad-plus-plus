@@ -841,6 +841,30 @@ private fun SettingsScreen(vm: NotesViewModel, onBack: () -> Unit) {
                     }
                 }
             }
+            SectionHeader(stringResource(R.string.settings_language))
+            val languages = listOf(
+                io.github.zeperus.openpad.domain.AppLanguage.System to R.string.language_system,
+                io.github.zeperus.openpad.domain.AppLanguage.German to R.string.language_german,
+                io.github.zeperus.openpad.domain.AppLanguage.English to R.string.language_english,
+            )
+            Column(Modifier.selectableGroup().testTag("language-options")) {
+                for ((language, label) in languages) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = vm.language == language,
+                                onClick = { vm.chooseLanguage(language) },
+                                role = Role.RadioButton,
+                            )
+                            .padding(horizontal = 24.dp, vertical = 12.dp),
+                    ) {
+                        RadioButton(selected = vm.language == language, onClick = null)
+                        Text(stringResource(label), modifier = Modifier.padding(start = 16.dp))
+                    }
+                }
+            }
             val context = LocalContext.current
             val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull().orEmpty() }
             Text(

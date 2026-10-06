@@ -86,6 +86,7 @@ class NotesViewModel(
     private val settings: SettingsStore,
     private val scope: CoroutineScope,
     private val editorStates: EditorStateStore = EditorStateStore.None,
+    private val languageManager: io.github.zeperus.openpad.domain.LanguageManager? = null,
 ) : ViewModel() {
     private val actions = Mutex() // user actions and autosave run one at a time, in order
     private var editor = NoteEditor(repository)
@@ -175,6 +176,10 @@ class NotesViewModel(
         private set
 
     var startupMode by mutableStateOf(StartupMode.Default)
+        private set
+
+    /** The language chosen in Settings (the screens follow it through Android's per-app locales). */
+    var language by mutableStateOf(io.github.zeperus.openpad.domain.AppLanguage.Default)
         private set
 
     var message by mutableStateOf<UserMessage?>(null)
@@ -786,6 +791,11 @@ class NotesViewModel(
 
     // ---- Settings --------------------------------------------------------------------------------------------
 
+    fun chooseLanguage(choice: io.github.zeperus.openpad.domain.AppLanguage) = act {
+        language = choice
+        languageManager?.choose(choice) ?: settings.setLanguage(choice)
+    }
+
     fun chooseStartupMode(mode: StartupMode) = act {
         settings.setStartupMode(mode)
         startupMode = mode
@@ -820,6 +830,13 @@ class NotesViewModel(
                 StartupMode.Default
             }
             startupMode = mode
+            language = try {
+                languageManager?.restore() ?: settings.language()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                io.github.zeperus.openpad.domain.AppLanguage.Default
+            }
             try { persistedStates.putAll(editorStates.load()) } catch (e: CancellationException) { throw e } catch (_: Exception) { /* nothing remembered */ }
             refreshLists()
             val initial = StartupPlanner.initial(mode, sessionStore.load(), notes.mapTo(HashSet()) { it.id })
