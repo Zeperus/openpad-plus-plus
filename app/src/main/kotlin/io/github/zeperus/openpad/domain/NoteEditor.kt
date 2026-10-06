@@ -15,6 +15,8 @@ class NoteEditor(
     initial: NoteContent? = null,
     /** A read-only document is shown but never written: [save], [clear] and text changes are ignored. */
     val readOnly: Boolean = initial?.readOnly ?: false,
+    /** For a draft: the note is created as a smart checklist ("New checklist"). */
+    val smartOnCreate: Boolean = false,
 ) {
     private val mutex = Mutex()
 
@@ -46,7 +48,8 @@ class NoteEditor(
         when {
             current == null -> {
                 if (snapshot.isBlank()) return@withLock false
-                info = repository.createNote(snapshot)
+                val created = repository.createNote(snapshot)
+                info = if (smartOnCreate) repository.setSmartChecklist(created.id, true) else created
                 savedText = snapshot
                 true
             }

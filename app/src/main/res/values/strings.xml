@@ -3,6 +3,7 @@
     <string name="app_name">openPad++</string>
 
     <string name="new_note">+ New Note</string>
+    <string name="new_checklist">+ New Checklist</string>
     <string name="section_favorites">FAVORITES</string>
     <string name="section_recent">RECENT</string>
     <string name="section_files">FILES</string>

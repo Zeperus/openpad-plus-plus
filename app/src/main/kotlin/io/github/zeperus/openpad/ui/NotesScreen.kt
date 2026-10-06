@@ -55,6 +55,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -141,6 +142,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
                 DrawerContent(
                     vm = vm,
                     onNewNote = { vm.newNote(); scope.launch { drawerState.close() } },
+                    onNewChecklist = { vm.newChecklist(); scope.launch { drawerState.close() } },
                     onOpenFile = { scope.launch { drawerState.close() }; openFile.launch(arrayOf("*/*")) },
                     onOpen = { vm.openNote(it.id); scope.launch { drawerState.close() } },
                     onPurge = { dialog = Dialog.Purge(it) },
@@ -297,6 +299,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
 private fun DrawerContent(
     vm: NotesViewModel,
     onNewNote: () -> Unit,
+    onNewChecklist: () -> Unit,
     onOpenFile: () -> Unit,
     onOpen: (NoteInfo) -> Unit,
     onPurge: (NoteInfo) -> Unit,
@@ -307,6 +310,10 @@ private fun DrawerContent(
                 onClick = onNewNote,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             ) { Text(stringResource(R.string.new_note)) }
+            OutlinedButton(
+                onClick = onNewChecklist,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            ) { Text(stringResource(R.string.new_checklist)) }
             TextButton(
                 onClick = onOpenFile,
                 modifier = Modifier.padding(horizontal = 12.dp),

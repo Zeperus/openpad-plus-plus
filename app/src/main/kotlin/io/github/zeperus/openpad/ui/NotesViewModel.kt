@@ -298,6 +298,22 @@ class NotesViewModel(
         saveNow()
         commitSession(session.newDraft())
         syncEditor(markOpened = false)
+        if (editor.isDraft && editor.smartOnCreate) switchTo(NoteEditor(repository)) // a blank checklist page becomes a plain one
+    }
+
+    /**
+     * "New checklist": the blank page, but as a smart checklist - one empty task item to type into, and the note is created
+     * with Smart Checklist switched on. Still an ordinary `.md` file; nothing is written until there is text.
+     */
+    fun newChecklist() = act {
+        saveNow()
+        commitSession(session.newDraft())
+        syncEditor(markOpened = false)
+        if (!editor.isDraft) return@act
+        switchTo(NoteEditor(repository, smartOnCreate = true))
+        rich.moveCursor(Cursor(rich.doc.rows.first().id, 0))
+        publish()
+        requestFocus(rich.doc.rows.first().id)
     }
 
     /** Opens a note from the drawer: already open -> just activate it, otherwise append a tab. */
@@ -569,7 +585,8 @@ class NotesViewModel(
         current = next.info
         readOnly = next.readOnly
         rich = sessionFor(next)
-        rich.smartChecklist = next.info?.smartChecklist == true
+        rich.smartChecklist = next.info?.smartChecklist ?: next.smartOnCreate
+        if (rich.smartChecklist && !next.readOnly && rich.settleLoaded()) commitMarkdown() // loading puts a smart checklist in order
         epoch++
         focusRequest = null
         publish()
@@ -579,7 +596,7 @@ class NotesViewModel(
     private fun sessionFor(next: NoteEditor): EditorSession {
         val id = next.info?.id
         val kept = id?.let { sessions[it] }?.takeIf { runCatching { it.markdown() == next.text }.getOrDefault(false) }
-        val result = kept ?: EditorSession(EditorDocument.fromMarkdown(next.text))
+        val result = kept ?: EditorSession(if (id == null && next.smartOnCreate) EditorDocument.emptyChecklist() else EditorDocument.fromMarkdown(next.text))
         if (id != null) sessions[id] = result
         sessions.keys.retainAll((session.noteIds + listOfNotNull(id)).toSet())
         return result

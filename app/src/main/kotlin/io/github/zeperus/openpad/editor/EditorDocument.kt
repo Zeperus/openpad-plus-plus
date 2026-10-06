@@ -212,6 +212,14 @@ class EditorDocument internal constructor(
     companion object {
         fun empty(): EditorDocument = fromMarkdown("")
 
+        /** A blank checklist: one empty, unchecked task item to type into. It writes no Markdown until it has text. */
+        fun emptyChecklist(): EditorDocument {
+            val blank = fromMarkdown("")
+            val row = blank.rows.first()
+            val info = ListInfo(blank.nextId, ordered = false, start = 1, marker = '-')
+            return blank.withRows(listOf(row.copy(kind = RowKind.ListItem(info, false), touched = true)), blank.nextId + 1)
+        }
+
         /** Parses [markdown] into rows. Never throws (the parser degrades to a raw block instead). */
         fun fromMarkdown(markdown: String): EditorDocument {
             val parsed = MarkdownParser.parse(markdown)

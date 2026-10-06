@@ -98,7 +98,7 @@ class EditorSession(
         if (edit.doc === before) { cursor = edit.cursor; return false }
         val typedOnly = edit.doc.rows.size == before.rows.size && edit.doc.rows.map { it.id } == before.rows.map { it.id }
         history.record(Snapshot(before, cursor), if (typedOnly) rowId else null)
-        doc = edit.doc
+        doc = settled(edit.doc)
         cursor = edit.cursor
         typingStyle = null
         return true
@@ -128,6 +128,25 @@ class EditorSession(
     fun toggleTask(): Boolean = cursor?.let { commit(EditorOps.toggleTask(doc, it.rowId)) } ?: false
 
     fun setChecked(rowId: Long, checked: Boolean): Boolean = commit(EditorOps.setChecked(doc, rowId, checked, smartChecklist), keepCursor = true)
+
+    /**
+     * In smart checklist mode the document always has unchecked items above completed ones. Every edit ends here: if it left a
+     * sortable checklist out of order (a new task among completed ones, a converted row, a paste) it is put right, as part of
+     * the same history step. A document that is already in order is returned as it is, so nothing is rewritten for nothing.
+     */
+    private fun settled(d: EditorDocument): EditorDocument {
+        if (!smartChecklist) return d
+        val sorted = Checklist.normalize(d.rows)
+        return if (sorted === d.rows) d else d.withRows(sorted)
+    }
+
+    /** A loaded document of a smart checklist note that is out of order is sorted (no history entry). True if it changed. */
+    fun settleLoaded(): Boolean {
+        val d = settled(doc)
+        if (d === doc) return false
+        doc = d
+        return true
+    }
 
     /** Switching smart checklist mode on sorts the existing checklists once, as one undoable step. */
     fun sortChecklists(): Boolean = EditorOps.sortChecklists(doc)?.let { commit(it, keepCursor = true) } ?: false
@@ -171,7 +190,7 @@ class EditorSession(
     private fun commit(edit: Edit, keepCursor: Boolean = false): Boolean {
         if (edit.doc === doc) { if (!keepCursor) cursor = edit.cursor; return false }
         history.record(Snapshot(doc, cursor))
-        doc = edit.doc
+        doc = settled(edit.doc)
         if (!keepCursor) cursor = edit.cursor
         typingStyle = null
         return true

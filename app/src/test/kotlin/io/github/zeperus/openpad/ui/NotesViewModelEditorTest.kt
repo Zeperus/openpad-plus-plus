@@ -393,4 +393,55 @@ class NotesViewModelEditorTest {
         // no focus request was made for a row that merely changed kind: the field stays where it is
         assertNull(vm.focusRequest?.takeIf { it.rowId == id && it.token > 1 })
     }
+
+    // ---- New checklist --------------------------------------------------------------------------------------
+
+    @Test fun `a new checklist is a blank page with one empty task and creates nothing by itself`() = runTest {
+        val vm = launch()
+        vm.newChecklist(); runCurrent()
+        assertEquals(1, vm.ui.doc.rows.size)
+        assertEquals(false, (vm.ui.doc.rows[0].kind as RowKind.ListItem).checked)
+        assertEquals(vm.ui.doc.rows[0].id, vm.focusRequest?.rowId)
+        settle()
+        assertNull(vm.current)
+        assertTrue(mdFiles().isEmpty())
+    }
+
+    @Test fun `typing into a new checklist creates a smart checklist note`() = runTest {
+        val vm = launch()
+        vm.newChecklist(); runCurrent()
+        vm.type(0, "Milk")
+        settle()
+        assertTrue(vm.current!!.smartChecklist)
+        assertEquals("- [ ] Milk\n", vm.file("Milk").readText())
+        vm.onRowText(vm.ui.doc.rows[0].id, "Milk\n", 5)
+        vm.type(1, "Bread")
+        vm.setChecked(vm.ui.doc.rows[0].id, true)
+        settle()
+        assertEquals("- [ ] Bread\n- [x] Milk\n", vm.file("Bread").readText())
+    }
+
+    @Test fun `a blank new note after a new checklist is a plain page again`() = runTest {
+        val vm = launch()
+        vm.newChecklist(); runCurrent()
+        vm.newNote(); runCurrent()
+        assertEquals(RowKind.Paragraph, vm.ui.doc.rows[0].kind)
+        vm.type(0, "plain")
+        settle()
+        assertFalse(vm.current!!.smartChecklist)
+    }
+
+    @Test fun `a smart checklist note that is out of order is put in order when opened`() = runTest {
+        val vm = launch()
+        vm.onTextChange("- [x] A\n- [ ] B\n")
+        settle()
+        vm.toggleSmartChecklist(); runCurrent()
+        settle()
+        File(root, "notes/${vm.notes.single().id.value}.md").writeText("- [x] A\n- [ ] B\n- [x] C\n- [ ] D\n")
+        val again = launch()
+        again.openNote(again.notes.single().id); runCurrent()
+        assertEquals("- [ ] B\n- [ ] D\n- [x] A\n- [x] C\n", again.text)
+        again.flush(); runCurrent()
+        assertEquals("- [ ] B\n- [ ] D\n- [x] A\n- [x] C\n", File(root, "notes/${again.notes.single().id.value}.md").readText())
+    }
 }
