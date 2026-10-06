@@ -90,6 +90,11 @@ RichEditor -> NotesViewModel -> EditorSession -> EditorOps -> EditorDocument -> 
 A tab's session is reused when its Markdown equals the freshly loaded file, so caret and undo survive tab switches but can
 never overwrite a changed file. `appScope` still runs on `Dispatchers.Main.immediate` (Compose state).
 
+**Row identity.** A row id is the identity of an editable block: it is the Compose key, the focus target and the caret owner.
+Operations change rows in place (kind, text, depth) and the focused row survives Enter and Backspace-joins (see
+[editor.md](editor.md#identity-and-focus-why-the-keyboard-used-to-flicker)). The smart checklist flag is note metadata
+(`NoteInfo.smartChecklist`, `index.json`), handed to the `EditorSession`; the ordering rules live in `editor/Checklist.kt`.
+
 Principles: constructor injection by hand (no DI framework), no layer without a purpose, Compose-independent
 domain/markdown code, build entirely from the terminal with `./gradlew`.
 

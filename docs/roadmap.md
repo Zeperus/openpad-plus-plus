@@ -10,7 +10,8 @@
 | 5 | External Markdown (file picker, Open with, Share, in-place editing) | done |
 | 6 | Markdown engine (parser, document model, verified serializer, property tests) | done |
 | 7 | Rich/WYSIWYG editor, formatting bar, undo, per-tab state | done (Alpha `0.1.0-alpha.1`) |
-| 8 | Checklist mode (completed items sink to the bottom) | planned |
+| 7a | Alpha 2: focus/keyboard stability, list editing, Smart Checklist (completed items sink) | done (`0.1.0-alpha.2`) |
+| 8 | Checklist polish (per-note defaults, nested rules, drag reorder) | planned |
 | 9 | Trash and safety polish | planned |
 | 10 | Polish (themes, accessibility, tablet layout, tables/images) | planned |
 | 11 | First release candidate | planned |

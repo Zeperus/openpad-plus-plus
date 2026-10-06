@@ -140,12 +140,12 @@ class StructuralEditingTest {
         val before = disposed
         // a=list item, b=list item, then the paragraph; the simulated key repeat: every press must leave the same field focused
         val expected = listOf(
-            listOf("a", "bpara"), // joined into the item above
+            listOf("a", "bpara"), // joined into the item above (it is now that item)
             listOf("a", "para"), // deleted "b"
+            listOf("a", "para"), // Backspace at the start of an item: it becomes a paragraph
             listOf("apara"), // joined into "a"
             listOf("para"), // deleted "a"
-            listOf("para"), // the item becomes a paragraph
-            listOf("para"), // nothing before it: nothing happens
+            listOf("para"), // Backspace at the start of an item: it becomes a paragraph
         )
         for ((n, rows) in expected.withIndex()) {
             backspace()

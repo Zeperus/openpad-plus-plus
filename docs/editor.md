@@ -119,16 +119,53 @@ editable as text, never converted. Backspace at the start of a raw row does noth
 - Typing: the field reports new text; the operation finds what changed, keeps the formatting of surrounding text and
   continues bold/italic/strike at the caret (code and links are left by simply typing on). Toggling a style with an empty
   selection applies to the next typed characters.
-- **Enter** splits the row. In a list it creates the next item (a task item gives an unchecked task); on an empty item it
+- **Enter** splits the row *without replacing the row that has the focus*: the focused row keeps its id and becomes the second
+  half, a new row for the first half appears above it, so the text field being typed in stays the same field. In a list it creates the next item (a task item gives an unchecked task); on an empty item it
   leaves the list one level up / out of it; in a heading the new row is a paragraph; in a code block it inserts a line break.
 - **Backspace at the start**: list item -> outdent or paragraph; heading/quote/code -> paragraph; paragraph -> joined with
-  the previous row (never into code/raw; deletes a rule in front of it).
+  the previous row (never into code/raw; deletes a rule in front of it). When rows are joined, the *focused* row survives: it
+  takes the place and kind of the row above, and that row disappears.
 - Paragraph style (Text, Heading 1-4, Quote, Code block), bullet / numbered / checklist toggles (converting rows in place),
   indent / outdent (lists nest at most one level below the item above), horizontal rule, links (set / change / remove).
 - **Pasted text is plain text**: Markdown in pasted text is not interpreted (it is escaped on write so it reads back as the
   same text). A blank line in pasted text starts a new paragraph. Only *opening a file* parses Markdown.
 - Checkboxes are real checkboxes; ticking one changes only that item (no reordering). Checked items are drawn dimmed and
   struck through (display only).
+
+## Identity and focus (why the keyboard used to flicker)
+
+**Root cause (Alpha 1).** Row ids were already stable across paragraph <-> list conversions, but the Compose layer drew each kind of
+row in its own `when` branch (a bare `Box` for a paragraph, a `Row` with a marker slot for a list item, ...). Compose identifies
+composables by their position in the code, so when the kind of a row changed, the paragraph's text field was *disposed* and a
+list item's text field *created*: the focused field disappeared (keyboard closes, the IME connection and composition state are
+lost, the caret and key repeat stop) and the new one grabbed the focus a moment later (keyboard reopens). Joining rows with
+Backspace had the same effect, because the focused row was the one that was deleted.
+
+**Fix.** (1) Every row kind is drawn by one composable structure - a `Row` with a leading slot (bullet / number / checkbox / empty)
+and the text field - so only modifiers, the slot content and the text style depend on the kind; a conversion changes the row
+instead of replacing it. (2) The document operations keep the focused row's id: Enter makes the focused row the second half,
+Backspace-join makes the focused row the survivor, leaving a list changes the kind in place. (3) `LazyColumn` keys are the row ids
+(never indexes or text), so a row that moves - a ticked task in a smart checklist - is *moved* with its field, focus and caret.
+(4) No `requestFocus()` is used to paper over it; the only focus requests are for a caret that really moves to *another* row
+(e.g. the new empty item after Enter in a list). `EditorDiagnostics` counts created/disposed fields; the instrumented
+`StructuralEditingTest` asserts that none is disposed by a conversion, that the focused field keeps its focus, and that a
+simulated key repeat of Backspace over a list boundary stays in one field.
+
+## Smart checklist
+
+A per-note mode (a flag in `index.json`, shown in the overflow menu as "Smart checklist: on/off"; never written into the
+Markdown; off by default and for every external file). Ordinary Markdown task lists are never reordered.
+
+- Checking an item moves it (with its nested rows) to the **bottom** of its sibling group; unchecking moves it to the **end of the
+  unchecked group**, directly above the first completed item. Order inside each group is untouched, so completed items stay in
+  the order they were completed. No earlier position is remembered.
+- The check and the move are **one** undo step. Checked items are drawn struck through and dimmed (presentation only; the file
+  says `- [x] Bread`, not `~~Bread~~`).
+- Switching the mode on sorts the existing checklists once (stable: unchecked first) as one undoable step. After that the rule is
+  applied when you check, uncheck or press Enter on a completed item (the new item goes above the completed ones). Items you add
+  or convert in other ways stay where you put them.
+- Conservative scope: only sibling groups where *every* item is a task item are reordered; a group that mixes plain and task
+  items is left alone, and an item never leaves its parent or list. Nested checklists sort inside their parent.
 
 ## Undo / redo
 
@@ -177,8 +214,8 @@ unchanged (metadata or Trash).
 
 ## Editor tests
 
-`editor/EditorOpsTest`, `EditorDocumentTest`, `EditorPropertyTest` (random operation sequences on adversarial documents: after
+`editor/EditorOpsTest`, `EditorDocumentTest`, `StructuralEditingTest` (row identity, Enter/Backspace on lists, smart checklist), `EditorPropertyTest` (random operation sequences on adversarial documents: after
 every operation the model written and read back must mean exactly what the editor holds; undoing everything restores the
 original file byte for byte; 1500 sessions per run, 6000 checked during development) and `NotesViewModelEditorTest`; on a
-device `RichEditorTest` (formatting shown, typing persists, formatting bar, lists, checkboxes, tab switching with undo,
+device `StructuralEditingTest` (focus and field identity, ghost rows, smart checklist) and `RichEditorTest` (formatting shown, typing persists, formatting bar, lists, checkboxes, tab switching with undo,
 blank page, external Markdown).

@@ -1,4 +1,4 @@
-# Alpha test checklist (0.1.0-alpha.1)
+# Alpha test checklist (0.1.0-alpha.2)
 
 Short on purpose. Tick what works, note what does not (what you did, what you expected). **Keep backups of important
 notes while testing.** Settings shows the installed version at the bottom.
@@ -22,6 +22,25 @@ notes while testing.** Settings shows the installed version at the bottom.
 - [ ] Link: select text, Link, enter an address; "Open" in the dialog opens it
 - [ ] Undo / redo (arrows in the bar)
 - [ ] Paste text that contains `**x**` or `# y`: it stays as plain text
+
+## Keyboard / lists (Alpha 2)
+- [ ] Hold Backspace while leaving a bullet list
+- [ ] Hold Backspace while leaving a numbered list
+- [ ] Hold Backspace while leaving a checklist
+- [ ] The keyboard never visibly closes/reopens
+- [ ] The cursor does not jump to another row
+- [ ] Enter on an empty list item leaves the list cleanly
+- [ ] No extra ghost list row remains
+- [ ] Switching a line between paragraph / bullet / numbered / checklist (bar) keeps the keyboard and the caret
+
+## Smart checklist (Alpha 2)
+- [ ] Menu: "Smart checklist: off (turn on)" on a note with a checklist
+- [ ] Check a middle item: it moves below all unchecked items and is struck through
+- [ ] Check several items: they keep the order in which you completed them
+- [ ] Uncheck one: it returns to the end of the unchecked group
+- [ ] Undo restores checkbox and previous order in one action
+- [ ] Tapping a checkbox does not close the keyboard or move the text cursor
+- [ ] A normal Markdown checklist (mode off) does not auto-sort
 
 ## Tabs
 - [ ] Open several notes, switch, order stays

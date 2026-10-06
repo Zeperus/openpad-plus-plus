@@ -4,6 +4,20 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.1.0-alpha.2] - 2026-10-06 (pre-release / test build)
+
+### Fixed
+- The keyboard no longer closes and reopens (and the caret no longer jumps) when a list is converted, left, joined or
+  split. Cause: each row kind was drawn by a different composable branch, so a kind change disposed the focused text field.
+  All kinds now share one structure and the operations keep the focused row's identity. Held Backspace/Delete works across
+  list boundaries.
+- Enter on an empty list item leaves the list without leaving an extra empty row.
+
+### Added
+- Smart Checklist (per note, overflow menu): checked items move below the unchecked ones and are struck through; unchecking returns
+  an item to the end of the unchecked group; check + move is one undo step. Ordinary Markdown task lists keep their order. The mode
+  is stored as metadata, not in the Markdown.
+
 ## [0.1.0-alpha.1] - 2026-10-06 (pre-release / test build)
 
 ### Added
