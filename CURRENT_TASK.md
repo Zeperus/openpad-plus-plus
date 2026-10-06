@@ -4,10 +4,12 @@
 Next (do not start without being asked): Milestone 8 (global checklist default, drag reorder, table cell editing).
 
 ## Status
-- Unit tests: 723, 0 failing (`./gradlew test`); lint clean; `assembleDebug` and `assembleDebugAndroidTest` build.
-- Instrumented tests on GitHub (API 36 emulator, Test Orchestrator): **81/81 green** (ColdStart 1, NotesFlow 8, SessionFlow 16, ExternalFlow 9,
-  RichEditor 13, StructuralEditing 15, Selection 5, Alpha3 14), run 37453651186; regular CI green.
-- Signing: Alpha 1, 2 and 3 share one certificate (SHA-256 7c2afa95...13bf9f0); keystore in `~/.openpad-signing/`, not in the repository.
+- Unit tests: 772, 0 failing (`./gradlew test`); lint clean; `assembleDebug` and `assembleDebugAndroidTest` build.
+- Instrumented tests on GitHub (API 36 emulator, Test Orchestrator): **90/90 green** (ColdStart 1, NotesFlow 8, SessionFlow 16, ExternalFlow 9,
+  RichEditor 13, StructuralEditing 15, Selection 6 (real touch: native handle dragged across paragraphs/into a list/backwards, cut + undo,
+  Copy as Markdown, toolbar), Alpha3 14, Alpha4External 6 (writable / read-only / no-flags / refusing SAF provider), Alpha4Language 2), run 37482622603;
+  regular CI green.
+- Signing: Alpha 1-4 share one certificate (SHA-256 7c2afa95...13bf9f0); keystore in `~/.openpad-signing/`, not in the repository.
 
 ## Regression boundary
 The Alpha 2 keyboard/focus behaviour (held Backspace across lists, no keyboard flicker, ticking a checkbox keeps the keyboard) was confirmed
@@ -41,8 +43,8 @@ on a real phone. Row identity rules (one composable structure for every row kind
 ## Known issues / limitations
 - **Never run the Android emulator on the dev laptop.** Instrumented tests only via CI. Local: `./gradlew test lint assembleDebug assembleDebugAndroidTest`
   (`source ~/.openpad-env.sh`, which also exports the signing keystore variables).
-- No soft keyboard on the CI emulator: keyboard behaviour is verified through its cause (no field disposed, focus kept) plus the owner's phone.
-- A cross-row selection cannot be extended with shift+arrows; typing while one exists ends it. Android drops a range selection when a field loses focus,
+- No soft keyboard on the CI emulator: keyboard behaviour is verified through its cause (no field disposed, focus kept) plus the owner's phone. **Alpha 4 replaced the editor's field structure, so the phone check of the keyboard items in docs/alpha-test-checklist.md is what finally confirms it.**
+- A selection cannot continue across a rule/table/image/HTML block. Android drops a range selection when a field loses focus,
   so a remembered range comes back as a caret.
 - Inline images, tables with inline HTML, nested block content in list items, relative image paths: shown as text/placeholder.
 - Search reads files directly (no index). The `.md` "Open with" glob matches paths with up to six dots.
