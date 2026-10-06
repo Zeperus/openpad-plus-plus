@@ -77,7 +77,7 @@ class SelectionTest {
         selectAllFromTheMenu()
         rule.barButton("Copy").performClick()
         rule.waitFor("the clipboard", { t.clipboardText().toString().replace("\n", "⏎") }) {
-            t.clipboardText() == "Shopping\n\n• One\n• Two\n\n☐ Milk\n☑ Bread"
+            t.clipboardText() == "Shopping\n\n• One\n• Two\n☐ Milk\n☑ Bread"
         }
     }
 
