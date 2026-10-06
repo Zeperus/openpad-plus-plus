@@ -137,7 +137,7 @@ class RichText private constructor(val text: String, val spans: List<Span>) {
         for (i in text.indices) {
             val key = keyAt(i)
             val last = runs.lastOrNull()
-            if (last != null && last.key == key && text[i] != '\n') last.text.append(text[i]) else runs += Run(StringBuilder().append(text[i]), key)
+            if (last != null && last.key == key && text[i] != '\n' && last.text[0] != '\n') last.text.append(text[i]) else runs += Run(StringBuilder().append(text[i]), key)
         }
         return InlineNormalizer.block(build(runs, emptySet()))
     }

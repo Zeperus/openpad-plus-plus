@@ -40,13 +40,33 @@ object MarkdownSerializer {
         if (original == null || !original.layoutValid) return serialize(OpenPadDocument(blocks), original?.eol ?: "\n")
         val eol = original.eol
         val pieces = ArrayList<Pair<String, Int?>>() // text, original index if reused verbatim
+        val regenerate = HashSet<Int>() // unchanged lists that have to be written again to keep their neighbours apart
+        fun verbatim(i: Int): Int? = if (i in regenerate) null else origins[i]?.takeIf { it in original.blocks.indices && original.blocks[it].block == blocks[i] }
+        var written: Written? = null // the list marker of the block just written (a list written next to it must differ)
+        var listJustRewritten = false
         for ((i, block) in blocks.withIndex()) {
-            val o = origins[i]
-            if (o != null && o in original.blocks.indices && original.blocks[o].block == block) {
-                pieces += original.blocks[o].source to o
+            // an indented code block right after a list that was written again would be read as part of that list
+            if (listJustRewritten && block is Block.CodeBlock && block.style == CodeStyle.Indented) regenerate += i
+            val o = verbatim(i)
+            val text: String
+            if (o != null) {
+                text = original.blocks[o].source
+                pieces += text to o
             } else {
-                val text = renderVerified(block, blocks.getOrNull(i - 1))
+                // also keep clear of an unchanged list that follows: its text cannot be changed, ours can
+                val next = (i + 1 until blocks.size).firstOrNull { BlockNormalizer.compareForm(blocks[it]) != null }
+                var following = if (block is Block.ListBlock && next != null) verbatim(next)?.let { writtenFromText(original.blocks[it].source) } else null
+                // numbered lists have only two delimiters: if both neighbours use different ones, the next list is written again
+                if (following != null && written != null && !following.bullet && !written.bullet && following.marker != written.marker) {
+                    regenerate += next!!
+                    following = null
+                }
+                text = renderVerified(block, blocks.getOrNull(i - 1), written?.let { if (following != null) it.copy(other = following) else it } ?: following)
                 if (text.isNotEmpty()) pieces += text.withEol(eol) to null
+            }
+            if (text.isNotEmpty()) {
+                written = if (block is Block.ListBlock) writtenFromText(text) else null
+                listJustRewritten = block is Block.ListBlock && o == null
             }
         }
         if (pieces.isEmpty()) return if (blocks.isEmpty() && original.blocks.isEmpty()) original.leading else ""
@@ -87,7 +107,7 @@ object MarkdownSerializer {
     }
 
     /** The list marker that was actually written for a list (it may differ from the model to keep lists apart). */
-    private data class Written(val marker: Char, val bullet: Boolean)
+    private data class Written(val marker: Char, val bullet: Boolean, val other: Written? = null)
 
     private fun ListKind.markerChar(): Char = when (this) {
         is ListKind.Bullet -> marker
@@ -230,12 +250,14 @@ object MarkdownSerializer {
 
     // Two neighbouring lists with the same marker would be read back as one list: use another marker.
     private fun bulletMarker(kind: ListKind.Bullet, written: Written?): Char {
-        if (written == null || !written.bullet || written.marker != kind.marker) return kind.marker
-        return "-*+".first { it != written.marker }
+        val avoid = listOfNotNull(written, written?.other).filter { it.bullet }.map { it.marker }
+        if (kind.marker !in avoid) return kind.marker
+        return "-*+".first { it !in avoid }
     }
 
     private fun orderedDelimiter(kind: ListKind.Ordered, written: Written?): Char {
-        if (written == null || written.bullet || written.marker != kind.delimiter) return kind.delimiter
+        val avoid = listOfNotNull(written, written?.other).filter { !it.bullet }.map { it.marker }
+        if (kind.delimiter !in avoid) return kind.delimiter
         return if (kind.delimiter == '.') ')' else '.'
     }
 

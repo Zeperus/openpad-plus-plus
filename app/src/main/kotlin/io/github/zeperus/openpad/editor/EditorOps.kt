@@ -35,15 +35,62 @@ object EditorOps {
         val removedEnd = old.length - suffix
         val inserted = newText.substring(prefix, newText.length - suffix)
 
-        val splitsOnEnter = row.kind !is RowKind.Code && row.kind != RowKind.Raw
-        if (splitsOnEnter && removedEnd == prefix && inserted == "\n") return enter(doc, rowId, prefix)
+        // a single typed line break is the Enter key, in every kind of row (code inserts a line break, others split)
+        if (removedEnd == prefix && inserted == "\n" && row.kind != RowKind.Rule) return enter(doc, rowId, prefix)
 
-        val text = when (row.kind) {
-            is RowKind.Code, RowKind.Raw -> RichText(newText)
-            else -> row.text.replace(prefix, removedEnd, inserted, typingStyle)
-        }
+        val isPlain = row.kind is RowKind.Code || row.kind == RowKind.Raw
+        val replaced = if (isPlain) RichText(newText) else row.text.replace(prefix, removedEnd, inserted, typingStyle)
+        val text = if (row.kind is RowKind.Heading) singleLine(replaced) else replaced
+        val caretInText = caret.coerceIn(0, text.length)
+
+        // blank lines in a paragraph (pasted, or left behind by a deletion) are paragraph breaks
+        if (!isPlain && PARAGRAPH_BREAK.containsMatchIn(text.text)) return splitIntoParagraphs(doc, index, row, text, caretInText)
+
         val updated = doc.rows.toMutableList().also { it[index] = row.copy(text = text, touched = true) }
-        return Edit(doc.withRows(updated), Cursor(rowId, caret.coerceIn(0, text.length)))
+        return Edit(doc.withRows(updated), Cursor(rowId, caretInText))
+    }
+
+    /** A heading is one line: line breaks (from a paste) become spaces. */
+    private fun singleLine(t: RichText): RichText =
+        if ('\n' !in t.text) t else RichText.of(t.text.replace('\n', ' '), t.spans.filter { it.kind != SpanKind.HardBreak })
+
+    /** Joining two paragraphs must not leave a blank line (which a paragraph cannot contain): runs of line breaks become one. */
+    private fun collapseBlankLines(t: RichText): RichText {
+        var text = t
+        while (true) {
+            val m = PARAGRAPH_BREAK.find(text.text) ?: return text
+            // keep the first line break, drop the rest (and the whitespace between them)
+            text = text.replace(m.range.first + 1, m.range.last + 1, "")
+        }
+    }
+
+    private val PARAGRAPH_BREAK = Regex("\n[ \t]*\n[\\n \t]*")
+
+    /** The row's text contains blank lines (from a paste): the first part stays in the row, the others become paragraphs. */
+    private fun splitIntoParagraphs(doc: EditorDocument, index: Int, row: EditorRow, text: RichText, caret: Int): Edit {
+        val parts = ArrayList<IntRange>() // start..endExclusive-1 of each paragraph in [text]
+        var start = 0
+        for (m in PARAGRAPH_BREAK.findAll(text.text)) {
+            parts += start until m.range.first
+            start = m.range.last + 1
+        }
+        parts += start until text.length
+        val rows = doc.rows.toMutableList()
+        var next = doc.nextId
+        val created = ArrayList<EditorRow>()
+        var cursorRow = row.id
+        var cursorOffset = 0
+        for ((n, range) in parts.withIndex()) {
+            val slice = text.substring(range.first, range.last + 1)
+            val id = if (n == 0) row.id else next++
+            val contains = caret >= range.first && caret <= range.last + 1
+            val inGapBefore = n > 0 && caret > parts[n - 1].last + 1 && caret < range.first
+            if (contains || inGapBefore) { cursorRow = id; cursorOffset = if (inGapBefore) 0 else caret - range.first }
+            if (n == 0) rows[index] = row.copy(text = slice, touched = true)
+            else created += EditorRow(id, if (row.kind == RowKind.Quote) RowKind.Quote else RowKind.Paragraph, slice, 0, touched = true)
+        }
+        rows.addAll(index + 1, created)
+        return Edit(doc.withRows(rows, next), Cursor(cursorRow, cursorOffset))
     }
 
     // ---- Enter / Backspace -----------------------------------------------------------------------------------
@@ -132,7 +179,15 @@ object EditorOps {
         val rows = doc.rows.toMutableList()
         when (row.kind) {
             is RowKind.ListItem -> return if (row.depth > 0) outdent(doc, rowId) else toParagraph(doc, rowId)
-            is RowKind.Heading, RowKind.Quote, is RowKind.Code, RowKind.Raw -> return toParagraph(doc, rowId)
+            is RowKind.Heading, RowKind.Quote, is RowKind.Code -> return toParagraph(doc, rowId)
+            // unsupported Markdown is kept as it is: it cannot be turned into a paragraph (that would change its meaning),
+            // but once its text is gone the empty block is removed
+            RowKind.Raw -> {
+                if (!row.text.isEmpty) return Edit(doc, Cursor(rowId, 0))
+                rows.removeAt(index)
+                val target = rows.getOrNull(index - 1) ?: rows.getOrNull(index)
+                return Edit(doc.withRows(rows), Cursor(target?.id ?: rowId, 0))
+            }
             RowKind.Rule -> return Edit(doc, Cursor(rowId, 0))
             RowKind.Paragraph -> Unit
         }
@@ -144,9 +199,10 @@ object EditorOps {
             }
             RowKind.Paragraph, is RowKind.Heading, RowKind.Quote, is RowKind.ListItem -> {
                 val at = previous.text.length
-                rows[index - 1] = previous.copy(text = previous.text.plus(row.text), touched = true)
+                val joined = collapseBlankLines(previous.text.plus(row.text))
+                rows[index - 1] = previous.copy(text = joined, touched = true)
                 rows.removeAt(index)
-                Edit(doc.withRows(rows), Cursor(previous.id, at))
+                Edit(doc.withRows(rows), Cursor(previous.id, minOf(at, joined.length)))
             }
             is RowKind.Code, RowKind.Raw -> {
                 if (row.text.isEmpty) { // only an empty line is removed; never merge text into code
@@ -227,7 +283,11 @@ object EditorOps {
         if (row.kind == kind) return Edit(doc, Cursor(rowId, 0))
         val rows = doc.rows.toMutableList()
         val toCode = kind is RowKind.Code
-        val text = if (toCode) RichText(row.text.text) else row.text
+        val text = when {
+            toCode -> RichText(row.text.text)
+            kind is RowKind.Heading -> singleLine(row.text)
+            else -> row.text
+        }
         // a row inside a list leaves it; its nested items stay (their depth is repaired by the document)
         rows[index] = row.copy(kind = kind, text = text, depth = 0, touched = true)
         return Edit(doc.withRows(rows), Cursor(rowId, text.length))
