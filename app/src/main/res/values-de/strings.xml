@@ -9,7 +9,7 @@
     <string name="section_trash">PAPIERKORB</string>
     <string name="files_empty">Noch keine Notizen</string>
     <string name="trash_empty">Der Papierkorb ist leer</string>
-    <string name="untitled">Neue Notiz</string>
+    <string name="untitled">Unbenannt</string>
     <string name="tab_new_note">Neue Notiz</string>
     <string name="editor_hint">Hier tippen …</string>
     <string name="open_drawer">Navigation öffnen</string>

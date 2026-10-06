@@ -70,11 +70,23 @@ class NoteEditor(
         save()
     }
 
-    /** Renames the note, creating it first if it is a draft with real content. Returns false for blank drafts. */
+    /**
+     * Renames the note and marks the title as the user's own ([NoteInfo.hasExplicitTitle]): it no longer follows the first line.
+     * A draft with text is created first. A blank draft is created too - giving an empty note a name is a deliberate act, so the
+     * (empty) note exists from then on and does not vanish because its body is empty. A name that is not valid or already taken
+     * is refused *before* anything is created.
+     */
     suspend fun rename(newTitle: String): Boolean {
+        if (readOnly) return false
         save()
         return mutex.withLock {
-            val current = info ?: return@withLock false
+            val current = info ?: run {
+                val wanted = NoteFileName.sanitizeOrNull(newTitle) ?: throw InvalidNoteNameException(newTitle)
+                if (repository.listNotes().any { it.title.equals(wanted, ignoreCase = true) }) throw NoteNameConflictException(wanted)
+                val created = repository.createNote(text)
+                savedText = text
+                if (smartOnCreate) repository.setSmartChecklist(created.id, true) else created
+            }
             info = repository.renameNote(current.id, newTitle)
             true
         }

@@ -201,6 +201,12 @@ class NotesViewModel(
     /** Rename/Delete make sense once there is a note or at least text that would become one. */
     val hasNote: Boolean get() = current != null || text.isNotBlank()
 
+    /** Any open note can be given a name - also a blank page: naming it makes it a (still empty) note. Not external documents. */
+    val canRename: Boolean get() = current?.isExternal != true
+
+    /** The user named the open note: tapping its title does not rename it (a long press does); an automatic title is renamed by a tap. */
+    val hasExplicitTitle: Boolean get() = current?.hasExplicitTitle == true
+
     // The latest session state wins; writes are strictly ordered. A failed write is not fatal: the session is
     // disposable and the next change writes it again.
     private val sessionChanges = Channel<PersistedSession>(Channel.CONFLATED)

@@ -11,7 +11,7 @@
     <string name="files_empty">No notes yet</string>
     <string name="trash_empty">Trash is empty</string>
 
-    <string name="untitled">New note</string>
+    <string name="untitled">Untitled</string>
     <string name="tab_new_note">New note</string>
     <string name="editor_hint">Start typing…</string>
     <string name="open_drawer">Open navigation</string>

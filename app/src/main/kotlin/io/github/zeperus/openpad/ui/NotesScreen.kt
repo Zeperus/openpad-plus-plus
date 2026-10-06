@@ -197,12 +197,24 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
             topBar = {
                 TopAppBar(
                     title = {
+                        val renameLabel = stringResource(R.string.dialog_rename_title)
+                        // An automatic title (the first line, or "Untitled") is renamed by a tap; a title the user chose only by a
+                        // long press, so that it is not changed by accident. External documents keep their file name.
+                        val canRename = vm.canRename
                         Text(
                             text = (vm.current?.title ?: stringResource(R.string.untitled)) +
                                 if (vm.readOnly) " \u00B7 " + stringResource(R.string.read_only_short) else "",
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.testTag("title"),
+                            modifier = Modifier
+                                .combinedClickable(
+                                    enabled = canRename,
+                                    onClickLabel = renameLabel.takeIf { !vm.hasExplicitTitle },
+                                    onLongClickLabel = renameLabel,
+                                    onClick = { if (!vm.hasExplicitTitle) dialog = Dialog.Rename },
+                                    onLongClick = { dialog = Dialog.Rename },
+                                )
+                                .testTag("title"),
                         )
                     },
                     navigationIcon = {
@@ -270,7 +282,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_rename)) },
-                                enabled = vm.hasNote && vm.current?.isExternal != true,
+                                enabled = vm.canRename,
                                 onClick = { menuOpen = false; dialog = Dialog.Rename },
                             )
                             DropdownMenuItem(
@@ -380,7 +392,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
     when (val d = dialog) {
         null -> Unit
         Dialog.Rename -> RenameDialog(
-            initial = vm.current?.title.orEmpty(),
+            initial = vm.current?.title.orEmpty(), // a blank page has no name yet: the field starts empty
             onRename = { vm.rename(it) },
             onDismiss = { dialog = null },
         )

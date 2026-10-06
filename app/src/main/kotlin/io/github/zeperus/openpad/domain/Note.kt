@@ -32,6 +32,12 @@ data class NoteInfo(
     /** The folder the note is filed in (metadata only; the `.md` file does not move). Null = not in a folder. */
     val folderId: String? = null,
 ) {
+    /**
+     * The user named the note. An automatic title (the first line, or "Untitled") is only a suggestion and follows the text; an
+     * explicit one never changes by itself. Metadata only (`index.json`), never written into the Markdown.
+     */
+    val hasExplicitTitle: Boolean get() = !autoTitle
+
     val isTrashed: Boolean get() = trashedAt != null
 
     val isExternal: Boolean get() = externalUri != null
