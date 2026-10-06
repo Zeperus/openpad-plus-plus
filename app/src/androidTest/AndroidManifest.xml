@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- A Storage Access Framework provider with documents of every kind of capability, for the external-file tests. Only the test
+             process hands out URIs to it (with or without write grants), exactly like a file manager's "Open with". -->
+        <provider
+            android:name="io.github.zeperus.openpad.TestDocumentsProvider"
+            android:authorities="io.github.zeperus.openpad.test.documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+    </application>
+</manifest>
