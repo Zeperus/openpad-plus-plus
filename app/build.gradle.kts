@@ -19,7 +19,23 @@ android {
         testInstrumentationRunnerArguments["clearPackageData"] = "true"
     }
 
+    // The Alpha line is signed with ONE stable certificate (the one of v0.1.0-alpha.1/2). Its keystore lives outside the repository
+    // (~/.openpad-signing, see docs/storage.md "Signing"): when OPENPAD_KEYSTORE is set the debug build uses it, otherwise
+    // Gradle falls back to its default debug key (fine for development and CI, but such APKs cannot update an Alpha install).
+    val alphaKeystore: String? = providers.environmentVariable("OPENPAD_KEYSTORE").orNull
+    if (alphaKeystore != null) {
+        signingConfigs.create("alpha") {
+            storeFile = file(alphaKeystore)
+            storePassword = providers.environmentVariable("OPENPAD_KEYSTORE_PASSWORD").orNull
+            keyAlias = providers.environmentVariable("OPENPAD_KEY_ALIAS").orNull
+            keyPassword = providers.environmentVariable("OPENPAD_KEY_PASSWORD").orNull
+        }
+    }
+
     buildTypes {
+        debug {
+            if (alphaKeystore != null) signingConfig = signingConfigs.getByName("alpha")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
