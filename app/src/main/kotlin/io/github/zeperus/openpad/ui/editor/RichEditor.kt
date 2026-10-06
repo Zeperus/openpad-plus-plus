@@ -237,12 +237,13 @@ private fun RowView(
         Box(Modifier.width(if (list != null) 30.dp else 0.dp).height(if (list != null) 26.dp else 0.dp), contentAlignment = Alignment.CenterStart) {
             if (list != null) {
                 if (checked != null) {
+                    val taskLabel = stringResource(if (checked) R.string.task_done_description else R.string.task_open_description, row.text.text.take(60))
                     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 26.dp) {
                         Checkbox(
                             checked = checked,
                             onCheckedChange = { vm.setChecked(row.id, it) },
                             enabled = !readOnly,
-                            modifier = Modifier.size(26.dp).testTag("checkbox"),
+                            modifier = Modifier.size(26.dp).semantics { contentDescription = taskLabel }.testTag("checkbox"),
                         )
                     }
                 } else {

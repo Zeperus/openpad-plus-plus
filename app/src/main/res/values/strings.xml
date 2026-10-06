@@ -153,4 +153,7 @@
     <string name="dialog_delete_folder_message">The empty folder “%1$s” will be deleted.</string>
     <string name="dialog_delete_folder_confirm">Delete folder</string>
     <string name="message_folder_not_empty">Only an empty folder can be deleted. Move its notes out first.</string>
+
+    <string name="task_open_description">Task, not done: %1$s</string>
+    <string name="task_done_description">Task, done: %1$s</string>
 </resources>

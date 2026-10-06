@@ -56,6 +56,16 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.PermanentDrawerSheet
+import androidx.compose.material3.PermanentNavigationDrawer
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -124,7 +134,7 @@ fun NotesScreen(vm: NotesViewModel) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
 private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenSearch: () -> Unit) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -157,24 +167,23 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
         }
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            ModalDrawerSheet {
-                DrawerContent(
-                    vm = vm,
-                    onNewNote = { vm.newNote(); scope.launch { drawerState.close() } },
-                    onNewChecklist = { vm.newChecklist(); scope.launch { drawerState.close() } },
-                    onOpenFile = { scope.launch { drawerState.close() }; openFile.launch(arrayOf("*/*")) },
-                    onOpen = { vm.openNote(it.id); scope.launch { drawerState.close() } },
-                    onPurge = { dialog = Dialog.Purge(it) },
-                    onNewFolder = { dialog = Dialog.NewFolder },
-                    onRenameFolder = { dialog = Dialog.RenameFolder(it) },
-                    onDeleteFolder = { dialog = Dialog.DeleteFolder(it) },
-                )
-            }
-        },
-    ) {
+    // A wide window (tablet, unfolded foldable, desktop mode) keeps the navigation visible next to the editor; a phone slides it in.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val wide = WindowSizeClass.calculateFromSize(DpSize(maxWidth, maxHeight)).widthSizeClass == WindowWidthSizeClass.Expanded
+    val drawerBody: @Composable () -> Unit = {
+        DrawerContent(
+            vm = vm,
+            onNewNote = { vm.newNote(); scope.launch { drawerState.close() } },
+            onNewChecklist = { vm.newChecklist(); scope.launch { drawerState.close() } },
+            onOpenFile = { scope.launch { drawerState.close() }; openFile.launch(arrayOf("*/*")) },
+            onOpen = { vm.openNote(it.id); scope.launch { drawerState.close() } },
+            onPurge = { dialog = Dialog.Purge(it) },
+            onNewFolder = { dialog = Dialog.NewFolder },
+            onRenameFolder = { dialog = Dialog.RenameFolder(it) },
+            onDeleteFolder = { dialog = Dialog.DeleteFolder(it) },
+        )
+    }
+    val content: @Composable () -> Unit = {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
@@ -187,8 +196,10 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                         )
                     },
                     navigationIcon = {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.open_drawer))
+                        if (!wide) {
+                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.open_drawer))
+                            }
                         }
                     },
                     actions = {
@@ -295,7 +306,9 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                 )
             },
         ) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
+            Box(Modifier.fillMaxSize().padding(padding).imePadding(), contentAlignment = Alignment.TopCenter) {
+                // the writing area stays a comfortable width on a big screen
+                Column(Modifier.fillMaxHeight().widthIn(max = 920.dp)) {
                 if (vm.ready) {
                     TabStrip(vm)
                     FindBar(vm)
@@ -313,8 +326,22 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                     RichEditor(vm, Modifier.fillMaxWidth().weight(1f))
                     if (vm.docSelection != null) SelectionBar(vm) else if (!vm.readOnly) FormattingBar(vm)
                 }
+                }
             }
         }
+    }
+    if (wide) {
+        PermanentNavigationDrawer(
+            drawerContent = { PermanentDrawerSheet(Modifier.width(320.dp).testTag("sidebar")) { drawerBody() } },
+            content = content,
+        )
+    } else {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = { ModalDrawerSheet { drawerBody() } },
+            content = content,
+        )
+    }
     }
 
     when (val d = dialog) {

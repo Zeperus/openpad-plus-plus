@@ -12,7 +12,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -189,7 +189,7 @@ private fun BarButton(text: String, description: String, enabled: Boolean = true
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .height(48.dp)
+            .heightIn(min = 48.dp)
             .padding(horizontal = 2.dp)
             .clip(RoundedCornerShape(8.dp))
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)

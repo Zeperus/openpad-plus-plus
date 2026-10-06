@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -142,8 +144,8 @@ private fun FormatButton(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .padding(horizontal = 1.dp)
-            .height(38.dp)
-            .width(if (wide) 46.dp else 38.dp)
+            .heightIn(min = 48.dp) // the recommended touch target; the bar scrolls sideways instead of shrinking the buttons
+            .widthIn(min = if (wide) 52.dp else 44.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(if (selected) colors.secondaryContainer else Color.Transparent)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
