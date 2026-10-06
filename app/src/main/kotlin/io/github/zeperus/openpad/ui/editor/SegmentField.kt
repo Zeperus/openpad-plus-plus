@@ -170,8 +170,7 @@ internal class SegmentController(
         val seg = current() ?: return offset
         if (l.layoutInput.text.length != seg.displayLength) return offset
         val line = l.getLineForVerticalPosition(y).coerceIn(0, l.lineCount - 1)
-        val row = seg.rowIndexAt(max(0, l.getLineStart(line) - 1))
-        return min(offset, seg.end(row) + 1)
+        return seg.clampTapToRowOfLine(offset, l.getLineStart(line))
     }
 
     /** The model's version of this field, found through any of its rows. */
@@ -423,6 +422,14 @@ internal fun SegmentField(
     // where the user moves the caret or the selection (also across rows) is told to the model
     LaunchedEffect(state) {
         snapshotFlow { state.selection }.collect { selection ->
+            // a caret from a tap that got past the input transformation is corrected here (the same check, once per touch)
+            if (selection.collapsed) {
+                val fixed = controller.correctedTapOffset(selection.start)
+                if (fixed != selection.start) {
+                    state.edit { this.selection = TextRange(fixed) }
+                    return@collect
+                }
+            }
             val seg = controller.current() ?: return@collect
             if (state.text.length == seg.text.length + 1) vm.onFieldSelection(seg, max(0, selection.start - 1), max(0, selection.end - 1))
         }
@@ -510,7 +517,7 @@ internal fun SegmentField(
                             val change = event.changes.firstOrNull() ?: continue
                             if (event.type == PointerEventType.Press || event.type == PointerEventType.Release) {
                                 controller.lastTouch = change.position
-                                controller.lastTouchAt = change.uptimeMillis
+                                controller.lastTouchAt = SystemClock.uptimeMillis() // our own clock: injected test events carry the test clock's times
                             }
                         }
                     }

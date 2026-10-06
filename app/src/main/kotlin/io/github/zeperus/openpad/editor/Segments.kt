@@ -29,6 +29,14 @@ class Segment(val rows: List<EditorRow>) {
      */
     val displayLength: Int get() = text.length + 1 + (if (rows.last().text.isEmpty) 1 else 0)
 
+    /**
+     * A caret that a tap put at [displayOffset] (the field's offsets: one more than the segment's, because of the invisible first
+     * character) on the visual line that starts at [lineStart], limited to the row that owns that line. The layout puts a tap to the
+     * right of a row's last line behind the invisible character that ends the row, which is the start of the next row.
+     */
+    fun clampTapToRowOfLine(displayOffset: Int, lineStart: Int): Int =
+        minOf(displayOffset, end(rowIndexAt(maxOf(0, lineStart - 1))) + 1)
+
     fun start(index: Int): Int = starts[index]
 
     fun end(index: Int): Int = starts[index] + rows[index].text.length
