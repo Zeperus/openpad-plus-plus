@@ -212,6 +212,10 @@ class EditorDocument internal constructor(
     companion object {
         fun empty(): EditorDocument = fromMarkdown("")
 
+        /** A document made of ready-made rows (a clipboard excerpt, ...): no original text, so everything is written afresh. */
+        fun fromRows(rows: List<EditorRow>): EditorDocument =
+            EditorDocument(rows, null, null, (rows.maxOfOrNull { it.id } ?: 0L) + 1, pristine = false)
+
         /** A blank checklist: one empty, unchecked task item to type into. It writes no Markdown until it has text. */
         fun emptyChecklist(): EditorDocument {
             val blank = fromMarkdown("")

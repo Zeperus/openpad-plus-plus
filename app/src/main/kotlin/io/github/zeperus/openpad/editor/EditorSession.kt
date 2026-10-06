@@ -157,6 +157,26 @@ class EditorSession(
 
     fun insertRule(): Boolean = cursor?.let { commit(EditorOps.insertRule(doc, it.rowId)) } ?: false
 
+    // ---- Selections that span rows ---------------------------------------------------------------------------
+
+    fun selectedText(sel: DocumentSelection): String = DocumentSelections.plainText(doc, sel)
+
+    fun selectedMarkdown(sel: DocumentSelection): String = DocumentSelections.markdown(doc, sel)
+
+    /** Removes the selected content (Cut / Delete) as one undo step; the caret ends up where the selection started. */
+    fun deleteSelection(sel: DocumentSelection): Boolean = withSelectionStart(sel) { DocumentSelections.delete(doc, sel) }
+
+    /** Replaces the selection by pasted [text] (plain text) as one undo step. */
+    fun replaceSelection(sel: DocumentSelection, text: String): Boolean =
+        withSelectionStart(sel) { DocumentSelections.replace(doc, sel, text, smartChecklist) }
+
+    private inline fun withSelectionStart(sel: DocumentSelection, edit: () -> Edit?): Boolean {
+        val (start, _) = DocumentSelections.ordered(doc, sel) ?: return false
+        cursor = Cursor(start.rowId, start.offset) // what Undo brings back
+        val result = edit() ?: return false
+        return commit(result)
+    }
+
     // ---- Undo / redo -----------------------------------------------------------------------------------------
 
     fun undo(): Boolean = history.undo(Snapshot(doc, cursor))?.let { restore(it); true } ?: false

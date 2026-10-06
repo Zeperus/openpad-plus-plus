@@ -51,11 +51,11 @@ object EditorOps {
     }
 
     /** A heading is one line: line breaks (from a paste) become spaces. */
-    private fun singleLine(t: RichText): RichText =
+    internal fun singleLine(t: RichText): RichText =
         if ('\n' !in t.text) t else RichText.of(t.text.replace('\n', ' '), t.spans.filter { it.kind != SpanKind.HardBreak })
 
     /** Joining two paragraphs must not leave a blank line (which a paragraph cannot contain): runs of line breaks become one. */
-    private fun collapseBlankLines(t: RichText): RichText {
+    internal fun collapseBlankLines(t: RichText): RichText {
         var text = t
         while (true) {
             val m = PARAGRAPH_BREAK.find(text.text) ?: return text
