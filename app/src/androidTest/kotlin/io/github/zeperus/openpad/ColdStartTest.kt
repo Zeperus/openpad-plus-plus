@@ -51,9 +51,11 @@ class ColdStartTest {
             assertNotNull("note is missing from FILES after a cold start", entry)
             entry.click()
 
-            val editor = device.wait(Until.findObject(By.clazz("android.widget.EditText")), TIMEOUT)
-            assertNotNull("editor not shown", editor)
-            assertEquals(markdown, editor.text)
+            // the formatted editor shows one text field per row, without any Markdown syntax
+            val rows = { device.findObjects(By.clazz("android.widget.EditText")).map { (it.text ?: "").removePrefix("\u200B") } }
+            val deadline = System.currentTimeMillis() + TIMEOUT
+            while (rows() != listOf("Cold start", "body text", "item") && System.currentTimeMillis() < deadline) Thread.sleep(200)
+            assertEquals(listOf("Cold start", "body text", "item"), rows())
         }
     }
 

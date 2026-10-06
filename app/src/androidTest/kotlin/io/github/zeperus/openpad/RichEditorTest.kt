@@ -59,9 +59,29 @@ class RichEditorTest {
         ids.map { File(notesDir, it.value + ".md") }
     }
 
-    private fun waitForRows(expected: List<String>) = rule.waitUntil(timeoutMillis = 8_000) { rule.rowTexts() == expected }
+    /** Waits until [condition] holds; the failure says what was there instead of just timing out. */
+    private fun waitFor(what: String, actual: () -> String, condition: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + 8_000
+        while (!condition()) {
+            if (System.currentTimeMillis() > deadline) throw AssertionError("$what; found: ${actual()}")
+            Thread.sleep(100)
+            rule.waitForIdle()
+        }
+    }
 
-    private fun waitForFile(file: File, text: String) = rule.waitUntil(timeoutMillis = 8_000) { file.exists() && file.readText() == text }
+    private fun waitForRows(expected: List<String>) =
+        waitFor("rows $expected", { rule.rowTexts().toString() }) { rule.rowTexts() == expected }
+
+    private fun waitForFile(file: File, text: String) =
+        waitFor("file ${file.name} = ${text.replace("\n", "⏎")}", { if (file.exists()) file.readText().replace("\n", "⏎") else "<missing>" }) {
+            file.exists() && file.readText() == text
+        }
+
+    /** The only note file, once it exists, has this content. */
+    private fun waitForOnlyFile(text: String) {
+        waitFor("a note file", { mdFiles().toString() }) { mdFiles().size == 1 }
+        waitForOnlyFile(text)
+    }
 
     private fun mdFiles() = notesDir.listFiles { f -> f.name.endsWith(".md") }.orEmpty().toList()
 
@@ -92,12 +112,12 @@ class RichEditorTest {
         launch()
         waitForRows(listOf("Hello"))
         rule.typeInLastRow(" world")
-        waitForFile(files[0], "Hello world")
+        waitForFile(files[0], "Hello world\n")
         rule.onAllNodes(hasTestTag("tab") and hasText("Other")).onFirst().performClick()
         waitForRows(listOf("Other"))
         rule.onAllNodes(hasTestTag("tab") and hasText("Hello world")).onFirst().performClick()
         waitForRows(listOf("Hello world"))
-        assertEquals("Hello world", files[0].readText())
+        assertEquals("Hello world\n", files[0].readText())
     }
 
     @Test fun anUntouchedNoteIsNeverRewritten() {
@@ -171,8 +191,7 @@ class RichEditorTest {
         rule.typeInLastRow("\n") // Enter on the empty item leaves the list
         rule.typeInLastRow("after")
         waitForRows(listOf("milk", "bread", "after"))
-        val file = mdFiles().single()
-        waitForFile(file, "- milk\n- bread\n\nafter\n")
+        waitForOnlyFile("- milk\n- bread\n\nafter\n")
     }
 
     @Test fun numberedListIsNumbered() {
@@ -182,7 +201,7 @@ class RichEditorTest {
         rule.typeInLastRow("\n")
         rule.typeInLastRow("two")
         waitForRows(listOf("one", "two"))
-        waitForFile(mdFiles().single(), "1. one\n2. two\n")
+        waitForOnlyFile("1. one\n2. two\n")
         assertEquals(listOf("1.", "2."), rule.onAllNodes(hasTestTag("marker")).fetchSemanticsNodes().map {
             it.config.getOrNull(SemanticsProperties.Text)?.joinToString("") { t -> t.text } ?: ""
         })
@@ -192,10 +211,10 @@ class RichEditorTest {
         launch()
         rule.typeInLastRow("item")
         rule.formatButton("Bulleted list").performClick()
-        waitForFile(mdFiles().single(), "- item\n")
+        waitForOnlyFile("- item\n")
         rule.row(0).performTextInputSelection(TextRange(1))
         rule.row(0).performKeyInput { keyDown(Key.Backspace); keyUp(Key.Backspace) }
-        waitForFile(mdFiles().single(), "item\n")
+        waitForOnlyFile("item\n")
     }
 
     // ---- E. Checkboxes ---------------------------------------------------------------------------------------
@@ -218,7 +237,7 @@ class RichEditorTest {
         launch()
         waitForRows(listOf("One"))
         rule.typeInLastRow("!")
-        waitForFile(files[0], "One!")
+        waitForFile(files[0], "One!\n")
         rule.onAllNodes(hasTestTag("tab") and hasText("Two")).onFirst().performClick()
         waitForRows(listOf("Two"))
         rule.onAllNodes(hasTestTag("tab") and hasText("One!")).onFirst().performClick()
@@ -251,7 +270,7 @@ class RichEditorTest {
         val uri: Uri = FileProvider.getUriForFile(app, ShareHelper.authority(app), file)
         val intent = Intent(app, MainActivity::class.java).setAction(Intent.ACTION_VIEW).setDataAndType(uri, "text/markdown")
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-        scenario = ActivityScenario.launch(intent)
+        ActivityScenario.launch<MainActivity>(intent) // not closed: with singleTask, close() waits 45 s (see ExternalFlowTest)
         waitForRows(listOf("Plan", "one"))
         rule.onAllNodes(hasTestTag("checkbox")).onFirst().performClick()
         rule.waitUntil(timeoutMillis = 8_000) { file.readText() == "# Plan\n\n- [x] one\n" }
