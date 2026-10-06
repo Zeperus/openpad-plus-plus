@@ -31,6 +31,20 @@ interface NoteRepository {
     /** Switches smart checklist mode on/off for an active note. Pure metadata: the `.md` file is not touched. */
     suspend fun setSmartChecklist(id: NoteId, enabled: Boolean): NoteInfo
 
+    /** Folders, sorted by name (case-insensitive). */
+    suspend fun listFolders(): List<FolderInfo>
+
+    /** Creates a folder. Throws [InvalidFolderNameException] or [FolderNameConflictException]. */
+    suspend fun createFolder(name: String): FolderInfo
+
+    suspend fun renameFolder(id: String, name: String): FolderInfo
+
+    /** Deletes an *empty* folder (no active notes in it); otherwise [FolderNotEmptyException]. Notes are never deleted with it. */
+    suspend fun deleteFolder(id: String)
+
+    /** Files an active note in [folderId], or takes it out of its folder with null. Pure metadata. */
+    suspend fun moveNote(id: NoteId, folderId: String?): NoteInfo
+
     /** Records that an active note just became the open note (feeds Recent). */
     suspend fun markOpened(id: NoteId): NoteInfo
 
@@ -60,6 +74,14 @@ class NoteNotInTrashException(id: NoteId) : NoteStorageException("Note is not in
 class InvalidNoteNameException(name: String) : NoteStorageException("Invalid note name: '$name'")
 
 class NoteNameConflictException(name: String) : NoteStorageException("A note named '$name' already exists")
+
+class InvalidFolderNameException(name: String) : NoteStorageException("Invalid folder name: '$name'")
+
+class FolderNameConflictException(name: String) : NoteStorageException("A folder named '$name' already exists")
+
+class FolderNotFoundException(id: String) : NoteStorageException("No such folder: $id")
+
+class FolderNotEmptyException(name: String) : NoteStorageException("The folder '$name' still contains notes")
 
 /** The note's file is not valid UTF-8; it is left untouched so nothing gets corrupted by an overwrite. */
 class NoteUnreadableException(title: String, cause: Throwable? = null) :

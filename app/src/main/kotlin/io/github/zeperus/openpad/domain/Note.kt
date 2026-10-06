@@ -29,6 +29,8 @@ data class NoteInfo(
      * ones. Off for every note until the user switches it on; plain Markdown task lists keep their order.
      */
     val smartChecklist: Boolean = false,
+    /** The folder the note is filed in (metadata only; the `.md` file does not move). Null = not in a folder. */
+    val folderId: String? = null,
 ) {
     val isTrashed: Boolean get() = trashedAt != null
 
@@ -40,3 +42,6 @@ data class NoteInfo(
 
 /** [readOnly]: the provider does not allow writing (e.g. a file opened with a read-only grant). */
 data class NoteContent(val info: NoteInfo, val text: String, val readOnly: Boolean = false)
+
+/** A simple one-level folder, kept as metadata in the index. Notes in it are still plain `.md` files with their own stable ids. */
+data class FolderInfo(val id: String, val name: String)

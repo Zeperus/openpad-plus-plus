@@ -76,6 +76,90 @@ class FileNoteRepositoryMetadataTest {
         assertFalse(repo().listNotes().single().smartChecklist)
     }
 
+    // ---- Folders ---------------------------------------------------------------------------------------------
+
+    @Test fun `folders are created, renamed, listed sorted and persist`() = runBlocking {
+        val r = repo()
+        r.createFolder("Work")
+        val home = r.createFolder("  home   stuff ")
+        assertEquals(listOf("home stuff", "Work"), repo().listFolders().map { it.name })
+        assertEquals("Private", r.renameFolder(home.id, "Private").name)
+        assertEquals(listOf("Private", "Work"), repo().listFolders().map { it.name })
+    }
+
+    @Test fun `folder names are validated`() = runBlocking {
+        val r = repo()
+        r.createFolder("Work")
+        for (bad in listOf("", "   ", "a\nb", "x".repeat(61))) {
+            try { r.createFolder(bad); fail("accepted '$bad'") } catch (e: io.github.zeperus.openpad.domain.InvalidFolderNameException) { /* expected */ }
+        }
+        try { r.createFolder("WORK"); fail("duplicate accepted") } catch (e: io.github.zeperus.openpad.domain.FolderNameConflictException) { /* expected */ }
+        val other = r.createFolder("Other")
+        try { r.renameFolder(other.id, "work"); fail("rename to duplicate accepted") } catch (e: io.github.zeperus.openpad.domain.FolderNameConflictException) { /* expected */ }
+        assertEquals("Other", r.renameFolder(other.id, "Other").name) // renaming to itself is fine
+    }
+
+    @Test fun `a note can be moved into a folder and back, nothing else changes`() = runBlocking {
+        val r = repo()
+        val folder = r.createFolder("Work")
+        val a = r.createNote("Alpha text")
+        val before = File(root, "notes/${a.id.value}.md").readBytes()
+        val moved = r.moveNote(a.id, folder.id)
+        assertEquals(folder.id, moved.folderId)
+        assertEquals(a.title, moved.title)
+        assertEquals(a.id, moved.id)
+        assertTrue(before.contentEquals(File(root, "notes/${a.id.value}.md").readBytes())) // the file does not move or change
+        assertEquals(folder.id, repo().listNotes().single().folderId) // persisted
+        assertNull(repo().moveNote(a.id, null).folderId)
+        try { repo().moveNote(a.id, "no-such-folder"); fail("moved into a missing folder") } catch (e: io.github.zeperus.openpad.domain.FolderNotFoundException) { /* expected */ }
+    }
+
+    @Test fun `only an empty folder can be deleted and its notes are never lost`() = runBlocking {
+        val r = repo()
+        val folder = r.createFolder("Work")
+        val a = r.createNote("Alpha")
+        r.moveNote(a.id, folder.id)
+        try { r.deleteFolder(folder.id); fail("deleted a folder with notes") } catch (e: io.github.zeperus.openpad.domain.FolderNotEmptyException) { /* expected */ }
+        assertEquals(1, repo().listNotes().size)
+        r.moveNote(a.id, null)
+        r.deleteFolder(folder.id)
+        assertTrue(repo().listFolders().isEmpty())
+        assertEquals(1, repo().listNotes().size)
+    }
+
+    @Test fun `favorites and recent do not care about folders and trash keeps the folder until it is deleted`() = runBlocking {
+        val r = repo()
+        val folder = r.createFolder("Work")
+        val a = r.createNote("Alpha")
+        r.setFavorite(a.id, true)
+        r.moveNote(a.id, folder.id)
+        assertTrue(r.listNotes().single().favorite)
+        r.moveToTrash(a.id)
+        r.deleteFolder(folder.id) // only a trashed note was in it: allowed, the note comes back unfiled
+        val restored = r.restoreFromTrash(a.id)
+        assertNull(restored.folderId)
+        assertTrue(restored.favorite)
+    }
+
+    @Test fun `an index from an older version loads without folders`() = runBlocking {
+        val r = repo()
+        r.createNote("Old note")
+        File(root, "index.json").writeText(File(root, "index.json").readText().replace(Regex("\"folders\"[^]]*]"), "").replace(",\n  \n", "\n"))
+        val loaded = repo()
+        assertEquals(1, loaded.listNotes().size)
+        assertTrue(loaded.listFolders().isEmpty())
+    }
+
+    @Test fun `a note filed in a folder that vanished from the index is unfiled on load`() = runBlocking {
+        val r = repo()
+        val folder = r.createFolder("Work")
+        val a = r.createNote("Alpha")
+        r.moveNote(a.id, folder.id)
+        val text = File(root, "index.json").readText().replace(Regex("\"folders\": \\[.*?\\]", RegexOption.DOT_MATCHES_ALL), "\"folders\": []")
+        File(root, "index.json").writeText(text)
+        assertNull(repo().listNotes().single().folderId)
+    }
+
     @Test fun `favorite survives a rename and later edits`() = runBlocking {
         val r = repo()
         val a = r.createNote("Old")
@@ -190,7 +274,7 @@ class FileNoteRepositoryMetadataTest {
         assertEquals(listOf(50L, 60L), notes.map { it.lastOpenedAt })
         assertEquals(listOf("Beta", "Alpha"), NoteLists.recent(notes).map { it.title })
         // rewritten with the current version, so the seeding happens exactly once
-        assertTrue(File(root, "index.json").readText().contains("\"version\": 4"))
+        assertTrue(File(root, "index.json").readText().contains("\"version\": 5"))
     }
 
     @Test fun `seeding happens once - a later restart keeps explicitly stored timestamps`() = runBlocking {
@@ -251,6 +335,6 @@ class FileNoteRepositoryMetadataTest {
         )
         val note = repo().listNotes().single()
         assertNull(note.lastOpenedAt) // not invented by the upgrade
-        assertTrue(File(root, "index.json").readText().contains("\"version\": 4"))
+        assertTrue(File(root, "index.json").readText().contains("\"version\": 5"))
     }
 }

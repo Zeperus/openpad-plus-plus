@@ -2,6 +2,11 @@ package io.github.zeperus.openpad.data
 
 import io.github.zeperus.openpad.domain.ExternalDocuments
 import io.github.zeperus.openpad.domain.ExternalNotSupportedException
+import io.github.zeperus.openpad.domain.FolderInfo
+import io.github.zeperus.openpad.domain.FolderNameConflictException
+import io.github.zeperus.openpad.domain.FolderNotEmptyException
+import io.github.zeperus.openpad.domain.FolderNotFoundException
+import io.github.zeperus.openpad.domain.InvalidFolderNameException
 import io.github.zeperus.openpad.domain.InvalidNoteNameException
 import io.github.zeperus.openpad.domain.NoExternalDocuments
 import io.github.zeperus.openpad.domain.NoteSourceUnavailableException
@@ -74,9 +79,13 @@ class FileNoteRepository internal constructor(
 
     private val mutex = Mutex()
     private var entries: MutableMap<String, Entry>? = null
+    private var folders: MutableMap<String, FolderEntry> = LinkedHashMap() // reloaded together with [entries]
 
     @Serializable
-    private data class IndexData(val version: Int = 0, val notes: List<Entry> = emptyList())
+    private data class IndexData(val version: Int = 0, val notes: List<Entry> = emptyList(), val folders: List<FolderEntry> = emptyList())
+
+    @Serializable
+    private data class FolderEntry(val id: String, val name: String)
 
     @Serializable
     private data class Entry(
@@ -90,6 +99,8 @@ class FileNoteRepository internal constructor(
         val lastOpenedAt: Long? = null,
         /** Smart checklist mode of this note (absent in older indexes = off). */
         val smartChecklist: Boolean = false,
+        /** The folder this note is filed in (absent = none). */
+        val folderId: String? = null,
         /** Only present in version-1 indexes, where files were named after their title. Never written. */
         val fileName: String? = null,
         /** The `content://` URI of an external document; null for internal notes. */
@@ -99,7 +110,7 @@ class FileNoteRepository internal constructor(
         /** For external documents: the file started with a UTF-8 byte order mark, which is kept when writing. */
         val bom: Boolean = false,
     ) {
-        fun toInfo() = NoteInfo(NoteId(id), title, createdAt, updatedAt, trashedAt, autoTitle, favorite, lastOpenedAt, uri, smartChecklist)
+        fun toInfo() = NoteInfo(NoteId(id), title, createdAt, updatedAt, trashedAt, autoTitle, favorite, lastOpenedAt, uri, smartChecklist, folderId)
     }
 
     override suspend fun createNote(text: String): NoteInfo = locked { notes ->
@@ -185,6 +196,57 @@ class FileNoteRepository internal constructor(
         notes[entry.id] = updated
         persist(notes)
         updated.toInfo()
+    }
+
+    // ---- Folders (metadata only) -----------------------------------------------------------------------------
+
+    override suspend fun listFolders(): List<FolderInfo> = locked {
+        folders.values.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }).map { FolderInfo(it.id, it.name) }
+    }
+
+    override suspend fun createFolder(name: String): FolderInfo = locked { notes ->
+        val clean = cleanFolderName(name)
+        if (folders.values.any { it.name.equals(clean, ignoreCase = true) }) throw FolderNameConflictException(clean)
+        val folder = FolderEntry(newId(), clean)
+        folders[folder.id] = folder
+        persist(notes)
+        FolderInfo(folder.id, folder.name)
+    }
+
+    override suspend fun renameFolder(id: String, name: String): FolderInfo = locked { notes ->
+        val folder = folders[id] ?: throw FolderNotFoundException(id)
+        val clean = cleanFolderName(name)
+        if (folders.values.any { it.id != id && it.name.equals(clean, ignoreCase = true) }) throw FolderNameConflictException(clean)
+        val renamed = folder.copy(name = clean)
+        folders[id] = renamed
+        persist(notes)
+        FolderInfo(renamed.id, renamed.name)
+    }
+
+    override suspend fun deleteFolder(id: String) = locked { notes ->
+        val folder = folders[id] ?: throw FolderNotFoundException(id)
+        if (notes.values.any { it.folderId == id && it.trashedAt == null }) throw FolderNotEmptyException(folder.name)
+        folders.remove(id)
+        // a note in the Trash that was filed here comes back unfiled
+        for ((key, entry) in notes.toMap()) if (entry.folderId == id) notes[key] = entry.copy(folderId = null)
+        persist(notes)
+    }
+
+    override suspend fun moveNote(id: NoteId, folderId: String?): NoteInfo = locked { notes ->
+        val entry = activeEntry(notes, id)
+        if (folderId != null && folderId !in folders) throw FolderNotFoundException(folderId)
+        if (entry.folderId == folderId) return@locked entry.toInfo()
+        val updated = entry.copy(folderId = folderId)
+        notes[entry.id] = updated
+        persist(notes)
+        updated.toInfo()
+    }
+
+    private fun cleanFolderName(name: String): String {
+        if (name.any { it.isISOControl() }) throw InvalidFolderNameException(name)
+        val clean = name.trim().replace(Regex("\\s+"), " ")
+        if (clean.isEmpty() || clean.length > MAX_FOLDER_NAME) throw InvalidFolderNameException(name)
+        return clean
     }
 
     override suspend fun markOpened(id: NoteId): NoteInfo = locked { notes ->
@@ -359,7 +421,7 @@ class FileNoteRepository internal constructor(
     }
 
     private fun persist(notes: Map<String, Entry>) {
-        val data = IndexData(version = INDEX_VERSION, notes = notes.values.sortedBy { it.createdAt })
+        val data = IndexData(version = INDEX_VERSION, notes = notes.values.sortedBy { it.createdAt }, folders = folders.values.toList())
         indexWriter(indexFile, json.encodeToString(IndexData.serializer(), data))
     }
 
@@ -378,6 +440,9 @@ class FileNoteRepository internal constructor(
         var changed = false
 
         val index = readIndex()
+        folders = LinkedHashMap<String, FolderEntry>().also { m ->
+            for (f in index.folders) if (f.id.isNotBlank() && f.name.isNotBlank() && f.id !in m) m[f.id] = f else changed = true
+        }
         // Versions before 3 had no lastOpenedAt: treat the last edit as the last use so Recent is not empty.
         // (Later versions only add fields with defaults; they must not touch what was stored.)
         val seedLastOpened = index.version < LAST_OPENED_SINCE_VERSION
@@ -457,6 +522,8 @@ class FileNoteRepository internal constructor(
                 changed = true
             }
         }
+        // a note can only be in a folder that exists
+        for ((key, entry) in result.toMap()) if (entry.folderId != null && entry.folderId !in folders) { result[key] = entry.copy(folderId = null); changed = true }
         if (changed) persist(result)
         return result
     }
@@ -476,7 +543,8 @@ class FileNoteRepository internal constructor(
     }
 
     private companion object {
-        const val INDEX_VERSION = 4
+        const val INDEX_VERSION = 5
+        const val MAX_FOLDER_NAME = 60
         const val LAST_OPENED_SINCE_VERSION = 3
         const val MAX_EXTERNAL_BYTES = 8 * 1024 * 1024
         const val EXTERNAL_TIMEOUT_MS = 15_000L
