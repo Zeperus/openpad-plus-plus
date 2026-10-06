@@ -14,7 +14,7 @@ Inspired by the simplicity of Notepad++, built for Android. Your notes are plain
 
 ## Status
 
-**Alpha (`0.1.0-alpha.5`, test build).** Notes are edited as formatted text (headings, bold/italic/strike, lists,
+**Alpha (`0.1.0-alpha.6`, test build).** Notes are edited as formatted text (headings, bold/italic/strike, lists,
 checklists incl. a Smart Checklist mode, quotes, code, links, tables), native text selection across paragraphs, lists and checklists (drag the system's own handles) with copy / cut / copy as Markdown, search, simple folders, English and German UI (selectable in Settings) and saved as plain Markdown; tabs, Favorites, Recent, Trash, external `.md` files
 (Open with / file picker) and Share work. Keep backups of important notes while testing, and see
 [docs/alpha-test-checklist.md](docs/alpha-test-checklist.md). See [docs/roadmap.md](docs/roadmap.md) for the milestones and

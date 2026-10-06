@@ -229,6 +229,32 @@ paragraph (an empty row is not written, `EditorOpsTest`). Extra blank lines in a
 48 dp *tall* would overlap the neighbouring rows' targets at this density, so the height is the line height (24 dp, more with a larger font).
 The tap on the text of the row places the caret as before.
 
+## Caret hit testing (Alpha 6)
+
+**The bug.** Tapping *on* the glyphs of a row placed the caret correctly, but a tap in the empty space to the right of a row's text put the
+caret at the start of the *next* row (it looked like "offset 0": the row got the focus, the caret was in front of the next text). Only the
+last row behaved, because it has nothing after it.
+
+**Cause.** Alpha 5 draws the break between two rows as an invisible character that *ends the row's paragraph* (see "Density"). Compose lays out
+every paragraph as its own text layout, and a layout's last line has no trailing break to exclude: asked for the offset at "x beyond the end
+of the line" it answers with the end of the line *including* that invisible character - which is the start of the next row. (With an
+ordinary line break the layout excludes it, which is why Alpha 4 was fine; a wrapped row's earlier lines were always fine.)
+Nothing was calling `requestFocus()` without a selection and nothing assigned `TextRange(0)`: the field fills the row's width and
+Compose's own gesture handling does the hit test; it was the answer of the layout that was wrong.
+
+**Fix** (`SegmentField.kt`, `Segment.clampTapToRowOfLine`). A tap belongs to the row whose *line* it is on. The field watches the touches
+(Initial pass, never consuming) and remembers the last one; the first collapsed caret that appears within 400 ms of it is limited to the
+end of the row that owns the line at the tap's height (`layout.getLineForVerticalPosition` -> `getLineStart` -> row). This happens in the
+input transformation, before the caret is committed (no flicker, no second selection event); a second check in the selection flow covers a
+caret that got past it. Taps inside the text, to the left of it and on wrapped lines are the layout's own answers and are not touched: right
+of a wrapped line's *first* lines the caret stays on that line; right of a row's last line it is the end of that row; left of a line it is the
+start of that line. The row that is already focused is no special case: every tap goes through the same path.
+The page margin around the field (16 dp left/right, 4 dp above and below) is part of the row: a tap there puts the caret at the nearest
+place of the row (x and y clamped into the text, same clamp) and focuses the field - the caret is set first, then the focus.
+
+**Markers.** A checkbox's 48 dp target (marker column and the margin in front of it) toggles it and never places a caret. A bullet or
+number is only drawn: a tap on it is a tap in the marker column of the field and places the caret at the start of the item's text.
+
 ## Autosave and safety
 
 Only document changes reach the autosave: caret moves and style toggles with an empty selection do not. Each change

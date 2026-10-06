@@ -1,4 +1,4 @@
-# Alpha test checklist (0.1.0-alpha.5)
+# Alpha test checklist (0.1.0-alpha.6)
 
 Short on purpose. Tick what works, note what does not (what you did, what you expected). **Keep backups of important
 notes while testing.** Settings shows the installed version at the bottom.
@@ -41,6 +41,19 @@ notes while testing.** Settings shows the installed version at the bottom.
 - [ ] Undo restores checkbox and previous order in one action
 - [ ] Tapping a checkbox does not close the keyboard or move the text cursor
 - [ ] A normal Markdown checklist (mode off) does not auto-sort
+
+## Alpha 6
+
+### Caret hit testing
+- [ ] Write "Hallo" (with another line below it)
+- [ ] Tap far to the right on the same row
+- [ ] Type X: the result is "HalloX", not "XHallo" and nothing in the next row
+- [ ] Tap between "a" and "l", type X: X appears at that position
+- [ ] Focus the row first, tap far to the right again: the caret moves to the end
+- [ ] A long paragraph that wraps: tap right of the first line: caret at the end of that line; right of the last line: at the end of the paragraph; left of the second line: at its start
+- [ ] Repeat with a bullet item, a numbered item, a checklist item, a heading and a quote
+- [ ] Tap in the white margin left or right of the text: the caret goes to that row
+- [ ] The checkbox itself still toggles (no caret change); the keyboard never closes/reopens
 
 ## Alpha 5
 

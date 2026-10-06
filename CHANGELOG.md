@@ -4,6 +4,14 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.1.0-alpha.6] - 2026-10-07 (pre-release / test build)
+
+### Fixed
+- **Tapping to the right of a row's text put the caret at the start of the next row** (it looked like the start of the same row) instead of at
+  the end of the tapped row. A tap now belongs to the row - and, for wrapped paragraphs, the visual line - it is on: right of the text is the
+  end of that line/row, left of it the start, between letters between them; a second tap in an already focused row moves the caret too. The
+  page margin around a row takes part. Checkboxes still toggle.
+
 ## [0.1.0-alpha.5] - 2026-10-07 (pre-release / test build)
 
 ### Fixed

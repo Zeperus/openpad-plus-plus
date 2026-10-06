@@ -166,8 +166,9 @@ class CaretHitTestTest {
     @Test fun tappingTheMarginLeftOfTheTextPlacesTheCaretAtTheStartOfThatRow() {
         launch("Hello\n\nWorld\n", listOf("Hello", "World"))
         val field = rule.field().fetchSemanticsNode().boundsInRoot
-        val y = midY(rowStart(1))
-        rule.onNodeWithTag("editor").performTouchInput { click(Offset(4f * density, field.top + y)) }
+        val editor = rule.onNodeWithTag("editor").fetchSemanticsNode().boundsInRoot
+        val y = midY(rowStart(1)) + field.top - editor.top // in the editor list's own coordinates
+        rule.onNodeWithTag("editor").performTouchInput { click(Offset(4f * density, y)) }
         rule.waitForIdle()
         assertEquals(listOf("Hello", "XWorld"), typeAndRows("X"))
     }
