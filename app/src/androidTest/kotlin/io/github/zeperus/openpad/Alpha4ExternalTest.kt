@@ -6,7 +6,6 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.core.app.ApplicationProvider
@@ -28,18 +27,19 @@ class Alpha4ExternalTest {
 
     @get:Rule val rule = createEmptyComposeRule()
 
-    private fun open(id: String, text: String, write: Boolean) = TestDocumentsProvider.reset(context, id, text).also {
-        val uri = DocumentsContract.buildDocumentUri(TestDocumentsProvider.AUTHORITY, id)
-        val intent = Intent(app, MainActivity::class.java).setAction(Intent.ACTION_VIEW).setDataAndType(uri, "text/markdown")
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or (if (write) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0) or Intent.FLAG_ACTIVITY_NEW_TASK)
-        // with the test package as the sender, the grants are really given (as by a file manager's "Open with")
-        app.grantUriPermissionsFromTestPackage(uri, write)
-        ActivityScenario.launch<MainActivity>(intent) // not closed: with singleTask, close() waits 45 s (see ExternalFlowTest)
-    }
+    private val testPackage = InstrumentationRegistry.getInstrumentation().context.packageName
 
-    private fun android.content.Context.grantUriPermissionsFromTestPackage(uri: android.net.Uri, write: Boolean) {
-        InstrumentationRegistry.getInstrumentation().context.grantUriPermission(
-            packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or (if (write) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0),
+    private fun uri(id: String) = DocumentsContract.buildDocumentUri(TestDocumentsProvider.AUTHORITY, id)
+
+    /** What the document holds now, read with the grant that was handed to openPad++ (the tests run with its identity). */
+    private fun content(id: String): String = app.contentResolver.openInputStream(uri(id))!!.use { it.readBytes().toString(Charsets.UTF_8) }
+
+    /** Opens the provider's document in openPad++ the way another app's "Open with" does. */
+    private fun open(id: String, write: Boolean) {
+        InstrumentationRegistry.getInstrumentation().targetContext.startActivity(
+            Intent().setClassName(testPackage, "io.github.zeperus.openpad.OpenWithActivity")
+                .putExtra(OpenWithActivity.EXTRA_ID, id).putExtra(OpenWithActivity.EXTRA_WRITE, write)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }
 
@@ -48,26 +48,26 @@ class Alpha4ExternalTest {
     // ---- E. writable ------------------------------------------------------------------------------------------
 
     @Test fun aDocumentOpenedWithWriteAccessIsEditedInPlace() {
-        val file = open("writable.md", "# Original\n", write = true)
+        open("writable.md", write = true)
         rule.waitFor("the document", { "rows=${rule.rowTexts()}" }) { rule.rowTexts().firstOrNull() == "Original" }
         assertEquals("no read-only banner", 0, banner())
         rule.typeInLastRow(" and more")
-        rule.waitFor("the original file", { file.readText() }) { file.readText().contains("and more") }
-        assertTrue(file.readText().startsWith("# Original"))
+        rule.waitFor("the original file", { content("writable.md") }) { content("writable.md").contains("and more") }
+        assertTrue(content("writable.md").startsWith("# Original"))
     }
 
     @Test fun aProviderWithoutCapabilityFlagsThatAcceptsWritesIsWritable() {
-        val file = open("noflags.md", "text\n", write = true)
+        open("noflags.md", write = true)
         rule.waitFor("the document", { "rows=${rule.rowTexts()}" }) { rule.rowTexts().firstOrNull() == "text" }
         assertEquals(0, banner())
         rule.typeInLastRow("!")
-        rule.waitFor("the file", { file.readText() }) { file.readText().startsWith("text!") }
+        rule.waitFor("the file", { content("noflags.md") }) { content("noflags.md").startsWith("text!") }
     }
 
     // ---- F. read-only -----------------------------------------------------------------------------------------
 
     @Test fun aDocumentOpenedWithReadAccessOnlyIsReadOnlyAndSaysWhy() {
-        val file = open("writable.md", "keep me\n", write = false)
+        open("writable.md", write = false)
         rule.waitFor("the banner", { "rows=${rule.rowTexts()}" }) { banner() == 1 }
         rule.onNodeWithTag("read-only-banner").assertExists()
         rule.waitFor("the title says read only", { "" }) {
@@ -76,20 +76,20 @@ class Alpha4ExternalTest {
         }
         assertEquals(1, rule.tagCount("open-writable")) // the way out: pick the file again, asking for write access
         Thread.sleep(1_500)
-        assertEquals("keep me\n", file.readText()) // nothing was written
+        assertEquals("# Original\n", content("writable.md")) // nothing was written
     }
 
     @Test fun aDocumentTheProviderRefusesToWriteIsReadOnlyEvenWithAGrant() {
-        val file = open("readonly.md", "locked\n", write = true)
+        open("readonly.md", write = true)
         rule.waitFor("the banner", { "rows=${rule.rowTexts()}" }) { banner() == 1 }
         assertEquals("providers that refuse writes offer no way to ask again", 0, rule.tagCount("open-writable"))
-        assertEquals("locked\n", file.readText())
+        assertEquals("locked\n", content("readonly.md"))
     }
 
     @Test fun aProviderThatSaysItCanWriteButRefusesIsReadOnlyToo() {
-        val file = open("liar.md", "x\n", write = true)
+        open("liar.md", write = true)
         rule.waitFor("the banner", { "rows=${rule.rowTexts()}" }) { banner() == 1 }
-        assertEquals("x\n", file.readText())
+        assertEquals("x\n", content("liar.md"))
     }
 
     // ---- what the picker is asked for -------------------------------------------------------------------------

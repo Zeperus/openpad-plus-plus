@@ -164,6 +164,7 @@ object ExternalAccess {
 class OpenWritableDocument(private val initial: Uri? = null) : androidx.activity.result.contract.ActivityResultContracts.OpenDocument() {
     override fun createIntent(context: Context, input: Array<String>): Intent =
         super.createIntent(context, input).apply {
+            addCategory(Intent.CATEGORY_OPENABLE) // only documents that can be opened as a stream (no virtual or folder entries)
             addFlags(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
             )

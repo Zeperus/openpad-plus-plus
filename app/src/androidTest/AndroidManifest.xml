@@ -13,5 +13,11 @@
                 <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
             </intent-filter>
         </provider>
+        <!-- Stands in for another app's "Open with": it belongs to the test package, which owns the provider, so the grants it hands to
+             openPad++ are real (the code of the tests themselves runs with openPad++'s identity and could not give any). -->
+        <activity
+            android:name="io.github.zeperus.openpad.OpenWithActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
     </application>
 </manifest>

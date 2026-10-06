@@ -21,6 +21,18 @@ import java.io.FileNotFoundException
 class TestDocumentsProvider : DocumentsProvider() {
     private val dir get() = File(context!!.cacheDir, "test-documents").apply { mkdirs() }
 
+    private val initialTexts = mapOf(
+        "writable.md" to "# Original\n",
+        "readonly.md" to "locked\n",
+        "noflags.md" to "text\n",
+        "liar.md" to "x\n",
+    )
+
+    /** The documents exist with their initial text from the first access on (the test package's data is cleared between tests). */
+    private fun ensureFiles() {
+        for ((id, text) in initialTexts) File(dir, id).let { if (!it.exists()) it.writeText(text) }
+    }
+
     override fun onCreate(): Boolean = true
 
     override fun queryRoots(projection: Array<out String>?): Cursor {
@@ -32,12 +44,14 @@ class TestDocumentsProvider : DocumentsProvider() {
     private val columns = arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_DISPLAY_NAME, Document.COLUMN_MIME_TYPE, Document.COLUMN_SIZE, Document.COLUMN_LAST_MODIFIED, Document.COLUMN_FLAGS)
 
     override fun queryDocument(documentId: String, projection: Array<out String>?): Cursor {
+        ensureFiles()
         val cursor = MatrixCursor(projection ?: if (documentId == "noflags.md") columns.dropLast(1).toTypedArray() else columns)
         addRow(cursor, documentId)
         return cursor
     }
 
     override fun queryChildDocuments(parentDocumentId: String, projection: Array<out String>?, sortOrder: String?): Cursor {
+        ensureFiles()
         val cursor = MatrixCursor(projection ?: columns)
         for (id in listOf("writable.md", "readonly.md", "noflags.md", "liar.md")) addRow(cursor, id)
         return cursor
@@ -62,6 +76,7 @@ class TestDocumentsProvider : DocumentsProvider() {
     }
 
     override fun openDocument(documentId: String, mode: String, signal: CancellationSignal?): ParcelFileDescriptor {
+        ensureFiles()
         val file = File(dir, documentId)
         if (!file.isFile) throw FileNotFoundException(documentId)
         val writing = mode.contains('w') || mode.contains('a')
@@ -73,9 +88,5 @@ class TestDocumentsProvider : DocumentsProvider() {
 
     companion object {
         const val AUTHORITY = "io.github.zeperus.openpad.test.documents"
-
-        /** Creates (or resets) the document [id] with [text] and returns its content file. */
-        fun reset(context: android.content.Context, id: String, text: String): File =
-            File(File(context.cacheDir, "test-documents").apply { mkdirs() }, id).also { it.writeText(text) }
     }
 }
