@@ -621,4 +621,49 @@ class NotesViewModelEditorTest {
         assertEquals(1, vm.favorites.size)
         assertEquals(recentBefore, vm.recent.map { it.id })
     }
+
+    // ---- Data-safety audit: one note through its whole life -------------------------------------------------
+
+    @Test fun `a note keeps its text, id and folder through rename, clear, trash and restore`() = runTest {
+        val vm = launch()
+        vm.onTextChange("# Plan\n\n- [ ] a\n| x | y |\n|---|---|\n| 1 | 2 |\n")
+        settle()
+        val id = vm.current!!.id
+        vm.createFolderAndMove("Work"); runCurrent()
+        vm.toggleFavorite(); runCurrent()
+        assertEquals(RenameResult.Ok, vm.rename("Renamed"))
+        assertEquals(id, vm.current!!.id)
+        vm.flush(); runCurrent()
+        vm.deleteCurrent(); runCurrent()
+        assertEquals(1, vm.trash.size)
+        assertTrue(mdFiles().single { it.parentFile!!.name == "trash" }.readText().contains("| x | y |"))
+        vm.restore(vm.trash.single().id); runCurrent()
+        val restored = vm.notes.single()
+        assertEquals(id, restored.id)
+        assertEquals("Work", vm.folders.single().name)
+        assertEquals(vm.folders.single().id, restored.folderId)
+        assertTrue(restored.favorite)
+        vm.openNote(restored.id); runCurrent()
+        vm.clear(); runCurrent()
+        assertEquals("", vm.text)
+        assertEquals(id, vm.current!!.id) // clear keeps the note
+        assertEquals(1, vm.notes.size)
+        vm.deleteCurrent(); runCurrent()
+        vm.deletePermanently(vm.trash.single().id); runCurrent()
+        assertTrue(mdFiles().isEmpty())
+        assertEquals(1, vm.folders.size) // the folder stays, it is just empty now
+    }
+
+    @Test fun `editing a note with tables html and images keeps all of them`() = runTest {
+        val md = "intro\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n<div>\n<script>x()</script>\n</div>\n\n![alt](https://example.org/i.png)\n\nend\n"
+        val vm = launch()
+        vm.onTextChange(md)
+        settle()
+        vm.type(0, "!")
+        vm.type(vm.ui.doc.rows.lastIndex, "?")
+        vm.flush(); runCurrent()
+        val text = vm.file("intro!").readText()
+        for (piece in listOf("| a | b |\n|---|---|\n| 1 | 2 |", "<div>\n<script>x()</script>\n</div>", "![alt](https://example.org/i.png)")) assertTrue(piece, text.contains(piece))
+        assertTrue(text.startsWith("intro!\n\n"))
+    }
 }
