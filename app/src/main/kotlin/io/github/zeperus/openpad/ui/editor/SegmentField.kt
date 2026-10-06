@@ -103,6 +103,17 @@ import kotlin.math.min
  *  - formatting, list markers, checkboxes, quote bars and code backgrounds are *drawn* from the rows ([SegmentOutput], the
  *    overlays) - none of it is text in the field, so no Markdown punctuation is ever visible.
  */
+/**
+ * Invisible first character of every field. With the caret at the very start of the field there is nothing before it to delete, so a
+ * soft keyboard reports nothing when Backspace is pressed there - yet that is exactly "Backspace at the start of the first row"
+ * (leave the list, join the block above). The keyboard *does* delete a character if there is one: this one, and that is how the
+ * press is noticed. (The same trick as in Alpha 2, proven on a real phone; rows after the first have their line break instead.)
+ * All offsets in the field are one more than the segment's; the caret never stays in front of it.
+ */
+internal const val FIELD_PREFIX = "\u200B"
+
+internal fun fieldTextOf(segment: Segment) = FIELD_PREFIX + segment.text
+
 internal class DecorationInput(
     val segment: Segment,
     val numbers: Map<Long, Int>,
@@ -135,14 +146,14 @@ internal class SegmentController(
 
     /** Writes the model's text into the field if it differs, keeping the caret on the same logical place. */
     fun syncFromModel(state: TextFieldState, segment: Segment, epoch: Int) {
-        val wanted = segment.text
+        val wanted = fieldTextOf(segment)
         if (state.text.toString() != wanted) {
             val logical = lastSegment.let { old -> positionOf(old, state.selection) }
             state.edit {
                 replaceMinimal(this, wanted)
                 val a = logical.first?.let { segment.absolute(it) }
                 val b = logical.second?.let { segment.absolute(it) }
-                selection = if (a != null && b != null) TextRange(a, b) else TextRange(min(selection.start, wanted.length), min(selection.end, wanted.length))
+                selection = if (a != null && b != null) TextRange(a + 1, b + 1) else TextRange(min(max(1, selection.start), wanted.length), min(max(1, selection.end), wanted.length))
             }
         }
         lastSegment = segment
@@ -152,14 +163,14 @@ internal class SegmentController(
             if (c != null && c.rowId in segment.ids) {
                 val a = segment.absolute(DocumentPosition(c.rowId, c.start))
                 val b = if (c.start != c.end) segment.absolute(DocumentPosition(c.rowId, c.end)) else a
-                if (a != null && b != null && state.selection != TextRange(a, b)) state.edit { selection = TextRange(a, b) }
+                if (a != null && b != null && state.selection != TextRange(a + 1, b + 1)) state.edit { selection = TextRange(a + 1, b + 1) }
             }
         }
     }
 
     private fun positionOf(segment: Segment, selection: TextRange): Pair<DocumentPosition?, DocumentPosition?> {
-        if (selection.max > segment.text.length) return null to null
-        return segment.position(selection.min) to segment.position(selection.max)
+        if (selection.max > segment.text.length + 1) return null to null
+        return segment.position(max(0, selection.min - 1)) to segment.position(max(0, selection.max - 1))
     }
 
     companion object {
@@ -179,19 +190,31 @@ internal class SegmentController(
 /** Turns every user edit of the field into a document operation, before it is committed. */
 internal class SegmentInput(private val controller: SegmentController) : InputTransformation {
     override fun TextFieldBuffer.transformInput() {
-        val old = originalText.toString()
-        val proposed = asCharSequence().toString()
-        if (old == proposed) return // only the caret or the keyboard's composing text moved
+        val oldField = originalText.toString()
+        val newField = asCharSequence().toString()
+        if (oldField == newField) { // only the caret or the keyboard's composing text moved: the caret never goes in front of the marker
+            if (selection.min < 1) selection = TextRange(max(1, selection.start), max(1, selection.end))
+            return
+        }
         val segment = controller.current()
-        if (segment == null || segment.text != old) { // the field and the model have drifted apart: show the model's text
+        if (segment == null || oldField != fieldTextOf(segment)) { // the field and the model have drifted apart: show the model's text
             revertAllChanges()
             return
         }
         val before = originalSelection
-        val op = SegmentEditing.interpret(segment, old, proposed, before.min, before.max, selection.max)
+        val markerGone = !newField.startsWith(FIELD_PREFIX)
+        val oldBody = segment.text
+        val newBody = if (markerGone) newField else newField.substring(1)
+        val beforeStart = max(0, before.min - 1)
+        val beforeEnd = max(0, before.max - 1)
+        val op = if (markerGone && newBody == oldBody) {
+            SegmentOp.Backspace(segment.rows.first().id) // Backspace at the very start of the first row
+        } else {
+            SegmentEditing.interpret(segment, oldBody, newBody, beforeStart, beforeEnd, max(0, selection.max - (if (markerGone) 0 else 1)))
+        }
         if (op == SegmentOp.None || !controller.vm.applyFieldOp(op)) {
-            // nothing changed in the document (Backspace at the very start, a refused paste, a read-only note): keep the old text
-            replace(0, length, old)
+            // nothing changed in the document (Backspace at the very start of the note, a refused paste, a read-only note): keep the old text
+            replace(0, length, oldField)
             selection = before
             return
         }
@@ -199,11 +222,12 @@ internal class SegmentInput(private val controller: SegmentController) : InputTr
         val doc = controller.vm.ui.doc
         val anchor = controller.vm.ui.cursor?.rowId?.takeIf { doc.row(it) != null } ?: segment.ids.first { doc.row(it) != null }
         val next = Segments.containing(doc, anchor, controller.sourceRows()) ?: return
-        if (next.text != proposed) SegmentController.replaceMinimal(this, next.text)
+        val wanted = fieldTextOf(next)
+        if (wanted != asCharSequence().toString()) SegmentController.replaceMinimal(this, wanted)
         val cursor = controller.vm.ui.cursor
         val a = cursor?.let { next.absolute(DocumentPosition(it.rowId, it.start)) }
         val b = cursor?.let { if (it.start != it.end) next.absolute(DocumentPosition(it.rowId, it.end)) else a }
-        selection = if (a != null && b != null) TextRange(a, b) else TextRange(min(selection.start, next.text.length), min(selection.end, next.text.length))
+        selection = if (a != null && b != null) TextRange(a + 1, b + 1) else TextRange(min(max(1, selection.start), wanted.length), min(max(1, selection.end), wanted.length))
         controller.lastSegment = next
         controller.publishDecoration(next, controller.decoration.value?.matches.orEmpty(), controller.decoration.value?.currentMatch)
     }
@@ -256,12 +280,13 @@ internal class SegmentOutput(private val input: State<DecorationInput?>, private
     override fun TextFieldBuffer.transformOutput() {
         val d = input.value ?: return
         val seg = d.segment
-        if (length != seg.text.length) return // a frame between the field and the model: no styling rather than the wrong one
+        if (length != seg.text.length + 1) return // a frame between the field and the model: no styling rather than the wrong one
         for ((i, row) in seg.rows.withIndex()) {
-            val s = seg.start(i)
-            val e = seg.end(i)
+            val s = seg.start(i) + 1 // everything is one further on: the field starts with the invisible marker
+            val e = seg.end(i) + 1
+            val paragraphStart = if (i == 0) 0 else s
             val paragraphEnd = if (i < seg.rows.lastIndex) e + 1 else e
-            if (paragraphEnd > s) addStyle(styles.paragraph(row), s, paragraphEnd)
+            if (paragraphEnd > paragraphStart) addStyle(styles.paragraph(row), paragraphStart, paragraphEnd)
             if (e > s) {
                 styles.span(row)?.let { addStyle(it, s, e) }
                 // inline formatting
@@ -323,7 +348,7 @@ internal fun SegmentField(
         val c = vm.ui.cursor
         val a = c?.let { segment.absolute(DocumentPosition(it.rowId, it.start)) }
         val b = c?.let { if (it.start != it.end) segment.absolute(DocumentPosition(it.rowId, it.end)) else a }
-        TextFieldState(segment.text, if (a != null && b != null) TextRange(a, b) else TextRange(segment.text.length))
+        TextFieldState(fieldTextOf(segment), if (a != null && b != null) TextRange(a + 1, b + 1) else TextRange(segment.text.length + 1))
     }
     val spanColors = remember(colors) {
         SpanColors(link = colors.primary, codeBackground = colors.surfaceVariant, muted = colors.onSurfaceVariant, highlight = colors.tertiaryContainer, match = colors.secondaryContainer)
@@ -345,7 +370,7 @@ internal fun SegmentField(
     LaunchedEffect(state) {
         snapshotFlow { state.selection }.collect { selection ->
             val seg = controller.current() ?: return@collect
-            if (state.text.length == seg.text.length) vm.onFieldSelection(seg, selection.start, selection.end)
+            if (state.text.length == seg.text.length + 1) vm.onFieldSelection(seg, max(0, selection.start - 1), max(0, selection.end - 1))
         }
     }
 
@@ -383,10 +408,10 @@ internal fun SegmentField(
             .drawBehind {
                 val layout = controller.layout?.invoke() ?: return@drawBehind
                 val seg = rowsNow
-                if (layout.layoutInput.text.length != seg.text.length) return@drawBehind
+                if (layout.layoutInput.text.length != seg.text.length + 1) return@drawBehind
                 for ((i, row) in seg.rows.withIndex()) {
-                    val s = seg.start(i)
-                    val e = seg.end(i)
+                    val s = seg.start(i) + 1
+                    val e = seg.end(i) + 1
                     val first = layout.getLineForOffset(s.coerceAtMost(max(0, layout.layoutInput.text.length)))
                     val last = layout.getLineForOffset(if (e > s) e - 1 else s)
                     val top = layout.getLineTop(first)
@@ -435,7 +460,7 @@ internal fun SegmentField(
             cursorBrush = SolidColor(colors.primary),
             decorator = TextFieldDecorator { inner ->
                 Box {
-                    if (showHint && state.text.isEmpty()) Text(hint, style = textStyle.copy(color = colors.onSurfaceVariant))
+                    if (showHint && state.text.length <= 1) Text(hint, style = textStyle.copy(color = colors.onSurfaceVariant))
                     inner()
                 }
             },
@@ -452,8 +477,8 @@ internal fun SegmentField(
                             val layout = controller.layout?.invoke()
                             val seg = rowsNow
                             val i = seg.indexOf(row.id)
-                            if (layout == null || i < 0 || layout.layoutInput.text.length != seg.text.length) IntOffset(-1000, -1000)
-                            else IntOffset(0, layout.getLineTop(layout.getLineForOffset(seg.start(i))).toInt() - 14.dp.roundToPx())
+                            if (layout == null || i < 0 || layout.layoutInput.text.length != seg.text.length + 1) IntOffset(-1000, -1000)
+                            else IntOffset(0, layout.getLineTop(layout.getLineForOffset(seg.start(i) + 1)).toInt() - 14.dp.roundToPx())
                         }
                         .testTag("source-done"),
                 ) { Text(stringResource(R.string.raw_done)) }
@@ -472,8 +497,8 @@ internal fun SegmentField(
                             val layout = controller.layout?.invoke()
                             val seg = rowsNow
                             val i = seg.indexOf(row.id)
-                            if (layout == null || i < 0 || layout.layoutInput.text.length != seg.text.length) IntOffset(-1000, -1000) else {
-                                val line = layout.getLineForOffset(seg.start(i))
+                            if (layout == null || i < 0 || layout.layoutInput.text.length != seg.text.length + 1) IntOffset(-1000, -1000) else {
+                                val line = layout.getLineForOffset(seg.start(i) + 1)
                                 val top = layout.getLineTop(line)
                                 IntOffset((styles.depthIndentDp.dp.toPx() * row.depth).toInt(), top.toInt())
                             }
@@ -497,8 +522,8 @@ internal fun SegmentField(
                                 val layout = controller.layout?.invoke()
                                 val seg = rowsNow
                                 val i = seg.indexOf(row.id)
-                                if (layout == null || i < 0 || layout.layoutInput.text.length != seg.text.length) IntOffset(-1000, -1000) else {
-                                    val line = layout.getLineForOffset(seg.start(i))
+                                if (layout == null || i < 0 || layout.layoutInput.text.length != seg.text.length + 1) IntOffset(-1000, -1000) else {
+                                    val line = layout.getLineForOffset(seg.start(i) + 1)
                                     val top = layout.getLineTop(line)
                                     val height = layout.getLineBottom(line) - top
                                     IntOffset((styles.depthIndentDp.dp.toPx() * row.depth).toInt(), (top + (height - 26.dp.toPx()) / 2f).toInt())

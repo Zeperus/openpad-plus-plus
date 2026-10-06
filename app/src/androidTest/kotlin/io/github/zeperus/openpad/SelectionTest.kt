@@ -59,7 +59,7 @@ class SelectionTest {
     /** The screen position of the character at [offset], vertically in the middle of its line. */
     private fun point(offset: Int, rightEdge: Boolean = false): Offset {
         val layout = layout()
-        val box = layout.getBoundingBox(offset.coerceIn(0, layout.layoutInput.text.length - 1))
+        val box = layout.getBoundingBox((offset + 1).coerceIn(0, layout.layoutInput.text.length - 1))
         val b = bounds()
         return Offset(b.left + (if (rightEdge) box.right else box.center.x), b.top + box.center.y)
     }
@@ -70,7 +70,7 @@ class SelectionTest {
 
     private fun longPressWord(word: String) {
         val at = text().indexOf(word)
-        val box = layout().getBoundingBox(at + word.length / 2)
+        val box = layout().getBoundingBox(at + 1 + word.length / 2)
         rule.field().performTouchInput { longClick(Offset(box.center.x, box.center.y)) }
         rule.waitFor("a selected word", { "${selection()}" }) { !selection().collapsed }
     }

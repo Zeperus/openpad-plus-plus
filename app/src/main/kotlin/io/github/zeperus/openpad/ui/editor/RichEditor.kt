@@ -71,7 +71,7 @@ fun RichEditor(vm: NotesViewModel, modifier: Modifier = Modifier) {
             val key = segmentKeys.getOrNull(items.take(index).count { it is DocItem.Text }) ?: return
             val layout = layouts[key]?.invoke() ?: return
             val at = item.segment.absolute(io.github.zeperus.openpad.editor.DocumentPosition(rowId, offset)) ?: return
-            if (at <= layout.layoutInput.text.length) listState.scrollToItem(index, scrollOffset = layout.getLineTop(layout.getLineForOffset(at)).toInt())
+            if (at + 1 <= layout.layoutInput.text.length) listState.scrollToItem(index, scrollOffset = layout.getLineTop(layout.getLineForOffset(at + 1)).toInt())
         }
         // coming back to a tab: show the row the caret was in
         LaunchedEffect(Unit) {

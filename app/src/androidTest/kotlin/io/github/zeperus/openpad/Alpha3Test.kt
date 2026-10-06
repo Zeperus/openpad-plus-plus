@@ -149,7 +149,7 @@ class Alpha3Test {
 
     private fun editorStateFile() = File(t.root, "editor-state.json")
 
-    private fun selection(): TextRange? = rule.row(0).fetchSemanticsNode().config.getOrNull(SemanticsProperties.TextSelectionRange)
+    private fun selection(): TextRange? = rule.selectionRange(0)
 
     @Test fun theCaretComesBackAfterARestart() {
         t.seed("Hello world\n")

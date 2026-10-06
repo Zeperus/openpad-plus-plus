@@ -88,7 +88,7 @@ class RichEditorTest {
     private fun mdFiles() = notesDir.listFiles { f -> f.name.endsWith(".md") }.orEmpty().toList()
 
     private fun select(row: Int, from: Int, to: Int) {
-        rule.field().performTextInputSelection(TextRange(from, to))
+        rule.field().performTextInputSelection(TextRange(from + 1, to + 1))
     }
 
     private fun buttonEnabled(description: String) =

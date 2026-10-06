@@ -30,8 +30,11 @@ internal fun ComposeTestRule.row(@Suppress("UNUSED_PARAMETER") index: Int = 0): 
 internal fun ComposeTestRule.editorRows(): SemanticsNodeInteractionCollection = fields()
 
 internal fun ComposeTestRule.fieldTexts(): List<String> = fields().fetchSemanticsNodes().map { node ->
-    node.config.getOrNull(SemanticsProperties.EditableText)?.text ?: ""
+    (node.config.getOrNull(SemanticsProperties.EditableText)?.text ?: "").removePrefix(FIELD_MARKER)
 }
+
+/** Every field starts with an invisible marker (see FIELD_PREFIX in SegmentField.kt); the tests talk in the visible text. */
+internal const val FIELD_MARKER = "\u200B"
 
 /** The text of every line, top to bottom. */
 internal fun ComposeTestRule.rowTexts(): List<String> = fieldTexts().flatMap { it.split("\n") }
@@ -39,12 +42,13 @@ internal fun ComposeTestRule.rowTexts(): List<String> = fieldTexts().flatMap { i
 /** The caret to [offset] characters into the line [row] (of the first field). The field keeps its focus if it has it. */
 internal fun ComposeTestRule.placeCaret(row: Int, offset: Int, fieldIndex: Int = 0) {
     val lines = fieldTexts()[fieldIndex].split("\n")
-    val at = lines.take(row).sumOf { it.length + 1 } + offset
+    val at = lines.take(row).sumOf { it.length + 1 } + offset + 1
     field(fieldIndex).performTextInputSelection(androidx.compose.ui.text.TextRange(at))
 }
 
 internal fun ComposeTestRule.selectionRange(fieldIndex: Int = 0): androidx.compose.ui.text.TextRange? =
     field(fieldIndex).fetchSemanticsNode().config.getOrNull(SemanticsProperties.TextSelectionRange)
+        ?.let { androidx.compose.ui.text.TextRange(maxOf(0, it.start - 1), maxOf(0, it.end - 1)) }
 
 internal fun ComposeTestRule.typeInLastRow(text: String) {
     fields().onLast().performTextInput(text)
