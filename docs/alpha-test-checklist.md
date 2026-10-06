@@ -1,4 +1,4 @@
-# Alpha test checklist (0.1.0-alpha.2)
+# Alpha test checklist (0.1.0-alpha.3)
 
 Short on purpose. Tick what works, note what does not (what you did, what you expected). **Keep backups of important
 notes while testing.** Settings shows the installed version at the bottom.
@@ -41,6 +41,49 @@ notes while testing.** Settings shows the installed version at the bottom.
 - [ ] Undo restores checkbox and previous order in one action
 - [ ] Tapping a checkbox does not close the keyboard or move the text cursor
 - [ ] A normal Markdown checklist (mode off) does not auto-sort
+
+## Alpha 3
+
+### Selection
+- [ ] Long press in a paragraph and drag into another paragraph: the text between is highlighted, handles appear
+- [ ] Select across a paragraph and a list, and across a checklist
+- [ ] Copy, paste somewhere else: readable text (bullets/boxes shown)
+- [ ] Copy as Markdown (selection bar, or menu): the Markdown structure
+- [ ] Cut, then Undo: everything comes back in one step
+- [ ] Menu: Select all; Paste as Markdown with Markdown text on the clipboard
+
+### Keyboard (must still be perfect)
+- [ ] Held Backspace still works across list boundaries; no keyboard flicker; lists still exit correctly
+
+### Checklist
+- [ ] Drawer: + New Checklist; Smart mode is already on; add tasks with Enter
+- [ ] Check the middle item: it moves below the unchecked ones; uncheck it: it returns to the end of the unchecked group
+- [ ] Close and reopen the app: the order is still right; a normal Markdown checklist (mode off) does not sort
+
+### Persistence
+- [ ] Place the cursor, swipe the app away, reopen: the cursor comes back
+- [ ] Type something, swipe the app away, reopen, Undo: the typing is undone
+- [ ] Edit the same note in another app/on a PC, reopen: no stale cursor or undo
+- [ ] Tabs restore
+
+### Markdown
+- [ ] A GFM table is drawn as a table; wide tables scroll sideways; "Edit source" works and Done returns
+- [ ] An image from a content:// address shows; a web image shows a placeholder (the app works without Internet)
+- [ ] HTML: simple `<p><strong>` is formatted; `<script>`/`<div class=...>` is shown as source and nothing runs
+- [ ] A file with 2 blank lines between blocks: edit one paragraph, the blank lines stay
+
+### Search and folders
+- [ ] Search icon: find by title and by content (also with ä/ö/ü); opening a result shows the matches
+- [ ] Menu: Find in note: count, next/previous
+- [ ] Menu: Move to folder... New folder; the drawer shows the folder; restart; the note is still there
+- [ ] Long press a folder: Rename, Delete (only when empty)
+
+### German and large screens
+- [ ] Phone language German (or Settings -> Apps -> openPad++ -> Language): the UI is German
+- [ ] Tablet/unfolded: sidebar next to the editor, nothing overlaps
+
+### Update
+- [ ] Install Alpha 3 directly over Alpha 2: notes, favorites, Smart Checklist settings, session remain
 
 ## Tabs
 - [ ] Open several notes, switch, order stays

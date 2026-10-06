@@ -174,6 +174,32 @@ on notes that are already in Trash. Trashed notes can be read but not saved or r
 - The view model rewrites `session.json` after every change to the open documents (open, close, switch, draft
   becoming a note, delete) and once at startup, right after the plan for the chosen mode was made.
 
+## Folders (Alpha 3)
+
+Folders are metadata in `index.json` (`folders: [{id, name}]` and an optional `folderId` on a note); the `.md` files do not move or change and
+keep their stable ids. One level only. Names are trimmed, 1-60 characters, no control characters, unique ignoring case. A folder can only be
+deleted while no *active* note is in it (a trashed note filed there comes back unfiled); a note filed in a folder that no longer exists is
+unfiled on load. Favorites and Recent ignore folders. External documents are not offered for folders. The index version is 5; older
+indexes load unchanged (every new field has a default).
+
+## Editor state (Alpha 3)
+
+`editor-state.json` holds the remembered caret and a bounded undo history per open note, tied to a fingerprint of the exact text; see
+[editor.md](editor.md#remembered-caret-and-undo-alpha-3). It is disposable (like `session.json`): damaged or stale means "nothing
+remembered".
+
+## Signing and updates (Alpha line)
+
+Android only installs an update over an app signed with the **same certificate**. The Alpha line is signed with one stable key - the
+"Android Debug" certificate that signed `v0.1.0-alpha.1`, `v0.1.0-alpha.2` and every later Alpha (SHA-256 of the certificate
+`7C:2A:FA:95:46:C9:C0:1D:2C:E4:BE:D9:28:83:6E:BA:08:36:15:BF:62:70:4E:3E:A8:61:80:8A:C1:3B:F9:F0`, valid until 2056). The keystore is **not in the
+repository**; it is kept outside it (`~/.openpad-signing/`, mode 700/600) and `app/build.gradle.kts` uses it when `OPENPAD_KEYSTORE` is set
+(otherwise Gradle's default debug key is used - fine for development and CI, but such an APK cannot update an installed Alpha). Releases
+are built locally with that keystore and the certificate fingerprint is compared with the previous release before publishing
+(`apksigner verify --print-certs`). Never replace this key during the Alpha line; keep an off-machine copy of the keystore. A production
+signing key (and Play App Signing) is a decision for the first real release and will need a fresh install the first time. No keystore,
+password or key is ever committed; GitHub Actions builds only debug APKs signed with the runner's throw-away key.
+
 ## Not implemented yet
 
 Nothing further.

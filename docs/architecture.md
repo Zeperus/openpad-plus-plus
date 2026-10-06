@@ -95,6 +95,19 @@ Operations change rows in place (kind, text, depth) and the focused row survives
 [editor.md](editor.md#identity-and-focus-why-the-keyboard-used-to-flicker)). The smart checklist flag is note metadata
 (`NoteInfo.smartChecklist`, `index.json`), handed to the `EditorSession`; the ordering rules live in `editor/Checklist.kt`.
 
+## Alpha 3 additions
+
+- **Selection and clipboard**: `editor/DocumentSelection.kt` (pure: positions by row id, slices, plain text, Markdown, delete/replace) and
+  `ui/editor/SelectionUi.kt` (gesture, handles, bar, clipboard); the view model owns `docSelection` and clears it on any edit or tap.
+- **Rendered raw blocks**: `editor/RawBlocks.kt` classifies a raw row (table / image / simple HTML / other); `ui/editor/RawViews.kt` draws it.
+  The model is unchanged: they are still raw rows written back verbatim.
+- **Remembered state**: `editor/PersistedState.kt` (fingerprint, bounded steps) with `FileEditorStateStore` (`editor-state.json`); the view
+  model loads it at startup, restores a session only for the exact text, saves dirty sessions ~1 s after a change and on `flush()`.
+- **Search / Find**: `domain/NoteSearch.kt` and `editor/FindInNote.kt` are pure; the view model runs the search off the actions lock.
+- **Folders**: metadata in the index (`NoteInfo.folderId`, `FolderInfo`), drawer grouping and dialogs in `NotesScreen`.
+- **Adaptive layout**: `BoxWithConstraints` + `WindowSizeClass`: Expanded width -> `PermanentNavigationDrawer` ("sidebar"), otherwise the modal drawer.
+- **Smart checklist** is enforced in `EditorSession.settled` after every edit; **New checklist** creates the draft with `smartOnCreate`.
+
 Principles: constructor injection by hand (no DI framework), no layer without a purpose, Compose-independent
 domain/markdown code, build entirely from the terminal with `./gradlew`.
 

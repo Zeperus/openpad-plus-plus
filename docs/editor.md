@@ -202,14 +202,104 @@ Markdown stays in the editor and on disk and the user sees a message. A blank pa
 text that is not whitespace creates the file. Clear gives an empty document and an empty file; Delete/Rename/Favorite are
 unchanged (metadata or Trash).
 
-## Limitations of the Alpha
+## Selecting across rows, clipboard (Alpha 3)
 
-- Selection works inside one row; selecting across paragraphs, and drag-moving rows, are not supported. Copying yields plain
-  text, not Markdown.
-- Images, tables, HTML and similar content are kept as raw rows (shown as source), not rendered.
-- A list item can hold text and nested lists only; richer items are raw.
-- Whitespace between untouched and regenerated blocks can be normalized to one blank line next to an edited block.
-- The caret and undo history of a tab live only while the app runs.
+The native text selection of a field cannot leave its field, so a selection across rows is a separate, *logical* one.
+
+- **Model** (`editor/DocumentSelection.kt`): `DocumentPosition(rowId, offset)` and `DocumentSelection(anchor, focus)`. Positions use the
+  stable row id, never an index, so a selection survives rows that move (a ticked task in a smart checklist) and edits elsewhere;
+  `validated` clamps offsets and drops the selection if a row is gone. A rule has offsets 0 and 1. Raw rows count as text.
+- **Gesture** (`ui/editor/SelectionUi.kt`): a long press that stays in one row is the field's own selection (unchanged). If the finger
+  then moves into another row, the gesture takes over (it is watched in the Initial pointer pass and only consumes events from that
+  moment): the selection runs from where the press began to where the finger is, with edge auto-scroll. Two drag handles then
+  adjust either end; "Select all" is in the overflow menu and the selection bar. A tap in any row ends the selection. While it
+  exists the fields show no native selection (our highlight is drawn by the visual transformation), so there is one selection at
+  a time and no field is replaced - the Alpha 2 focus/keyboard behaviour is untouched.
+- **Selection bar** (replaces the formatting bar while a selection exists): Copy, Cut, Copy as Markdown, Paste, Delete, Select all, Done.
+- **Copy** = readable plain text: list items get their bullet / number / box (•, `1.`, ☐ / ☑), blocks are separated by a
+  blank line, items of one list by a line break; a part of one row is just that text. **Copy as Markdown** keeps the structure
+  (`# Heading`, `- [ ] task`, `1.`, `>`), cuts partial first/last rows into plain text pieces, and is also in the overflow menu (the
+  selection, or the whole note if nothing is selected).
+- **Cut** = Copy + delete as **one** undo step. Deleting joins the first and last row when both are ordinary text rows (the first row's
+  kind and id are kept; if the selection started at the very start of the first row, the last row gives the kind); whole rows that were
+  covered simply disappear; code/raw rows at the edges are never merged with text; the document keeps a paragraph to type into.
+- **Paste** is plain text everywhere (Markdown in it is *not* interpreted); with a selection it replaces it (one undo step). "Paste as
+  Markdown" (overflow menu) is the explicit alternative: the clipboard is parsed and its blocks inserted at the caret row (or over
+  the selection), as one undo step.
+
+## Tables, images, HTML (Alpha 3)
+
+These stay **raw rows** in the model (the Markdown is kept byte for byte and written back untouched); only the drawing is richer
+(`editor/RawBlocks.kt`, `ui/editor/RawViews.kt`). Each rendered block has "Edit source", which opens that block as text in the same row
+(with "Done" to go back); there is no pretend-editing of tables.
+
+- **Tables** (GFM): header row, column alignment (`:--`, `:-:`, `--:`), inline Markdown in cells (bold, italic, code, links), unescaped-pipe
+  splitting that respects `\|` and code spans. Drawn by a small layout (column width = widest cell, 72-260 dp) inside a horizontal
+  scroll, so wide tables scroll on a phone. Light/dark follow the theme. Not a table (no valid delimiter row) -> shown as source.
+- **Images**: a paragraph that is just one image is a raw row (it is still a paragraph in the file; nothing is rewritten). Shown only if
+  the address is a `content://` URI the app may read (decoded at a bounded size, off the UI thread); everything else - remote URLs,
+  relative paths, `file:`, unreadable or missing content - is a quiet placeholder with the alt text and, for web addresses, the
+  host and an explicit "Open" button. **Nothing is downloaded** (the app has no INTERNET permission); a failure is just "no image".
+  Images inside a sentence stay text (shown as source).
+- **HTML**: no WebView, no scripts, no network, ever. Simple HTML made only of `p`, `br`, `strong`/`b`, `em`/`i`, `code`, `pre` (no
+  attributes, balanced) is shown as formatted text; entities become text, never markup. Anything else (attributes, `script`, `style`, `a`,
+  `img`, `iframe`, `div`, comments, unknown tags) is shown as source in a block labelled "HTML (shown as source, not rendered)".
+
+## Smart checklist consistency (Alpha 3)
+
+In a smart checklist the editor keeps unchecked items above completed ones *after every edit* (`EditorSession.settled`): a task that
+appears among completed ones (Enter on a completed item, converting a row to a task, a paste, indent/outdent, a join) goes to the end
+of the unchecked group, as part of the same undo step. A document that is already in order is returned unchanged, so nothing is
+rewritten for nothing. A smart checklist note that is out of order when it is opened is put in order (no undo entry). Groups that mix
+plain and task items are left alone; nested items move with their parent. **New checklist** (drawer) opens a blank page with one empty
+task and creates the note with Smart Checklist on; it is an ordinary `.md` file.
+
+## Find, search (Alpha 3)
+
+- **Find in note** (overflow menu): case-insensitive over the *visible* text of the rows (no Markdown punctuation; blocks drawn as tables /
+  images / simple HTML have no text to find), count "2 of 5", previous / next (wrapping), highlights and scroll to the current match;
+  it follows edits.
+- **Search notes** (magnifier in the top bar): titles first, then content, direct search over the files (no index, nothing leaves the
+  device; the open note is searched with what is on screen; external documents are included when readable within 1.5 s). Case-insensitive
+  for all letters (umlauts, accents), a snippet with the line around the first match (list/heading markers removed) and the number of
+  matches. Opening a result shows the note with Find prefilled.
+
+## Remembered caret and undo (Alpha 3)
+
+`editor-state.json` (next to `session.json`, never inside a note) stores per *open* note: the caret/selection (row index + offsets) and a
+bounded history - the Markdown of the document before each of the last 25 edits (redo steps too), at most 400 000 characters in total
+(oldest dropped first); a note over 150 000 characters keeps only its caret. Everything is tied to a **fingerprint** (SHA-256 of the exact
+Markdown): if the file changed in the meantime (edited elsewhere, restored from a backup) nothing is restored - no wrong caret, no
+history that could write old text over new. It is written about a second after the last change and when the app goes to the background
+(after the note itself). A damaged file, a bad entry or a stale position is ignored; closing a tab forgets its entry. Restoring builds the
+steps from Markdown, so Undo after a restart reproduces the earlier text exactly.
+
+## Whitespace preservation (Alpha 3)
+
+Untouched blocks are written back byte for byte (as in Alpha 1). New: around a block that *was* rewritten, the blank lines of the original
+are kept as they were (`serializeIncremental` follows the lineage of each block, not only the verbatim ones), so editing one paragraph no
+longer turns the surrounding "two blank lines" into one. A lone line break between blocks is not carried over to rewritten text (the new
+text might not stay separate from its neighbour without a blank line); CRLF files stay CRLF.
+
+## Localization, wide screens, accessibility (Alpha 3)
+
+- All user-visible text is in `res/values/strings.xml` with a natural German translation in `values-de`; `locales_config.xml` registers
+  English and German so Android's per-app language settings list them (no in-app selector). `LocalizationTest` checks parity, placeholders
+  and that no UI text is hard-coded.
+- A window at least 840 dp wide (tablet, unfolded foldable) shows the navigation as a permanent sidebar next to the editor, the writing
+  area keeps a comfortable width (max 920 dp); on a phone the slide-in drawer is unchanged.
+- Formatting and selection buttons are at least 48 dp high and grow with font size; checkboxes announce "Task, done/not done: ..." and
+  their state; completed tasks are struck through *and* have a checked box (not colour alone); tabs announce "selected"; folders announce
+  open/closed.
+
+## Limitations (Alpha 3)
+
+- Inline images (inside a sentence), tables with inline HTML cells, nested block content inside list items and reference-style images are
+  still shown as text/source; tables cannot be edited cell by cell (edit source instead).
+- A selection across rows cannot be extended with the keyboard (shift+arrows); typing while one exists first ends it.
+- Copy puts plain text (or Markdown on request) on the clipboard, not rich text.
+- External files: relative image paths cannot be resolved (no access to sibling files), so such images are placeholders.
+- Search reads the notes directly (fine for hundreds of notes); there is no index.
 - Android's `.md` "Open with" filter for generic MIME types matches paths with up to six dots.
 
 ## Editor tests
@@ -217,5 +307,5 @@ unchanged (metadata or Trash).
 `editor/EditorOpsTest`, `EditorDocumentTest`, `StructuralEditingTest` (row identity, Enter/Backspace on lists, smart checklist), `EditorPropertyTest` (random operation sequences on adversarial documents: after
 every operation the model written and read back must mean exactly what the editor holds; undoing everything restores the
 original file byte for byte; 1500 sessions per run, 6000 checked during development) and `NotesViewModelEditorTest`; on a
-device `StructuralEditingTest` (focus and field identity, ghost rows, smart checklist) and `RichEditorTest` (formatting shown, typing persists, formatting bar, lists, checkboxes, tab switching with undo,
+device `SelectionTest` (selection across rows, copy, cut, undo), `Alpha3Test` (new checklist, tables, images, remembered caret/undo, search, folders, German, wide screens), `StructuralEditingTest` (focus and field identity, ghost rows, smart checklist) and `RichEditorTest` (formatting shown, typing persists, formatting bar, lists, checkboxes, tab switching with undo,
 blank page, external Markdown).

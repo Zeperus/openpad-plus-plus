@@ -4,6 +4,28 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.1.0-alpha.3] - 2026-10-06 (pre-release / test build)
+
+### Added
+- **Selection across paragraphs, lists and checklists** (long press and drag into another row, drag handles, Select all); Copy (readable text),
+  **Copy as Markdown**, Cut (one undo step), Paste over a selection, **Paste as Markdown**.
+- **New checklist** (drawer): a blank page with Smart Checklist on; Smart Checklist now keeps unchecked items above completed ones after every
+  edit (new tasks, conversions, pastes, loading).
+- **Tables** drawn as tables (alignment, horizontal scroll), **images** (`content://` shown; others a placeholder with alt text and host, never
+  downloaded), **simple HTML** shown formatted (allowlist, no scripts or network, the rest as source). "Edit source" opens any of them as text.
+- **Search notes** (titles and content) and **Find in note** (count, previous/next).
+- **Simple folders** (one level, metadata only): create, rename, move, delete empty ones.
+- Caret/selection **and a bounded undo history are remembered across app restarts** (only for the exact same text).
+- **German UI** (English remains the fallback); wide screens show a permanent sidebar.
+
+### Improved
+- Blank lines around an edited block are kept as they were; untouched blocks are still byte-exact.
+- Accessibility: 48 dp touch targets, task and folder state announcements; performance checked on 500-item lists, 8000-word notes,
+  table-heavy notes and 300-note search.
+
+### Notes
+- Same signing certificate as Alpha 1 and 2 (installs over them); index format 5 (older ones load unchanged).
+
 ## [0.1.0-alpha.2] - 2026-10-06 (pre-release / test build)
 
 ### Fixed
