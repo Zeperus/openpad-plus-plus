@@ -70,6 +70,9 @@ fun FormattingBar(vm: NotesViewModel, modifier: Modifier = Modifier) {
             Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            FormatButton("↶", stringResource(R.string.format_undo), false, ui.canUndo) { vm.undo() }
+            FormatButton("↷", stringResource(R.string.format_redo), false, ui.canRedo) { vm.redo() }
+            Divider()
             Box {
                 FormatButton(paragraphLabel(kind), stringResource(R.string.format_paragraph_style), selected = false, enabled = ui.cursor != null && kind != RowKind.Raw, wide = true) { styleMenu = true }
                 DropdownMenu(expanded = styleMenu, onDismissRequest = { styleMenu = false }) {
@@ -102,9 +105,6 @@ fun FormattingBar(vm: NotesViewModel, modifier: Modifier = Modifier) {
             FormatButton("⇤", stringResource(R.string.format_outdent), false, listKind != null) { vm.outdent() }
             FormatButton("⇥", stringResource(R.string.format_indent), false, listKind != null) { vm.indent() }
             FormatButton("―", stringResource(R.string.format_rule), false, ui.cursor != null) { vm.insertRule() }
-            Divider()
-            FormatButton("↶", stringResource(R.string.format_undo), false, ui.canUndo) { vm.undo() }
-            FormatButton("↷", stringResource(R.string.format_redo), false, ui.canRedo) { vm.redo() }
         }
     }
 

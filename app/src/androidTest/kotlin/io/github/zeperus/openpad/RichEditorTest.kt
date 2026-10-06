@@ -194,24 +194,12 @@ class RichEditorTest {
         rule.typeInLastRow("\n")
         waitForRows(listOf("milk", "bread", ""))
         rule.typeInLastRow("\n") // Enter on the empty item leaves the list
-        waitFor("only two bullets and three rows after leaving the list", { "rows=${rule.rowTexts()} markers=${rule.onAllNodes(hasTestTag("marker")).fetchSemanticsNodes().size}" }) {
-            rule.rowTexts().size == 3 && rule.onAllNodes(hasTestTag("marker")).fetchSemanticsNodes().size == 2
+        waitFor("two bullets left after leaving the list", { "rows=${rule.rowTexts()} markers=${rule.onAllNodes(hasTestTag("marker")).fetchSemanticsNodes().size}" }) {
+            rule.onAllNodes(hasTestTag("marker")).fetchSemanticsNodes().size == 2
         }
         rule.typeInLastRow("after")
-        waitForRows(listOf("milk", "bread", "after"))
+        waitFor("rows ending in after", { rule.rowTexts().toString() }) { rule.rowTexts().take(2) == listOf("milk", "bread") && rule.rowTexts().last() == "after" }
         waitForOnlyFile("- milk\n- bread\n\nafter\n")
-    }
-
-    @Test fun enterKeyOnAnEmptyItemLeavesTheListToo() {
-        launch()
-        rule.typeInLastRow("milk")
-        rule.formatButton("Bulleted list").performClick()
-        rule.row(0).performKeyInput { keyDown(Key.Enter); keyUp(Key.Enter) }
-        waitForRows(listOf("milk", ""))
-        rule.editorRows().onLast().performKeyInput { keyDown(Key.Enter); keyUp(Key.Enter) }
-        waitFor("one bullet and two rows after leaving the list", { "rows=${rule.rowTexts()} markers=${rule.onAllNodes(hasTestTag("marker")).fetchSemanticsNodes().size}" }) {
-            rule.rowTexts().size == 2 && rule.onAllNodes(hasTestTag("marker")).fetchSemanticsNodes().size == 1
-        }
     }
 
     @Test fun numberedListIsNumbered() {

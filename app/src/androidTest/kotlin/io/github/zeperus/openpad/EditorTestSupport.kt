@@ -7,6 +7,7 @@ import androidx.compose.ui.test.SemanticsNodeInteractionCollection
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 
 /** Helpers for the rich editor: one text field per row, tagged "row", whose text starts with an invisible marker. */
@@ -28,3 +29,4 @@ internal fun ComposeTestRule.typeInLastRow(text: String) {
 
 internal fun ComposeTestRule.formatButton(description: String): SemanticsNodeInteraction =
     onNode(androidx.compose.ui.test.hasContentDescription(description) and androidx.compose.ui.test.hasClickAction())
+        .also { runCatching { it.performScrollTo() } } // the bar scrolls sideways: bring the button into view first

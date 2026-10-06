@@ -228,6 +228,7 @@ class NotesViewModel(
     private inline fun edit(operation: (EditorSession) -> Boolean) {
         if (!ready || readOnly) return
         val before = rich.cursor?.rowId
+        val kindBefore = rich.cursor?.let { rich.doc.row(it.rowId)?.kind }
         val changed = try {
             operation(rich)
         } catch (e: Exception) {
@@ -237,7 +238,10 @@ class NotesViewModel(
         publish()
         if (changed) commitMarkdown()
         val row = rich.cursor?.rowId
-        if (row != null && row != before) requestFocus(row)
+        // a row that changes kind (paragraph -> list item, ...) is drawn by a new text field: give it the focus again
+        val kindAfter = rich.cursor?.let { rich.doc.row(it.rowId)?.kind }
+        val restyled = row == before && kindBefore != null && kindAfter != null && kindBefore::class != kindAfter::class
+        if (row != null && (row != before || restyled)) requestFocus(row)
     }
 
     private fun commitMarkdown() {
