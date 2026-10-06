@@ -215,4 +215,48 @@ class DocumentSelectionTest {
             if (s.history.canUndo) { s.undo(); assertEquals(md, s.markdown()) }
         }
     }
+
+    // ---- Paste as Markdown -------------------------------------------------------------------------------------
+
+    @Test fun `paste as Markdown inserts blocks below the caret and is one undo step`() {
+        val s = session("first\n\nlast\n")
+        val original = s.markdown()
+        s.moveCursor(Cursor(s.doc.rows[0].id, 5))
+        assertTrue(s.pasteMarkdown("## Pasted\n\n- [ ] a\n- [x] b\n"))
+        assertEquals("first\n\n## Pasted\n\n- [ ] a\n- [x] b\n\nlast\n", s.markdown())
+        assertTrue(s.undo())
+        assertEquals(original, s.markdown())
+    }
+
+    @Test fun `paste as Markdown into an empty paragraph replaces it`() {
+        val s = session("")
+        s.moveCursor(Cursor(s.doc.rows[0].id, 0))
+        s.pasteMarkdown("# Title\n\ntext")
+        assertEquals("# Title\n\ntext\n", s.markdown())
+    }
+
+    @Test fun `paste as Markdown keeps separate lists apart from existing ones`() {
+        val s = session("- one\n")
+        s.moveCursor(Cursor(s.doc.rows[0].id, 3))
+        s.pasteMarkdown("1. x\n2. y\n")
+        assertEquals(listOf("one", "x", "y"), s.doc.rows.map { it.text.text })
+        assertEquals("- one\n\n1. x\n2. y\n", s.markdown())
+    }
+
+    @Test fun `paste as Markdown over a selection replaces it`() {
+        val s = session("Alpha one\n\nBeta two\n")
+        assertTrue(s.pasteMarkdown("**new**", s.sel(0, 6, 1, 4)))
+        assertTrue(s.markdown().contains("**new**"))
+        assertTrue(s.undo())
+        assertEquals("Alpha one\n\nBeta two\n", s.markdown())
+    }
+
+    @Test fun `plain paste never interprets Markdown but paste as Markdown does`() {
+        val s = session("x")
+        s.onText(s.doc.rows[0].id, "x# h", 4)
+        assertEquals(RowKind.Paragraph, s.doc.rows[0].kind)
+        s.moveCursor(Cursor(s.doc.rows[0].id, 4))
+        s.pasteMarkdown("# h")
+        assertTrue(s.doc.rows.any { it.kind == RowKind.Heading(1) })
+    }
 }

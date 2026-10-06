@@ -27,6 +27,8 @@ import io.github.zeperus.openpad.domain.StartupMode
 import io.github.zeperus.openpad.domain.StartupPlanner
 import io.github.zeperus.openpad.domain.TabItem
 import io.github.zeperus.openpad.editor.Cursor
+import io.github.zeperus.openpad.editor.DocumentSelection
+import io.github.zeperus.openpad.editor.DocumentSelections
 import io.github.zeperus.openpad.editor.EditorDocument
 import io.github.zeperus.openpad.editor.EditorSession
 import io.github.zeperus.openpad.editor.RowKind
@@ -82,6 +84,10 @@ class NotesViewModel(
 
     /** What the editor shows: rows, caret, formatting state. */
     var ui by mutableStateOf(snapshot())
+        private set
+
+    /** A selection that spans rows (the native text selection only works inside one row); null when there is none. */
+    var docSelection by mutableStateOf<DocumentSelection?>(null)
         private set
 
     /** Changes whenever a different document (or a cleared one) is loaded into the editor; row ids restart then. */
@@ -185,6 +191,76 @@ class NotesViewModel(
         publish()
     }
 
+    // ---- Selections that span rows -----------------------------------------------------------------------------
+
+    /** The selection gesture / handles report the selection. A collapsed one is no selection. */
+    fun setDocumentSelection(selection: DocumentSelection?) {
+        if (!ready) return
+        docSelection = selection?.takeUnless { it.isCollapsed }?.let { DocumentSelections.validated(rich.doc, it) }
+    }
+
+    fun selectAll() {
+        if (!ready) return
+        docSelection = DocumentSelections.selectAll(rich.doc)
+    }
+
+    fun clearSelection() {
+        docSelection = null
+    }
+
+    /** What Copy puts on the clipboard: the cross-row selection, else the native selection in the row; null if nothing is selected. */
+    fun selectedText(markdown: Boolean): String? {
+        val selection = currentSelection() ?: return null
+        val text = if (markdown) rich.selectedMarkdown(selection) else rich.selectedText(selection)
+        return text.takeIf { it.isNotEmpty() }
+    }
+
+    /** Cut: removes the selection (one undo step) and returns what to put on the clipboard. */
+    fun cutSelection(): String? {
+        if (readOnly) return null
+        val selection = currentSelection() ?: return null
+        val text = rich.selectedText(selection).takeIf { it.isNotEmpty() } ?: return null
+        edit { it.deleteSelection(selection) }
+        docSelection = null
+        return text
+    }
+
+    fun deleteSelection() {
+        val selection = currentSelection() ?: return
+        edit { it.deleteSelection(selection) }
+        docSelection = null
+    }
+
+    /** Paste: replaces the selection (if any) with [text], as plain text. Without a selection it is inserted at the caret. */
+    fun pasteText(text: String) {
+        val selection = currentSelection()
+        if (selection != null) {
+            edit { it.replaceSelection(selection, text) }
+            docSelection = null
+            return
+        }
+        val cursor = rich.cursor ?: return
+        val row = rich.doc.row(cursor.rowId) ?: return
+        val old = row.text.text
+        val lo = minOf(cursor.start, cursor.end).coerceIn(0, old.length)
+        val hi = maxOf(cursor.start, cursor.end).coerceIn(0, old.length)
+        onRowText(row.id, old.substring(0, lo) + text + old.substring(hi), lo + text.length)
+    }
+
+    /** "Paste as Markdown": an explicit action; the text is parsed and its blocks inserted (replacing the selection). */
+    fun pasteMarkdown(text: String) {
+        val selection = docSelection
+        edit { it.pasteMarkdown(text, selection) }
+        docSelection = null
+    }
+
+    private fun currentSelection(): DocumentSelection? {
+        docSelection?.let { return it }
+        val c = rich.cursor ?: return null
+        if (c.isCollapsed || rich.doc.row(c.rowId) == null) return null
+        return DocumentSelection(io.github.zeperus.openpad.editor.DocumentPosition(c.rowId, minOf(c.start, c.end)), io.github.zeperus.openpad.editor.DocumentPosition(c.rowId, maxOf(c.start, c.end)))
+    }
+
     fun toggleStyle(kind: SpanKind) = edit { it.toggleStyle(kind) }
 
     fun setLink(href: String) = edit { it.setLink(href.trim()) }
@@ -236,7 +312,7 @@ class NotesViewModel(
             false
         }
         publish()
-        if (changed) commitMarkdown()
+        if (changed) { docSelection = null; commitMarkdown() }
         val row = rich.cursor?.rowId
         if (row != null && row != before) requestFocus(row)
     }
@@ -279,6 +355,7 @@ class NotesViewModel(
 
     private fun publish() {
         ui = snapshot()
+        docSelection = docSelection?.let { DocumentSelections.validated(rich.doc, it) }
     }
 
     /** The open note's session belongs to its tab. A draft has none until it becomes a note. */
@@ -584,6 +661,7 @@ class NotesViewModel(
         text = next.text
         current = next.info
         readOnly = next.readOnly
+        docSelection = null
         rich = sessionFor(next)
         rich.smartChecklist = next.info?.smartChecklist ?: next.smartOnCreate
         if (rich.smartChecklist && !next.readOnly && rich.settleLoaded()) commitMarkdown() // loading puts a smart checklist in order

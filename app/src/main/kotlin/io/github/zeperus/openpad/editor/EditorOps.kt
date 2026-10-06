@@ -415,5 +415,27 @@ object EditorOps {
             Edit(doc.withRows(rows, doc.nextId + 2), Cursor(paragraph.id, 0))
         }
     }
-}
 
+    /**
+     * "Paste as Markdown" (an explicit action - a normal paste is plain text): the Markdown becomes rows inserted below the row
+     * the caret is in (or in place of it if that is an empty paragraph). Null if the text has no content.
+     */
+    fun pasteMarkdown(doc: EditorDocument, rowId: Long, markdown: String): Edit? {
+        val parsed = EditorDocument.fromMarkdown(markdown)
+        val source = parsed.rows.filterNot { it.kind == RowKind.Paragraph && it.text.isEmpty }
+        if (source.isEmpty()) return null
+        val index = doc.indexOf(rowId)
+        var next = doc.nextId
+        val lists = HashMap<Long, ListInfo>()
+        val inserted = source.map { r ->
+            val kind = (r.kind as? RowKind.ListItem)?.let { k -> k.copy(list = lists.getOrPut(k.list.id) { k.list.copy(id = next++) }) } ?: r.kind
+            EditorRow(next++, kind, r.text, r.depth, origin = null, touched = true)
+        }
+        val rows = doc.rows.toMutableList()
+        val current = doc.rows[index]
+        val replace = current.kind == RowKind.Paragraph && current.text.isEmpty
+        if (replace) { rows.removeAt(index); rows.addAll(index, inserted) } else rows.addAll(index + 1, inserted)
+        val last = inserted.last { it.kind != RowKind.Rule }
+        return Edit(doc.withRows(rows, next), Cursor(last.id, last.text.length))
+    }
+}

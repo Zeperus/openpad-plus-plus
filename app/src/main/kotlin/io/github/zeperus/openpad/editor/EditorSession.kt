@@ -170,6 +170,20 @@ class EditorSession(
     fun replaceSelection(sel: DocumentSelection, text: String): Boolean =
         withSelectionStart(sel) { DocumentSelections.replace(doc, sel, text, smartChecklist) }
 
+    /** Paste as Markdown: parses [markdown] and inserts its blocks at the caret row (or over [sel]). One undo step. */
+    fun pasteMarkdown(markdown: String, sel: DocumentSelection? = null): Boolean {
+        var base = doc
+        if (sel != null) {
+            val removed = DocumentSelections.delete(doc, sel)
+            if (removed != null) base = removed.doc
+            val row = removed?.cursor?.rowId ?: cursor?.rowId ?: return false
+            val edit = EditorOps.pasteMarkdown(base, row, markdown) ?: return false
+            return commit(edit)
+        }
+        val row = cursor?.rowId ?: return false
+        return EditorOps.pasteMarkdown(doc, row, markdown)?.let { commit(it) } ?: false
+    }
+
     private inline fun withSelectionStart(sel: DocumentSelection, edit: () -> Edit?): Boolean {
         val (start, _) = DocumentSelections.ordered(doc, sel) ?: return false
         cursor = Cursor(start.rowId, start.offset) // what Undo brings back

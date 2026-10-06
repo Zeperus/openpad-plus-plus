@@ -102,4 +102,13 @@
     <string name="link_apply">Apply</string>
     <string name="link_open">Open</string>
     <string name="link_remove">Remove link</string>
+
+    <string name="selection_copy">Copy</string>
+    <string name="selection_cut">Cut</string>
+    <string name="selection_copy_markdown">Copy as Markdown</string>
+    <string name="selection_paste">Paste</string>
+    <string name="selection_delete">Delete</string>
+    <string name="selection_all">Select all</string>
+    <string name="selection_done">Done</string>
+    <string name="action_paste_markdown">Paste as Markdown</string>
 </resources>

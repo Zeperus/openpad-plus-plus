@@ -83,6 +83,7 @@ import androidx.compose.ui.unit.dp
 import io.github.zeperus.openpad.R
 import io.github.zeperus.openpad.ui.editor.FormattingBar
 import io.github.zeperus.openpad.ui.editor.RichEditor
+import io.github.zeperus.openpad.ui.editor.SelectionBar
 import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteInfo
 import kotlinx.coroutines.launch
@@ -113,6 +114,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
     var dialog by remember { mutableStateOf<Dialog?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val clipboard = io.github.zeperus.openpad.ui.editor.rememberAppClipboard()
     // The system file picker: the document stays where it is and is edited in place.
     val openFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.openExternal(uri.toString(), ExternalAccess.takePersistable(context.contentResolver, uri))
@@ -210,6 +212,24 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
                                 onClick = { menuOpen = false; vm.closeCurrent() },
                             )
                             DropdownMenuItem(
+                                text = { Text(stringResource(R.string.selection_all)) },
+                                onClick = { menuOpen = false; vm.selectAll() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.selection_copy_markdown)) },
+                                onClick = {
+                                    menuOpen = false
+                                    // the selection, or - without one - the whole note
+                                    if (vm.docSelection == null && vm.ui.cursor?.isCollapsed != false) vm.selectAll()
+                                    vm.selectedText(markdown = true)?.let { clipboard.copy("Markdown", it) }
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_paste_markdown)) },
+                                enabled = !vm.readOnly,
+                                onClick = { menuOpen = false; clipboard.text()?.let { vm.pasteMarkdown(it) } },
+                            )
+                            DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_share)) },
                                 enabled = vm.hasNote,
                                 onClick = {
@@ -255,7 +275,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
                         )
                     }
                     RichEditor(vm, Modifier.fillMaxWidth().weight(1f))
-                    if (!vm.readOnly) FormattingBar(vm)
+                    if (vm.docSelection != null) SelectionBar(vm) else if (!vm.readOnly) FormattingBar(vm)
                 }
             }
         }

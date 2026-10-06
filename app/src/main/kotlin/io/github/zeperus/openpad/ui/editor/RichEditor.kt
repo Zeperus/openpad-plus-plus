@@ -6,6 +6,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -26,6 +27,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.input.pointer.pointerInput
+import io.github.zeperus.openpad.editor.DocumentSelections
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -86,6 +91,8 @@ fun RichEditor(vm: NotesViewModel, modifier: Modifier = Modifier) {
         val ui = vm.ui
         val readOnly = vm.readOnly
         val listState = rememberLazyListState()
+        val geometry = remember { EditorGeometry() }
+        var container by remember { mutableStateOf<LayoutCoordinates?>(null) }
         val rows = ui.doc.rows
         // coming back to a tab: show the row the caret was in
         LaunchedEffect(Unit) {
@@ -93,30 +100,47 @@ fun RichEditor(vm: NotesViewModel, modifier: Modifier = Modifier) {
             if (index > 0) listState.scrollToItem(index)
         }
         val hint = rows.size == 1 && rows[0].kind == RowKind.Paragraph && rows[0].text.isEmpty && !readOnly
-        LazyColumn(state = listState, modifier = modifier.testTag("editor")) {
-            items(rows, key = { it.id }) { row ->
-                val index = ui.doc.indexOf(row.id)
-                val request = vm.focusRequest?.takeIf { it.rowId == row.id }
-                RowView(
-                    row = row,
-                    number = ui.doc.numberOf(index),
-                    vm = vm,
-                    cursorStart = ui.cursor?.takeIf { it.rowId == row.id }?.let { it.start to it.end },
-                    readOnly = readOnly,
-                    focusRequest = request,
-                    showHint = hint,
-                )
+        // which part of each row a selection across rows covers
+        val selected: Map<Long, IntRange> = remember(vm.docSelection, ui.doc) {
+            vm.docSelection?.let { sel ->
+                DocumentSelections.slices(ui.doc, sel).associate { s ->
+                    s.row.id to (if (s.row.kind == RowKind.Rule) 0..0 else s.from until s.to)
+                }
+            } ?: emptyMap()
+        }
+        Box(
+            modifier
+                .onGloballyPositioned { container = it }
+                .pointerInput(vm) { documentSelectionGestures(vm, geometry, { container }, listState) },
+        ) {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize().testTag("editor")) {
+                items(rows, key = { it.id }) { row ->
+                    val index = ui.doc.indexOf(row.id)
+                    val request = vm.focusRequest?.takeIf { it.rowId == row.id }
+                    RowView(
+                        row = row,
+                        number = ui.doc.numberOf(index),
+                        vm = vm,
+                        geometry = geometry,
+                        cursorStart = ui.cursor?.takeIf { it.rowId == row.id }?.let { it.start to it.end },
+                        readOnly = readOnly,
+                        focusRequest = request,
+                        showHint = hint,
+                        selected = selected[row.id],
+                    )
+                }
+                item(key = "end") {
+                    // a tap below the last row puts the caret at the end of the note
+                    Box(
+                        Modifier.fillMaxWidth().height(160.dp).clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            enabled = !readOnly,
+                        ) { vm.focusEnd() },
+                    )
+                }
             }
-            item(key = "end") {
-                // a tap below the last row puts the caret at the end of the note
-                Box(
-                    Modifier.fillMaxWidth().height(160.dp).clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        enabled = !readOnly,
-                    ) { vm.focusEnd() },
-                )
-            }
+            SelectionHandles(vm, geometry, { container }, listState)
         }
     }
 }
@@ -134,14 +158,23 @@ private fun RowView(
     row: EditorRow,
     number: Int?,
     vm: NotesViewModel,
+    geometry: EditorGeometry,
     cursorStart: Pair<Int, Int>?,
     readOnly: Boolean,
     focusRequest: FocusRequest?,
     showHint: Boolean,
+    selected: IntRange?,
 ) {
     val kind = row.kind
+    DisposableEffect(row.id) { onDispose { geometry.forget(row.id) } }
     if (kind == RowKind.Rule) { // never has a text field, so no identity to keep
-        HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 12.dp).testTag("rule"))
+        HorizontalDivider(
+            Modifier
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .then(if (selected != null) Modifier.background(MaterialTheme.colorScheme.tertiaryContainer) else Modifier)
+                .onGloballyPositioned { geometry.of(row.id).row = it }
+                .testTag("rule"),
+        )
         return
     }
     val colors = MaterialTheme.colorScheme
@@ -167,7 +200,7 @@ private fun RowView(
         is RowKind.ListItem -> Modifier.padding(start = 16.dp + 22.dp * row.depth, end = 16.dp, top = 2.dp, bottom = 2.dp)
         else -> Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
     }
-    Row(Modifier.fillMaxWidth().then(frame), verticalAlignment = Alignment.Top) {
+    Row(Modifier.fillMaxWidth().onGloballyPositioned { geometry.of(row.id).row = it }.then(frame), verticalAlignment = Alignment.Top) {
         Box(Modifier.width(if (list != null) 30.dp else 0.dp).height(if (list != null) 26.dp else 0.dp), contentAlignment = Alignment.CenterStart) {
             if (list != null) {
                 if (checked != null) {
@@ -193,7 +226,7 @@ private fun RowView(
                 Text(stringResource(R.string.raw_block_label), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
             }
             RowField(
-                row, vm, cursorStart, readOnly, focusRequest, style,
+                row, vm, geometry, cursorStart, readOnly, focusRequest, style, selected,
                 plain = kind is RowKind.Code || kind == RowKind.Raw,
                 hintText = if (showHint && kind == RowKind.Paragraph) stringResource(R.string.editor_hint) else null,
             )
@@ -220,10 +253,12 @@ private fun headingStyle(level: Int, base: TextStyle): TextStyle = base.copy(
 private fun RowField(
     row: EditorRow,
     vm: NotesViewModel,
+    geometry: EditorGeometry,
     cursorStart: Pair<Int, Int>?,
     readOnly: Boolean,
     focusRequest: FocusRequest?,
     style: TextStyle,
+    selected: IntRange?,
     plain: Boolean = false,
     hintText: String? = null,
 ) {
@@ -232,14 +267,20 @@ private fun RowField(
         val selection = cursorStart?.let { TextRange(it.first + 1, it.second + 1) } ?: TextRange(modelText.length)
         mutableStateOf(TextFieldValue(modelText, selection))
     }
-    val value = if (raw.text == modelText) raw else {
+    // while a selection across rows is on, the field shows none of its own (the highlight is drawn by the transformation)
+    val crossSelecting = vm.docSelection != null
+    val value = if (crossSelecting) TextFieldValue(modelText, TextRange(modelText.length)) else if (raw.text == modelText) raw else {
         val selection = cursorStart?.let { TextRange(it.first + 1, it.second + 1) } ?: TextRange(modelText.length)
         TextFieldValue(modelText, selection)
     }
     val current by rememberUpdatedState(value)
     val colors = MaterialTheme.colorScheme
-    val transformation = remember(row.text, colors) {
-        SpanTransformation(row.text, SpanColors(link = colors.primary, codeBackground = colors.surfaceVariant, muted = colors.onSurfaceVariant))
+    val transformation = remember(row.text, colors, selected) {
+        SpanTransformation(
+            row.text,
+            SpanColors(link = colors.primary, codeBackground = colors.surfaceVariant, muted = colors.onSurfaceVariant, highlight = colors.tertiaryContainer),
+            highlight = selected?.takeIf { row.kind != RowKind.Rule },
+        )
     }
     val focus = remember { FocusRequester() }
     DisposableEffect(Unit) {
@@ -256,6 +297,7 @@ private fun RowField(
     BasicTextField(
         value = value,
         onValueChange = { new ->
+            if (vm.docSelection != null) vm.clearSelection() // the user touched a row: the selection across rows is over
             when {
                 new.text.startsWith(SENTINEL) -> {
                     val start = maxOf(new.selection.start, 1)
@@ -275,6 +317,7 @@ private fun RowField(
             }
         },
         readOnly = readOnly,
+        onTextLayout = { geometry.of(row.id).layout = it },
         textStyle = style,
         cursorBrush = SolidColor(colors.primary),
         visualTransformation = transformation,
@@ -286,8 +329,10 @@ private fun RowField(
             .fillMaxWidth()
             .testTag("row")
             .focusRequester(focus)
+            .onGloballyPositioned { geometry.of(row.id).field = it }
             .onFocusChanged { state ->
                 if (state.isFocused) {
+                    if (vm.docSelection != null) vm.clearSelection()
                     val sel = current.selection
                     vm.onSelection(row.id, maxOf(sel.start, 1) - 1, maxOf(sel.end, 1) - 1)
                 }
