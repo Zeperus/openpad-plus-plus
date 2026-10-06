@@ -76,37 +76,45 @@ class SelectionTest {
     }
 
     /**
-     * Grabs a selection handle - which sits just under the edge of the selection - and drags it to [target] on the screen. Where
-     * exactly the system's handle window is differs by a few pixels between versions and densities, so a few grip points under the
-     * edge are tried until one moves the selection (an attempt that grabs nothing only touches the text and changes nothing).
+     * Grabs a selection handle and drags it to [target] on the screen. The handle is drawn by the system (a popup window) under the
+     * edge of the selection: the start handle with its top-right corner at the edge, the end handle with its top-left corner there,
+     * both roughly 25 dp square. A few grip points inside that square are tried until one moves the selection (an attempt that grabs
+     * nothing only touches the text and changes nothing).
      */
-    private fun dragHandle(edgeOffset: Int, target: Offset) {
+    private fun dragHandle(edgeOffset: Int, isStart: Boolean, target: Offset) {
         val before = selection()
         val b = bounds()
         val rect = layout().getCursorRect((edgeOffset + 1).coerceIn(0, layout().layoutInput.text.length))
-        for (below in listOf(10f, 18f, 4f, 26f)) {
-            val x = b.left + rect.left
-            val y = b.top + rect.bottom + below * density
-            device.swipe(x.toInt(), y.toInt(), target.x.toInt(), (target.y + below * density).toInt(), 60)
+        for ((dx, dy) in listOf(12f to 12f, 8f to 18f, 16f to 8f, 12f to 20f)) {
+            val x = b.left + rect.left + (if (isStart) -dx else dx) * density
+            val y = b.top + rect.bottom + dy * density
+            device.swipe(x.toInt(), y.toInt(), target.x.toInt() + (if (isStart) -dx else dx).toInt(), (target.y + dy * density).toInt(), 60)
             rule.waitForIdle()
             Thread.sleep(300)
             if (selection() != before) return
         }
     }
 
-    private fun dragEndHandleTo(target: Offset) = dragHandle(selection().max, target)
+    private fun dragEndHandleTo(target: Offset) = dragHandle(selection().max, isStart = false, target = target)
 
-    private fun dragStartHandleTo(target: Offset) = dragHandle(selection().min, target)
+    private fun dragStartHandleTo(target: Offset) = dragHandle(selection().min, isStart = true, target = target)
 
     /** The floating toolbar's item [label]; looks into its overflow too. Null if it is not offered at all. */
     private fun toolbar(label: String): androidx.test.uiautomator.UiObject2? {
-        device.wait(Until.findObject(By.text(label)), 3_000)?.let { return it }
+        device.wait(Until.findObject(By.text(label)), 5_000)?.let { return it }
         device.findObject(By.clazz("android.widget.ImageButton").desc("More options"))?.click()
         return device.wait(Until.findObject(By.text(label)), 3_000)
     }
 
-    private fun toolbarItems(): String =
-        device.findObjects(By.clazz("android.widget.TextView")).mapNotNull { it.text }.joinToString(" | ")
+    /** Everything with a text or description on the screen, for failure messages. */
+    private fun toolbarItems(): String {
+        val out = java.io.ByteArrayOutputStream()
+        device.dumpWindowHierarchy(out)
+        fun attr(node: String, name: String) = Regex(" $name=\"([^\"]*)\"").find(node)?.groupValues?.get(1).orEmpty()
+        return Regex("<node [^>]*>").findAll(out.toString()).map { it.value }
+            .filter { attr(it, "text").isNotEmpty() || attr(it, "content-desc").isNotEmpty() }
+            .joinToString(" | ") { attr(it, "class").substringAfterLast('.') + ":" + attr(it, "text") + "/" + attr(it, "content-desc") }
+    }
 
     // ---- A: paragraph -> paragraph -------------------------------------------------------------------------------
 
