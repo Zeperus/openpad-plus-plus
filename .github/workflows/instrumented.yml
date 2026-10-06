@@ -51,7 +51,7 @@ jobs:
           arch: x86_64
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: ./gradlew connectedDebugAndroidTest ${{ inputs.testClass != '' && format('-Pandroid.testInstrumentationRunnerArguments.class={0}', inputs.testClass) || '' }} || (adb logcat -d -t 4000 > app/build/logcat.txt; exit 1)
+          script: mkdir -p app/build && (adb logcat -v threadtime '*:W' > app/build/logcat-live.txt 2>&1 &) ; ./gradlew connectedDebugAndroidTest ${{ inputs.testClass != '' && format('-Pandroid.testInstrumentationRunnerArguments.class={0}', inputs.testClass) || '' }} || (adb logcat -d -t 4000 > app/build/logcat.txt; exit 1)
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -59,3 +59,4 @@ jobs:
           path: |
             app/build/reports/androidTests/
             app/build/logcat.txt
+            app/build/logcat-live.txt

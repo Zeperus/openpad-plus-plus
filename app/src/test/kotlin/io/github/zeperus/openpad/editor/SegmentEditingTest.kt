@@ -195,6 +195,39 @@ class SegmentEditingTest {
         assertEquals(SegmentOp.None, SegmentEditing.interpret(seg, seg.text, seg.text, 0, 0, 0))
     }
 
+    @Test fun `a selection from a checklist item into a paragraph can be deleted and typed over`() {
+        val s = session("- [ ] Milk\n- [x] Bread\n\nafter the list\n")
+        val seg = segment(s)
+        val a = seg.text.indexOf("lk")
+        val b = seg.text.indexOf("the list")
+        assertTrue(s.native(a, b, "!", caretBefore = b, selStart = a))
+        assertEquals(listOf("Mi!the list"), s.rows())
+        assertEquals(RowKind.ListItem(((s.kinds()[0] as RowKind.ListItem).list), false), s.kinds()[0]) // the first row (an unchecked task) survives
+        assertTrue(s.undo())
+        assertEquals(listOf("Milk", "Bread", "after the list"), s.rows())
+    }
+
+    @Test fun `a selection from a numbered item up into a heading works backwards too`() {
+        val s = session("# Head line\n\n1. one\n2. two\n")
+        val seg = segment(s)
+        val start = seg.text.indexOf("line")
+        val end = seg.text.indexOf("two") // select from "line" through "one" and the start of "two"
+        assertTrue(s.native(start, end, "", caretBefore = start, selStart = end)) // the caret was at the start: a backwards selection
+        assertEquals(listOf("Head two"), s.rows())
+        assertEquals(RowKind.Heading(1), s.kinds()[0])
+    }
+
+    @Test fun `row ids stay valid and unique through cross-row edits`() {
+        val s = session("a\n\nb\n\nc\n\nd\n")
+        val ids = s.doc.rows.map { it.id }
+        val seg = segment(s)
+        s.native(seg.start(1), seg.end(2), "")
+        val remaining = s.doc.rows.map { it.id }
+        assertEquals(remaining.size, remaining.toSet().size)
+        assertTrue(ids.containsAll(remaining.filter { it in ids }))
+        assertTrue(s.doc.row(s.cursor!!.rowId) != null)
+    }
+
     // ---- Smart checklists and the focus ids ------------------------------------------------------------------------
 
     @Test fun `Enter on a completed task in a smart checklist leaves the new task above the completed ones`() {
