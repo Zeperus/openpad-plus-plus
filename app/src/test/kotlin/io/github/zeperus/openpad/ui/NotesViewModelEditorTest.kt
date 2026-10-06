@@ -132,8 +132,11 @@ class NotesViewModelEditorTest {
         val empty = vm.ui.doc.rows[2]
         vm.onRowText(empty.id, "\n", 1) // Enter on the empty item
         assertEquals(RowKind.Paragraph, vm.ui.doc.rows[2].kind)
+        assertEquals(3, vm.ui.doc.rows.size)
+        vm.type(2, "after")
+        assertEquals(listOf("milk", "bread", "after"), vm.ui.doc.rows.map { it.text.text })
         settle()
-        assertEquals("- milk\n- bread", vm.file("milk").readText().trimEnd())
+        assertEquals("- milk\n- bread\n\nafter", vm.file("milk").readText().trimEnd())
     }
 
     @Test fun `Backspace at the start of a list item turns it into a paragraph`() = runTest {
@@ -254,6 +257,25 @@ class NotesViewModelEditorTest {
         assertEquals("", vm.text)
         vm.redo()
         assertEquals("first note", vm.text.trimEnd())
+    }
+
+    @Test fun `a seeded note keeps its undo history across tab switches`() = runTest {
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        val repo = FileNoteRepository(root, clock = { tick++ }, dispatcher = dispatcher, external = provider)
+        val one = repo.createNote("One")
+        val two = repo.createNote("Two")
+        FileSessionStore(File(root, "session.json"), dispatcher).save(io.github.zeperus.openpad.domain.PersistedSession(listOf(one.id.value, two.id.value), one.id.value))
+        val vm = launch()
+        assertEquals("One", vm.ui.doc.rows[0].text.text)
+        vm.type(0, "!")
+        settle()
+        vm.selectTab(io.github.zeperus.openpad.domain.DocumentTab.Saved(two.id))
+        assertEquals("Two", vm.ui.doc.rows[0].text.text)
+        vm.selectTab(io.github.zeperus.openpad.domain.DocumentTab.Saved(one.id))
+        assertEquals("One!", vm.ui.doc.rows[0].text.text)
+        assertTrue("undo history kept", vm.ui.canUndo)
+        vm.undo()
+        assertEquals("One", vm.ui.doc.rows[0].text.text)
     }
 
     @Test fun `a tab whose file changed meanwhile starts fresh instead of overwriting it`() = runTest {

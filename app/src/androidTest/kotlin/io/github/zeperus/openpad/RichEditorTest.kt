@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
@@ -80,7 +81,7 @@ class RichEditorTest {
     /** The only note file, once it exists, has this content. */
     private fun waitForOnlyFile(text: String) {
         waitFor("a note file", { mdFiles().toString() }) { mdFiles().size == 1 }
-        waitForOnlyFile(text)
+        waitForFile(mdFiles().single(), text)
     }
 
     private fun mdFiles() = notesDir.listFiles { f -> f.name.endsWith(".md") }.orEmpty().toList()
@@ -189,6 +190,9 @@ class RichEditorTest {
         rule.typeInLastRow("\n")
         waitForRows(listOf("milk", "bread", ""))
         rule.typeInLastRow("\n") // Enter on the empty item leaves the list
+        waitFor("only two bullets and three rows after leaving the list", { "rows=${rule.rowTexts()} markers=${rule.onAllNodes(hasTestTag("marker")).fetchSemanticsNodes().size}" }) {
+            rule.rowTexts().size == 3 && rule.onAllNodes(hasTestTag("marker")).fetchSemanticsNodes().size == 2
+        }
         rule.typeInLastRow("after")
         waitForRows(listOf("milk", "bread", "after"))
         waitForOnlyFile("- milk\n- bread\n\nafter\n")
@@ -242,6 +246,7 @@ class RichEditorTest {
         waitForRows(listOf("Two"))
         rule.onAllNodes(hasTestTag("tab") and hasText("One!")).onFirst().performClick()
         waitForRows(listOf("One!"))
+        rule.formatButton("Undo").assertIsEnabled()
         rule.formatButton("Undo").performClick()
         waitForRows(listOf("One"))
         rule.waitUntil(timeoutMillis = 8_000) { files[0].readText().trimEnd() == "One" }
