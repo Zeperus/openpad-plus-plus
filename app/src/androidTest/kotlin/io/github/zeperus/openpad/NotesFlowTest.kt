@@ -72,10 +72,10 @@ class NotesFlowTest {
 
     @Test fun typingCreatesARealMarkdownFileAndListsItUnderFiles() {
         launch()
-        rule.onNode(hasSetTextAction()).performTextInput("# Shopping\nmilk")
+        rule.typeInLastRow("Shopping")
         rule.waitUntil(timeoutMillis = 5_000) { mdFiles().isNotEmpty() }
 
-        assertEquals("# Shopping\nmilk", noteFile("Shopping").readText())
+        assertEquals("Shopping\n", noteFile("Shopping").readText())
         openDrawer()
         rule.onNodeWithText("FILES").assertIsDisplayed()
         // a new note is "used", so it is listed under RECENT and under FILES
@@ -89,7 +89,7 @@ class NotesFlowTest {
 
         openDrawer()
         rule.onAllNodes(drawerEntry("Earlier note")).onFirst().assertIsDisplayed().performClick()
-        rule.onNode(hasSetTextAction()).assertTextEquals("Earlier note\nbody text")
+        rule.waitUntil(timeoutMillis = 5_000) { rule.rowTexts() == listOf("Earlier note\nbody text") }
     }
 
     @Test fun blankNewNotesLeaveNothingBehind() {
@@ -105,7 +105,7 @@ class NotesFlowTest {
 
     @Test fun deleteMovesToTrashAndRestoreBringsItBack() {
         launch()
-        rule.onNode(hasSetTextAction()).performTextInput("Doomed")
+        rule.typeInLastRow("Doomed")
         rule.waitUntil(timeoutMillis = 5_000) { mdFiles().isNotEmpty() }
 
         rule.onNodeWithContentDescription("More options").performClick()
@@ -117,12 +117,12 @@ class NotesFlowTest {
         openDrawer()
         rule.onNodeWithContentDescription("Restore: Doomed").performClick()
         rule.waitUntil(timeoutMillis = 5_000) { mdFiles().isNotEmpty() }
-        assertEquals("Doomed", noteFile("Doomed").readText())
+        assertEquals("Doomed\n", noteFile("Doomed").readText())
     }
 
     @Test fun clearKeepsTheNoteButEmptiesIt() {
         launch()
-        rule.onNode(hasSetTextAction()).performTextInput("Keep me")
+        rule.typeInLastRow("Keep me")
         rule.waitUntil(timeoutMillis = 5_000) { mdFiles().isNotEmpty() }
 
         rule.onNodeWithContentDescription("More options").performClick()
@@ -182,7 +182,7 @@ class NotesFlowTest {
 
     @Test fun favoriteToggleInTheMenuShowsAndHidesTheFavoritesSection() {
         launch()
-        rule.onNode(hasSetTextAction()).performTextInput("Pinned")
+        rule.typeInLastRow("Pinned")
         rule.waitUntil(timeoutMillis = 5_000) { mdFiles().isNotEmpty() }
         val before = noteFile("Pinned").readBytes()
 

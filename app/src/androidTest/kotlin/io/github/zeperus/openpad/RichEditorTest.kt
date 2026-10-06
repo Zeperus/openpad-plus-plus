@@ -1,0 +1,259 @@
+package io.github.zeperus.openpad
+
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextInputSelection
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.input.key.Key
+import androidx.core.content.FileProvider
+import androidx.test.core.app.ActivityScenario
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.zeperus.openpad.domain.PersistedSession
+import io.github.zeperus.openpad.domain.StartupMode
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.io.File
+
+/**
+ * The formatted editor on a real Android runtime: Markdown is shown formatted (no markup characters), every edit ends up as
+ * Markdown on disk, tabs keep their caret and undo history, and a blank page never becomes a file by itself.
+ */
+@RunWith(AndroidJUnit4::class)
+class RichEditorTest {
+    private val app = ApplicationProvider.getApplicationContext<OpenPadApplication>()
+    private val notesDir = File(app.filesDir, "openpad/notes")
+
+    @get:Rule val rule = createEmptyComposeRule()
+    private var scenario: ActivityScenario<MainActivity>? = null
+
+    @After fun closeActivity() {
+        scenario?.close()
+    }
+
+    private fun launch() {
+        scenario = ActivityScenario.launch(MainActivity::class.java)
+    }
+
+    /** Notes from an earlier session; the first one (or [active]) is open when the app starts. */
+    private fun seed(vararg markdown: String, active: Int = 0): List<File> = runBlocking {
+        val ids = markdown.map { app.repository.createNote(it).id }
+        app.sessionStore.save(PersistedSession(ids.map { it.value }, ids[active].value))
+        app.settings.setStartupMode(StartupMode.ResumeSession)
+        ids.map { File(notesDir, it.value + ".md") }
+    }
+
+    private fun waitForRows(expected: List<String>) = rule.waitUntil(timeoutMillis = 8_000) { rule.rowTexts() == expected }
+
+    private fun waitForFile(file: File, text: String) = rule.waitUntil(timeoutMillis = 8_000) { file.exists() && file.readText() == text }
+
+    private fun mdFiles() = notesDir.listFiles { f -> f.name.endsWith(".md") }.orEmpty().toList()
+
+    private fun select(row: Int, from: Int, to: Int) {
+        rule.row(row).performTextInputSelection(TextRange(from + 1, to + 1)) // +1: the invisible marker in front of the text
+    }
+
+    private fun tabNodes() = rule.onAllNodes(hasTestTag("tab")).fetchSemanticsNodes()
+    private fun tabTitles() = tabNodes().map { n -> n.config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text } ?: "" }
+
+    // ---- A. Markdown appears formatted ----------------------------------------------------------------------
+
+    @Test fun markdownAppearsFormattedWithoutMarkupCharacters() {
+        seed("# Shopping\n\nBuy **these things** today.\n\n- Milk\n- Bread\n- [ ] Cheese\n\n> quoted\n\n---\n\n```\ncode here\n```\n")
+        launch()
+        waitForRows(listOf("Shopping", "Buy these things today.", "Milk", "Bread", "Cheese", "quoted", "code here", ""))
+        val text = rule.rowTexts().joinToString("\n")
+        for (markup in listOf("#", "**", "- [", "```", "> ")) assertFalse("'$markup' must not be visible", markup in text)
+        assertEquals(1, rule.onAllNodes(hasTestTag("checkbox")).fetchSemanticsNodes().size)
+        assertEquals(2, rule.onAllNodes(hasTestTag("marker")).fetchSemanticsNodes().size) // two bullets
+        assertEquals(1, rule.onAllNodes(hasTestTag("rule")).fetchSemanticsNodes().size)
+    }
+
+    // ---- B. Editing and persistence --------------------------------------------------------------------------
+
+    @Test fun editingAnExistingNoteWritesMarkdownAndSurvivesSwitchingTabs() {
+        val files = seed("Hello", "Other")
+        launch()
+        waitForRows(listOf("Hello"))
+        rule.typeInLastRow(" world")
+        waitForFile(files[0], "Hello world")
+        rule.onAllNodes(hasTestTag("tab") and hasText("Other")).onFirst().performClick()
+        waitForRows(listOf("Other"))
+        rule.onAllNodes(hasTestTag("tab") and hasText("Hello world")).onFirst().performClick()
+        waitForRows(listOf("Hello world"))
+        assertEquals("Hello world", files[0].readText())
+    }
+
+    @Test fun anUntouchedNoteIsNeverRewritten() {
+        val odd = "* one\n*   two\n\n\n\nText   with  spaces\n"
+        val files = seed(odd, "Other")
+        launch()
+        waitForRows(listOf("one", "two", "Text   with  spaces"))
+        rule.onAllNodes(hasTestTag("tab") and hasText("Other")).onFirst().performClick()
+        waitForRows(listOf("Other"))
+        Thread.sleep(1_500)
+        assertEquals(odd, files[0].readText())
+    }
+
+    // ---- C. Formatting ---------------------------------------------------------------------------------------
+
+    private fun typeWordAndSelectIt(): File {
+        launch()
+        rule.typeInLastRow("word")
+        rule.waitUntil(timeoutMillis = 8_000) { mdFiles().isNotEmpty() }
+        select(0, 0, 4)
+        rule.waitForIdle()
+        return mdFiles().single()
+    }
+
+    @Test fun boldItalicStrikeAndCodeOnASelection() {
+        val file = typeWordAndSelectIt()
+        rule.formatButton("Bold").performClick()
+        waitForFile(file, "**word**\n")
+        rule.formatButton("Bold").performClick()
+        rule.formatButton("Italic").performClick()
+        waitForFile(file, "*word*\n")
+        rule.formatButton("Italic").performClick()
+        rule.formatButton("Strikethrough").performClick()
+        waitForFile(file, "~~word~~\n")
+        rule.formatButton("Strikethrough").performClick()
+        rule.formatButton("Inline code").performClick()
+        waitForFile(file, "`word`\n")
+        assertEquals(listOf("word"), rule.rowTexts()) // never any markup in the editable text
+    }
+
+    @Test fun paragraphStyleMakesAHeadingWithoutTypingHashes() {
+        val file = typeWordAndSelectIt()
+        rule.formatButton("Paragraph style").performClick()
+        rule.onNodeWithText("Heading 2").performClick()
+        waitForFile(file, "## word\n")
+        assertEquals(listOf("word"), rule.rowTexts())
+        rule.formatButton("Paragraph style").performClick()
+        rule.onNodeWithText("Text").performClick()
+        waitForFile(file, "word\n")
+    }
+
+    @Test fun aLinkCanBeAddedToASelection() {
+        val file = typeWordAndSelectIt()
+        rule.formatButton("Link").performClick()
+        rule.onNode(hasTestTag("link-address")).performTextInput("https://example.org")
+        rule.onNodeWithText("Apply").performClick()
+        waitForFile(file, "[word](https://example.org)\n")
+        assertEquals(listOf("word"), rule.rowTexts())
+    }
+
+    // ---- D. Lists --------------------------------------------------------------------------------------------
+
+    @Test fun bulletListEnterContinuesAndEnterOnAnEmptyItemLeaves() {
+        launch()
+        rule.typeInLastRow("milk")
+        rule.formatButton("Bulleted list").performClick()
+        rule.typeInLastRow("\n")
+        rule.typeInLastRow("bread")
+        rule.typeInLastRow("\n")
+        waitForRows(listOf("milk", "bread", ""))
+        rule.typeInLastRow("\n") // Enter on the empty item leaves the list
+        rule.typeInLastRow("after")
+        waitForRows(listOf("milk", "bread", "after"))
+        val file = mdFiles().single()
+        waitForFile(file, "- milk\n- bread\n\nafter\n")
+    }
+
+    @Test fun numberedListIsNumbered() {
+        launch()
+        rule.typeInLastRow("one")
+        rule.formatButton("Numbered list").performClick()
+        rule.typeInLastRow("\n")
+        rule.typeInLastRow("two")
+        waitForRows(listOf("one", "two"))
+        waitForFile(mdFiles().single(), "1. one\n2. two\n")
+        assertEquals(listOf("1.", "2."), rule.onAllNodes(hasTestTag("marker")).fetchSemanticsNodes().map {
+            it.config.getOrNull(SemanticsProperties.Text)?.joinToString("") { t -> t.text } ?: ""
+        })
+    }
+
+    @Test fun backspaceAtTheStartOfAListItemLeavesTheList() {
+        launch()
+        rule.typeInLastRow("item")
+        rule.formatButton("Bulleted list").performClick()
+        waitForFile(mdFiles().single(), "- item\n")
+        rule.row(0).performTextInputSelection(TextRange(1))
+        rule.row(0).performKeyInput { keyDown(Key.Backspace); keyUp(Key.Backspace) }
+        waitForFile(mdFiles().single(), "item\n")
+    }
+
+    // ---- E. Checkboxes ---------------------------------------------------------------------------------------
+
+    @Test fun tickingACheckboxChangesOnlyThatItemAndNothingMoves() {
+        val files = seed("- [ ] milk\n- [ ] bread\n- [ ] cheese\n")
+        launch()
+        waitForRows(listOf("milk", "bread", "cheese"))
+        rule.onAllNodes(hasTestTag("checkbox"))[1].performClick()
+        waitForFile(files[0], "- [ ] milk\n- [x] bread\n- [ ] cheese\n")
+        assertEquals(listOf("milk", "bread", "cheese"), rule.rowTexts()) // not reordered
+        rule.onAllNodes(hasTestTag("checkbox"))[1].performClick()
+        waitForFile(files[0], "- [ ] milk\n- [ ] bread\n- [ ] cheese\n")
+    }
+
+    // ---- F. Tabs ---------------------------------------------------------------------------------------------
+
+    @Test fun eachTabKeepsItsUndoHistory() {
+        val files = seed("One", "Two")
+        launch()
+        waitForRows(listOf("One"))
+        rule.typeInLastRow("!")
+        waitForFile(files[0], "One!")
+        rule.onAllNodes(hasTestTag("tab") and hasText("Two")).onFirst().performClick()
+        waitForRows(listOf("Two"))
+        rule.onAllNodes(hasTestTag("tab") and hasText("One!")).onFirst().performClick()
+        waitForRows(listOf("One!"))
+        rule.formatButton("Undo").performClick()
+        waitForRows(listOf("One"))
+        rule.waitUntil(timeoutMillis = 8_000) { files[0].readText().trimEnd() == "One" }
+        assertEquals(listOf("One", "Two"), tabTitles())
+    }
+
+    // ---- G. Draft --------------------------------------------------------------------------------------------
+
+    @Test fun aBlankPageIsNotAFileUntilThereIsRealContent() {
+        launch()
+        waitForRows(listOf(""))
+        rule.row(0).performClick() // the caret is placed in the empty paragraph
+        rule.typeInLastRow("   ")
+        Thread.sleep(1_500) // longer than the autosave delay
+        assertTrue(mdFiles().isEmpty())
+        rule.typeInLastRow("x")
+        rule.waitUntil(timeoutMillis = 8_000) { mdFiles().size == 1 }
+        assertEquals("x\n", mdFiles().single().readText().trimStart())
+    }
+
+    // ---- H. External Markdown --------------------------------------------------------------------------------
+
+    @Test fun anExternalMarkdownFileIsShownFormattedAndEditedInPlace() {
+        val dir = File(app.cacheDir, "share/rich-test").apply { mkdirs() }
+        val file = File(dir, "Plan.md").apply { writeText("# Plan\n\n- [ ] one\n") }
+        val uri: Uri = FileProvider.getUriForFile(app, ShareHelper.authority(app), file)
+        val intent = Intent(app, MainActivity::class.java).setAction(Intent.ACTION_VIEW).setDataAndType(uri, "text/markdown")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        scenario = ActivityScenario.launch(intent)
+        waitForRows(listOf("Plan", "one"))
+        rule.onAllNodes(hasTestTag("checkbox")).onFirst().performClick()
+        rule.waitUntil(timeoutMillis = 8_000) { file.readText() == "# Plan\n\n- [x] one\n" }
+    }
+}

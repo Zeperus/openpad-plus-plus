@@ -76,7 +76,7 @@ class ExternalFlowTest {
         scenario = ActivityScenario.launch(viewIntent(uri))
         waitForTab("Notes")
 
-        rule.onNode(hasSetTextAction()).performTextInput(" and more")
+        rule.typeInLastRow(" and more")
         rule.waitUntil(timeoutMillis = 8_000) { file.readText().contains("and more") }
         assertTrue(file.readText().startsWith("# Original"))
         // the document was edited where it is: no copy of it among the app's own notes
@@ -88,7 +88,7 @@ class ExternalFlowTest {
         val (file, uri) = externalFile("Edit.md", "text")
         scenario = ActivityScenario.launch(viewIntent(uri, Intent.ACTION_EDIT))
         waitForTab("Edit")
-        rule.onNode(hasSetTextAction()).performTextInput("!")
+        rule.typeInLastRow("!")
         rule.waitUntil(timeoutMillis = 8_000) { file.readText().contains("!") }
     }
 

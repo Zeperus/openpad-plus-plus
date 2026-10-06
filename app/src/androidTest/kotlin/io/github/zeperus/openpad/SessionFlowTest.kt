@@ -116,7 +116,7 @@ class SessionFlowTest {
         launch()
         waitForTabs("Shopping", "Ideas", "Work")
         assertEquals("Ideas", selectedTab())
-        rule.onNode(hasSetTextAction()).assertTextEquals("Ideas")
+        rule.waitUntil(timeoutMillis = 5_000) { rule.rowTexts() == listOf("Ideas") }
     }
 
     @Test fun blankNoteModeShowsOnlyABlankNoteButKeepsTheNotes() {
@@ -163,7 +163,7 @@ class SessionFlowTest {
         waitForTabs("Shopping", "Ideas", "Work")
         rule.onNode(tab("Work")).performClick()
         rule.waitUntil(timeoutMillis = 5_000) { selectedTab() == "Work" }
-        rule.onNode(hasSetTextAction()).assertTextEquals("Work")
+        rule.waitUntil(timeoutMillis = 5_000) { rule.rowTexts() == listOf("Work") }
         assertEquals(listOf("Shopping", "Ideas", "Work"), tabTitles())
     }
 
@@ -220,7 +220,7 @@ class SessionFlowTest {
         seed(listOf("Shopping"), active = 0)
         launch()
         waitForTabs("Shopping", "New note")
-        rule.onNode(hasSetTextAction()).performTextInput("# Fresh idea")
+        rule.typeInLastRow("Fresh idea")
         waitForTabs("Shopping", "Fresh idea")
         assertEquals("Fresh idea", selectedTab())
         assertEquals(2, mdCount("notes"))
