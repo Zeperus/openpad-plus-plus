@@ -519,4 +519,50 @@ class NotesViewModelEditorTest {
         val state = File(root, "editor-state.json")
         assertTrue(!state.exists() || !state.readText().contains("fingerprint"))
     }
+
+    // ---- Search ----------------------------------------------------------------------------------------------
+
+    @Test fun `search finds notes by title and by content and opens a result with find`() = runTest {
+        val vm = launch()
+        vm.onTextChange("Gartenarbeit\nÄpfel pflücken")
+        settle()
+        vm.newNote(); runCurrent()
+        vm.type(0, "Einkauf\nMilch und Brot")
+        settle()
+        vm.search("äpfel"); advanceTimeBy(300); runCurrent()
+        assertEquals(listOf("Gartenarbeit"), vm.searchResults.map { it.note.title })
+        vm.search("einkauf"); advanceTimeBy(300); runCurrent()
+        assertTrue(vm.searchResults.single().titleMatch)
+        vm.search("nirgends"); advanceTimeBy(300); runCurrent()
+        assertTrue(vm.searchResults.isEmpty())
+
+        vm.search("pflücken"); advanceTimeBy(300); runCurrent()
+        val hit = vm.searchResults.single()
+        vm.openFromSearch(hit.note.id, "pflücken"); runCurrent()
+        assertEquals("Gartenarbeit", vm.current?.title)
+        assertEquals(1, vm.find?.matches?.size)
+        vm.clearSearch()
+        assertTrue(vm.searchResults.isEmpty())
+    }
+
+    @Test fun `find in note counts, steps and follows edits`() = runTest {
+        val vm = launch()
+        vm.onTextChange("one two\n\nTWO three\n\ntwo")
+        settle()
+        vm.startFind("two")
+        assertEquals(3, vm.find!!.matches.size)
+        assertEquals(0, vm.find!!.current)
+        vm.findNext(); vm.findNext()
+        assertEquals(2, vm.find!!.current)
+        vm.findNext()
+        assertEquals(0, vm.find!!.current) // wraps
+        vm.findPrevious()
+        assertEquals(2, vm.find!!.current)
+        vm.type(2, " and two")
+        assertEquals(4, vm.find!!.matches.size) // the new text is searched too
+        vm.setFindQuery("nothing")
+        assertTrue(vm.find!!.matches.isEmpty())
+        vm.closeFind()
+        assertNull(vm.find)
+    }
 }

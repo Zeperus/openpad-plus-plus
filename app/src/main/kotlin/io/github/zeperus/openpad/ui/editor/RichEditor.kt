@@ -113,6 +113,15 @@ fun RichEditor(vm: NotesViewModel, modifier: Modifier = Modifier) {
                 }
             } ?: emptyMap()
         }
+        val find = vm.find
+        val findByRow: Map<Long, List<IntRange>> = remember(find?.matches) {
+            find?.matches?.groupBy({ it.rowId }, { it.start until it.end }) ?: emptyMap()
+        }
+        val currentMatch = find?.currentMatch
+        LaunchedEffect(currentMatch) {
+            val index = currentMatch?.let { ui.doc.indexOf(it.rowId) } ?: -1
+            if (index >= 0) listState.animateScrollToItem(index)
+        }
         Box(
             modifier
                 .onGloballyPositioned { container = it }
@@ -132,6 +141,8 @@ fun RichEditor(vm: NotesViewModel, modifier: Modifier = Modifier) {
                         focusRequest = request,
                         showHint = hint,
                         selected = selected[row.id],
+                        matches = findByRow[row.id].orEmpty(),
+                        currentMatch = currentMatch?.takeIf { it.rowId == row.id }?.let { it.start until it.end },
                         sourceMode = row.id in sourceRows,
                         onSourceMode = { on -> if (on) sourceRows.add(row.id) else sourceRows.remove(row.id) },
                     )
@@ -171,6 +182,8 @@ private fun RowView(
     focusRequest: FocusRequest?,
     showHint: Boolean,
     selected: IntRange?,
+    matches: List<IntRange>,
+    currentMatch: IntRange?,
     sourceMode: Boolean,
     onSourceMode: (Boolean) -> Unit,
 ) {
@@ -250,7 +263,7 @@ private fun RowView(
                 }
             }
             RowField(
-                row, vm, geometry, cursorStart, readOnly, focusRequest, style, selected,
+                row, vm, geometry, cursorStart, readOnly, focusRequest, style, selected, matches, currentMatch,
                 plain = kind is RowKind.Code || kind == RowKind.Raw,
                 hintText = if (showHint && kind == RowKind.Paragraph) stringResource(R.string.editor_hint) else null,
             )
@@ -283,6 +296,8 @@ private fun RowField(
     focusRequest: FocusRequest?,
     style: TextStyle,
     selected: IntRange?,
+    matches: List<IntRange>,
+    currentMatch: IntRange?,
     plain: Boolean = false,
     hintText: String? = null,
 ) {
@@ -299,11 +314,16 @@ private fun RowField(
     }
     val current by rememberUpdatedState(value)
     val colors = MaterialTheme.colorScheme
-    val transformation = remember(row.text, colors, selected) {
+    val transformation = remember(row.text, colors, selected, matches, currentMatch) {
         SpanTransformation(
             row.text,
-            SpanColors(link = colors.primary, codeBackground = colors.surfaceVariant, muted = colors.onSurfaceVariant, highlight = colors.tertiaryContainer),
+            SpanColors(
+                link = colors.primary, codeBackground = colors.surfaceVariant, muted = colors.onSurfaceVariant,
+                highlight = colors.tertiaryContainer, match = colors.secondaryContainer,
+            ),
             highlight = selected?.takeIf { row.kind != RowKind.Rule },
+            matches = matches,
+            currentMatch = currentMatch,
         )
     }
     val focus = remember { FocusRequester() }

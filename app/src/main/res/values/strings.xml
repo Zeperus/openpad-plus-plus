@@ -121,4 +121,19 @@
     <string name="image_loading">Loading image…</string>
     <string name="image_unavailable">Image not available</string>
     <string name="image_placeholder_description">Image: %1$s, %2$s</string>
+
+    <string name="action_search">Search notes</string>
+    <string name="action_find">Find in note</string>
+    <string name="search_hint">Search notes</string>
+    <string name="search_no_results">No notes found</string>
+    <plurals name="search_matches">
+        <item quantity="one">%d match</item>
+        <item quantity="other">%d matches</item>
+    </plurals>
+    <string name="find_hint">Find in note</string>
+    <string name="find_none">No results</string>
+    <string name="find_position">%1$d of %2$d</string>
+    <string name="find_previous">Previous result</string>
+    <string name="find_next">Next result</string>
+    <string name="find_close">Close search</string>
 </resources>

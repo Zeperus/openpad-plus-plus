@@ -42,6 +42,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DrawerValue
@@ -98,16 +99,28 @@ private sealed interface Dialog {
 @Composable
 fun NotesScreen(vm: NotesViewModel) {
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    var showSearch by rememberSaveable { mutableStateOf(false) }
     if (showSettings) {
         SettingsScreen(vm, onBack = { showSettings = false })
+    } else if (showSearch) {
+        SearchScreen(
+            vm,
+            onBack = { showSearch = false; vm.clearSearch() },
+            onOpen = { hit ->
+                val query = vm.searchQuery
+                showSearch = false
+                vm.openFromSearch(hit.note.id, query)
+                vm.clearSearch()
+            },
+        )
     } else {
-        NotesContent(vm, onOpenSettings = { showSettings = true })
+        NotesContent(vm, onOpenSettings = { showSettings = true }, onOpenSearch = { showSearch = true })
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
+private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenSearch: () -> Unit) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -169,6 +182,9 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
                         }
                     },
                     actions = {
+                        IconButton(onClick = onOpenSearch) {
+                            Icon(Icons.Default.Search, contentDescription = stringResource(R.string.action_search))
+                        }
                         IconButton(onClick = { menuOpen = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more_options))
                         }
@@ -210,6 +226,10 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_close)) },
                                 onClick = { menuOpen = false; vm.closeCurrent() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_find)) },
+                                onClick = { menuOpen = false; vm.startFind() },
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.selection_all)) },
@@ -263,6 +283,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
             Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
                 if (vm.ready) {
                     TabStrip(vm)
+                    FindBar(vm)
                     if (vm.readOnly) {
                         Text(
                             text = stringResource(R.string.read_only_banner),

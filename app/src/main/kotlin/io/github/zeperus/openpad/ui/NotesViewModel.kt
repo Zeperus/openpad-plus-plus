@@ -21,6 +21,12 @@ import io.github.zeperus.openpad.domain.NoteNameConflictException
 import io.github.zeperus.openpad.domain.NoteNotFoundException
 import io.github.zeperus.openpad.domain.NoteSourceUnavailableException
 import io.github.zeperus.openpad.domain.NoteRepository
+import io.github.zeperus.openpad.domain.NoteSearch
+import io.github.zeperus.openpad.domain.SearchHit
+import io.github.zeperus.openpad.editor.FindInNote
+import io.github.zeperus.openpad.editor.FindMatch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.withTimeoutOrNull
 import io.github.zeperus.openpad.domain.NoteStorageException
 import io.github.zeperus.openpad.domain.NoteUnreadableException
 import io.github.zeperus.openpad.domain.OpenDocuments
@@ -43,6 +49,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.cancellation.CancellationException
+
+/** Find in note: the text searched for, where it occurs in the open note, and which occurrence is the current one. */
+data class FindState(val query: String, val matches: List<FindMatch>, val current: Int) {
+    val currentMatch: FindMatch? get() = matches.getOrNull(current)
+}
 
 enum class UserMessage { SaveFailed, NoteUnreadable, ActionFailed, SourceUnavailable }
 
@@ -99,6 +110,17 @@ class NotesViewModel(
     /** A selection that spans rows (the native text selection only works inside one row); null when there is none. */
     var docSelection by mutableStateOf<DocumentSelection?>(null)
         private set
+
+    /** Find in note (null = closed). */
+    var find by mutableStateOf<FindState?>(null)
+        private set
+
+    /** Global note search: what was typed and what it found. */
+    var searchQuery by mutableStateOf("")
+        private set
+    var searchResults by mutableStateOf<List<SearchHit>>(emptyList())
+        private set
+    private var searchJob: Job? = null
 
     /** Changes whenever a different document (or a cleared one) is loaded into the editor; row ids restart then. */
     var epoch by mutableIntStateOf(0)
@@ -210,6 +232,73 @@ class NotesViewModel(
         publish()
         markStateDirty()
     }
+
+    // ---- Find in note and global search ----------------------------------------------------------------------
+
+    fun startFind(query: String = find?.query.orEmpty()) {
+        find = computeFind(query, 0)
+    }
+
+    fun setFindQuery(query: String) {
+        find = computeFind(query, 0)
+    }
+
+    fun findNext() = stepFind(1)
+
+    fun findPrevious() = stepFind(-1)
+
+    fun closeFind() {
+        find = null
+    }
+
+    private fun stepFind(by: Int) {
+        val f = find ?: return
+        if (f.matches.isEmpty()) return
+        find = f.copy(current = (f.current + by).mod(f.matches.size))
+    }
+
+    private fun computeFind(query: String, current: Int): FindState {
+        val matches = FindInNote.matches(rich.doc, query)
+        return FindState(query, matches, current.coerceIn(0, maxOf(0, matches.lastIndex)))
+    }
+
+    /** Searches the titles and the text of all notes (the open note with what is on screen). Results appear in [searchResults]. */
+    fun search(query: String) {
+        searchQuery = query
+        searchJob?.cancel()
+        if (query.isBlank()) {
+            searchResults = emptyList()
+            return
+        }
+        searchJob = scope.launch {
+            delay(150) // typing on: only the last query is searched
+            val texts = notes.map { n ->
+                val text: String? = if (n.id == current?.id) editor.text else try {
+                    withTimeoutOrNull(if (n.isExternal) 1_500L else 10_000L) { repository.openNote(n.id).text }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null // a file that cannot be read is simply not searched
+                }
+                n to text
+            }
+            searchResults = NoteSearch.search(query, texts)
+        }
+    }
+
+    fun clearSearch() {
+        searchJob?.cancel()
+        searchQuery = ""
+        searchResults = emptyList()
+    }
+
+    /** Opens a search result and shows where the text is (Find in note, prefilled with the query). */
+    fun openFromSearch(id: NoteId, query: String) = act {
+        openNoteInternal(id)
+        if (!readOnlyOrBlank()) find = computeFind(query, 0)
+    }
+
+    private fun readOnlyOrBlank() = !ready
 
     // ---- Selections that span rows -----------------------------------------------------------------------------
 
@@ -414,6 +503,7 @@ class NotesViewModel(
     private fun publish() {
         ui = snapshot()
         docSelection = docSelection?.let { DocumentSelections.validated(rich.doc, it) }
+        find = find?.let { computeFind(it.query, it.current) }
     }
 
     /** The open note's session belongs to its tab. A draft has none until it becomes a note. */
@@ -455,8 +545,10 @@ class NotesViewModel(
     }
 
     /** Opens a note from the drawer: already open -> just activate it, otherwise append a tab. */
-    fun openNote(id: NoteId) = act {
-        if (current?.id == id) return@act
+    fun openNote(id: NoteId) = act { openNoteInternal(id) }
+
+    private suspend fun openNoteInternal(id: NoteId) {
+        if (current?.id == id) return
         saveNow()
         commitSession(session.open(id))
         syncEditor(markOpened = true)
@@ -727,6 +819,7 @@ class NotesViewModel(
         current = next.info
         readOnly = next.readOnly
         docSelection = null
+        find = null
         rich = sessionFor(next)
         rich.smartChecklist = next.info?.smartChecklist ?: next.smartOnCreate
         if (rich.smartChecklist && !next.readOnly && rich.settleLoaded()) commitMarkdown() // loading puts a smart checklist in order
