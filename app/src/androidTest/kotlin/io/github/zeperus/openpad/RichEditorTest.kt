@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
@@ -89,6 +90,9 @@ class RichEditorTest {
     private fun select(row: Int, from: Int, to: Int) {
         rule.row(row).performTextInputSelection(TextRange(from + 1, to + 1)) // +1: the invisible marker in front of the text
     }
+
+    private fun buttonEnabled(description: String) =
+        rule.formatButton(description).fetchSemanticsNode().config.contains(SemanticsProperties.Disabled).not()
 
     private fun tabNodes() = rule.onAllNodes(hasTestTag("tab")).fetchSemanticsNodes()
     private fun tabTitles() = tabNodes().map { n -> n.config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text } ?: "" }
@@ -198,6 +202,18 @@ class RichEditorTest {
         waitForOnlyFile("- milk\n- bread\n\nafter\n")
     }
 
+    @Test fun enterKeyOnAnEmptyItemLeavesTheListToo() {
+        launch()
+        rule.typeInLastRow("milk")
+        rule.formatButton("Bulleted list").performClick()
+        rule.row(0).performKeyInput { keyDown(Key.Enter); keyUp(Key.Enter) }
+        waitForRows(listOf("milk", ""))
+        rule.editorRows().onLast().performKeyInput { keyDown(Key.Enter); keyUp(Key.Enter) }
+        waitFor("one bullet and two rows after leaving the list", { "rows=${rule.rowTexts()} markers=${rule.onAllNodes(hasTestTag("marker")).fetchSemanticsNodes().size}" }) {
+            rule.rowTexts().size == 2 && rule.onAllNodes(hasTestTag("marker")).fetchSemanticsNodes().size == 1
+        }
+    }
+
     @Test fun numberedListIsNumbered() {
         launch()
         rule.typeInLastRow("one")
@@ -248,7 +264,7 @@ class RichEditorTest {
         waitForRows(listOf("One!"))
         rule.formatButton("Undo").assertIsEnabled()
         rule.formatButton("Undo").performClick()
-        waitForRows(listOf("One"))
+        waitFor("rows [One] after Undo", { "rows=${rule.rowTexts()} undo=${buttonEnabled("Undo")} redo=${buttonEnabled("Redo")}" }) { rule.rowTexts() == listOf("One") }
         rule.waitUntil(timeoutMillis = 8_000) { files[0].readText().trimEnd() == "One" }
         assertEquals(listOf("One", "Two"), tabTitles())
     }
