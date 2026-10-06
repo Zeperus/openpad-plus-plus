@@ -142,6 +142,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
     val snackbar = remember { SnackbarHostState() }
     var dialog by remember { mutableStateOf<Dialog?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
+    var editPage by remember { mutableStateOf(false) } // the overflow menu's second page: select / copy / paste
     val context = LocalContext.current
     val clipboard = io.github.zeperus.openpad.ui.editor.rememberAppClipboard()
     // The system file picker: the document stays where it is and is edited in place.
@@ -209,7 +210,31 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                         IconButton(onClick = { menuOpen = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more_options))
                         }
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false; editPage = false }) {
+                            if (editPage) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.selection_all)) },
+                                onClick = { menuOpen = false; editPage = false; vm.selectAll() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.selection_copy_markdown)) },
+                                onClick = {
+                                    menuOpen = false
+                                    // the selection, or - without one - the whole note
+                                    if (vm.docSelection == null && vm.ui.cursor?.isCollapsed != false) vm.selectAll()
+                                    vm.selectedText(markdown = true)?.let { clipboard.copy("Markdown", it) }
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_paste_markdown)) },
+                                enabled = !vm.readOnly,
+                                onClick = { menuOpen = false; editPage = false; clipboard.text()?.let { vm.pasteMarkdown(it) } },
+                            )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.settings_back)) },
+                                    onClick = { editPage = false },
+                                )
+                            } else {
                             DropdownMenuItem(
                                 text = {
                                     Text(
@@ -258,22 +283,8 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                                 onClick = { menuOpen = false; vm.startFind() },
                             )
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.selection_all)) },
-                                onClick = { menuOpen = false; vm.selectAll() },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.selection_copy_markdown)) },
-                                onClick = {
-                                    menuOpen = false
-                                    // the selection, or - without one - the whole note
-                                    if (vm.docSelection == null && vm.ui.cursor?.isCollapsed != false) vm.selectAll()
-                                    vm.selectedText(markdown = true)?.let { clipboard.copy("Markdown", it) }
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_paste_markdown)) },
-                                enabled = !vm.readOnly,
-                                onClick = { menuOpen = false; clipboard.text()?.let { vm.pasteMarkdown(it) } },
+                                text = { Text(stringResource(R.string.action_edit_menu)) },
+                                onClick = { editPage = true },
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_share)) },
@@ -301,6 +312,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                                 text = { Text(stringResource(R.string.action_settings)) },
                                 onClick = { menuOpen = false; onOpenSettings() },
                             )
+                            }
                         }
                     },
                 )

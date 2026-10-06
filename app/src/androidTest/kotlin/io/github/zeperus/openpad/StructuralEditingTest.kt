@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTextInputSelection
 import androidx.compose.ui.text.TextRange
@@ -82,7 +83,7 @@ class StructuralEditingTest {
 
     private fun overflow(item: String) {
         rule.onNodeWithContentDescription("More options").performClick()
-        rule.onNodeWithText(item).performClick()
+        rule.onNodeWithText(item).performScrollTo().performClick()
     }
 
     private val disposed get() = EditorDiagnostics.fieldsDisposed

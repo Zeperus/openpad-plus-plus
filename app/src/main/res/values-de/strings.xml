@@ -138,4 +138,5 @@
         <item quantity="one">%d Treffer</item>
         <item quantity="other">%d Treffer</item>
     </plurals>
+    <string name="action_edit_menu">Auswählen, Kopieren, Einfügen …</string>
 </resources>

@@ -156,4 +156,5 @@
 
     <string name="task_open_description">Task, not done: %1$s</string>
     <string name="task_done_description">Task, done: %1$s</string>
+    <string name="action_edit_menu">Select, copy, paste…</string>
 </resources>

@@ -36,7 +36,7 @@ class SelectionTest {
     }
 
     private fun selectAllFromTheMenu() {
-        rule.overflow("Select all")
+        rule.overflowEdit("Select all")
         rule.waitFor("the selection bar", { "" }) { rule.tagCount("selection-bar") == 1 }
     }
 
@@ -65,7 +65,7 @@ class SelectionTest {
         }
         rule.waitFor("a selection across rows", { "bars=${rule.tagCount("selection-bar")}" }) { rule.tagCount("selection-bar") == 1 }
         assertEquals(2, rule.tagCount("selection-handle-start") + rule.tagCount("selection-handle-end"))
-        rule.onNodeWithText("Copy", substring = false).performClick()
+        rule.barButton("Copy").performClick()
         rule.waitFor("the clipboard", { t.clipboardText().toString() }) { t.clipboardText() == "Beta two\n\nGamma three" }
     }
 
@@ -75,8 +75,8 @@ class SelectionTest {
         launch()
         rule.waitForRowTexts(listOf("Shopping", "One", "Two", "Milk", "Bread"))
         selectAllFromTheMenu()
-        rule.onNodeWithText("Copy", substring = false).performClick()
-        rule.waitFor("the clipboard", { t.clipboardText().toString() }) {
+        rule.barButton("Copy").performClick()
+        rule.waitFor("the clipboard", { t.clipboardText().toString().replace("\n", "⏎") }) {
             t.clipboardText() == "Shopping\n\n• One\n• Two\n\n☐ Milk\n☑ Bread"
         }
     }
@@ -89,7 +89,7 @@ class SelectionTest {
         launch()
         rule.waitForRowTexts(listOf("Shopping", "Milk", "Bread"))
         selectAllFromTheMenu()
-        rule.onNodeWithText("Copy as Markdown", substring = false).performClick()
+        rule.barButton("Copy as Markdown").performClick()
         rule.waitFor("the clipboard", { t.clipboardText().toString() }) { t.clipboardText() == "# Shopping\n\n- [ ] Milk\n- [x] Bread" }
     }
 
@@ -101,7 +101,7 @@ class SelectionTest {
         launch()
         rule.waitForRowTexts(listOf("Alpha one", "Beta two", "a", "b"))
         selectAllFromTheMenu()
-        rule.onNodeWithText("Cut", substring = false).performClick()
+        rule.barButton("Cut").performClick()
         rule.waitForRowTexts(listOf(""))
         assertEquals("Alpha one\n\nBeta two\n\n• a\n• b", t.clipboardText())
         rule.waitFor("the emptied file", { files[0].readText() }) { files[0].readText().isBlank() }
@@ -116,7 +116,7 @@ class SelectionTest {
         launch()
         rule.waitForRowTexts(listOf("One", "Two"))
         selectAllFromTheMenu()
-        rule.onNodeWithContentDescription("Done").performClick()
+        rule.barButton("Done").performClick()
         rule.waitFor("no selection bar", { "" }) { rule.tagCount("selection-bar") == 0 }
         assertEquals(1, rule.tagCount("formatting-bar"))
     }

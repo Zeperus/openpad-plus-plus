@@ -168,6 +168,7 @@ fun SelectionBar(vm: NotesViewModel, modifier: Modifier = Modifier) {
     val label = stringResource(R.string.app_name)
     Surface(tonalElevation = 3.dp, modifier = modifier.fillMaxWidth().testTag("selection-bar")) {
         Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            BarButton("✕", stringResource(R.string.selection_done)) { vm.clearSelection() }
             BarButton(stringResource(R.string.selection_copy), stringResource(R.string.selection_copy)) { vm.selectedText(markdown = false)?.let { clipboard.copy(label, it) } }
             BarButton(stringResource(R.string.selection_cut), stringResource(R.string.selection_cut), enabled = !readOnly) {
                 vm.cutSelection()?.let { clipboard.copy(label, it) }
@@ -178,7 +179,6 @@ fun SelectionBar(vm: NotesViewModel, modifier: Modifier = Modifier) {
             BarButton(stringResource(R.string.selection_paste), stringResource(R.string.selection_paste), enabled = !readOnly) { clipboard.text()?.let { vm.pasteText(it) } }
             BarButton(stringResource(R.string.selection_delete), stringResource(R.string.selection_delete), enabled = !readOnly) { vm.deleteSelection() }
             BarButton(stringResource(R.string.selection_all), stringResource(R.string.selection_all)) { vm.selectAll() }
-            BarButton("✕", stringResource(R.string.selection_done)) { vm.clearSelection() }
         }
     }
 }

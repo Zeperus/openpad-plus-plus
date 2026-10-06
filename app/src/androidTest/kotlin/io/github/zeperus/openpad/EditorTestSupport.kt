@@ -83,5 +83,16 @@ internal fun ComposeTestRule.tagCount(tag: String) = onAllNodes(hasTestTag(tag))
 
 internal fun ComposeTestRule.overflow(item: String) {
     onNodeWithContentDescription("More options").performClick()
-    onNodeWithText(item).performClick()
+    onNodeWithText(item).performScrollTo().performClick()
 }
+
+/** An item of the overflow menu's second page (select / copy / paste). */
+internal fun ComposeTestRule.overflowEdit(item: String) {
+    onNodeWithContentDescription("More options").performClick()
+    onNodeWithText("Select, copy, paste…").performScrollTo().performClick()
+    onNodeWithText(item).performScrollTo().performClick()
+}
+
+internal fun ComposeTestRule.barButton(description: String): SemanticsNodeInteraction =
+    onNode(androidx.compose.ui.test.hasContentDescription(description) and androidx.compose.ui.test.hasClickAction())
+        .also { runCatching { it.performScrollTo() } }

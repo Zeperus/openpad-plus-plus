@@ -30,6 +30,7 @@ import io.github.zeperus.openpad.domain.SearchHit
 import io.github.zeperus.openpad.editor.FindInNote
 import io.github.zeperus.openpad.editor.FindMatch
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withTimeoutOrNull
 import io.github.zeperus.openpad.domain.NoteStorageException
 import io.github.zeperus.openpad.domain.NoteUnreadableException
@@ -626,7 +627,12 @@ class NotesViewModel(
 
     // ---- The open note ---------------------------------------------------------------------------------------
 
-    suspend fun rename(title: String): RenameResult = actions.withLock {
+    /** Runs [block] in the application scope and waits for it: closing the dialog that asked cannot cancel it half-way. */
+    private suspend fun <T> inAppScope(block: suspend () -> T): T = scope.async { block() }.await()
+
+    suspend fun rename(title: String): RenameResult = inAppScope { renameLocked(title) }
+
+    private suspend fun renameLocked(title: String): RenameResult = actions.withLock {
         try {
             val renamed = editor.rename(title)
             afterEditorChanged()
@@ -646,9 +652,9 @@ class NotesViewModel(
         expandedFolders = if (id in expandedFolders) expandedFolders - id else expandedFolders + id
     }
 
-    suspend fun createFolder(name: String): RenameResult = actions.withLock { folderResult { repository.createFolder(name); refreshLists() } }
+    suspend fun createFolder(name: String): RenameResult = inAppScope { actions.withLock { folderResult { repository.createFolder(name); refreshLists() } } }
 
-    suspend fun renameFolder(id: String, name: String): RenameResult = actions.withLock { folderResult { repository.renameFolder(id, name); refreshLists() } }
+    suspend fun renameFolder(id: String, name: String): RenameResult = inAppScope { actions.withLock { folderResult { repository.renameFolder(id, name); refreshLists() } } }
 
     /** Only an empty folder is removed; notes are never deleted with a folder. */
     fun deleteFolder(id: String) = act {
@@ -668,12 +674,14 @@ class NotesViewModel(
     }
 
     /** Creates a folder and files the open note in it. */
-    suspend fun createFolderAndMove(name: String): RenameResult = actions.withLock {
-        folderResult {
-            val folder = repository.createFolder(name)
-            if (editor.setFolder(folder.id)) afterEditorChanged()
-            expandedFolders = expandedFolders + folder.id
-            refreshLists()
+    suspend fun createFolderAndMove(name: String): RenameResult = inAppScope {
+        actions.withLock {
+            folderResult {
+                val folder = repository.createFolder(name)
+                if (editor.setFolder(folder.id)) afterEditorChanged()
+                expandedFolders = expandedFolders + folder.id
+                refreshLists()
+            }
         }
     }
 

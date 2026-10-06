@@ -149,17 +149,18 @@ class Alpha3Test {
 
     private fun editorStateFile() = File(t.root, "editor-state.json")
 
+    private fun selection(): TextRange? = rule.row(0).fetchSemanticsNode().config.getOrNull(SemanticsProperties.TextSelectionRange)
+
     @Test fun theCaretComesBackAfterARestart() {
         t.seed("Hello world\n")
         launch()
         rule.waitForRowTexts(listOf("Hello world"))
-        rule.row(0).performTextInputSelection(TextRange(7, 9)) // "wo" (the field text starts with an invisible marker)
-        rule.waitFor("the remembered state", { "" }) { rule.waitForIdle(); true }
+        rule.row(0).performTextInputSelection(TextRange(7, 9)) // inside "world" (the field text starts with an invisible marker)
+        rule.waitFor("the selection", { "${selection()}" }) { selection() == TextRange(7, 9) }
+        rule.waitFor("the remembered state", { "" }) { editorStateFile().isFile && editorStateFile().readText().contains("\"start\":6") }
         restart()
         rule.waitForRowTexts(listOf("Hello world"))
-        rule.waitFor("the caret", { "${rule.row(0).fetchSemanticsNode().config.getOrNull(SemanticsProperties.TextSelectionRange)}" }) {
-            rule.row(0).fetchSemanticsNode().config.getOrNull(SemanticsProperties.TextSelectionRange) == TextRange(7, 9)
-        }
+        rule.waitFor("the caret", { "${selection()}" }) { selection() == TextRange(7, 9) }
     }
 
     @Test fun undoStillWorksAfterARestart() {
@@ -168,7 +169,8 @@ class Alpha3Test {
         rule.waitForRowTexts(listOf("Hello world"))
         rule.typeInLastRow("!")
         rule.waitFor("the file", { file.readText() }) { file.readText() == "Hello world!\n" }
-        restart() // the screen is closed first: pending state is written when it stops
+        rule.waitFor("the remembered history", { "" }) { editorStateFile().isFile && editorStateFile().readText().contains("Hello world\\n") }
+        restart()
         rule.waitForRowTexts(listOf("Hello world!"))
         rule.waitFor("undo available", { "" }) { rule.formatButton("Undo").fetchSemanticsNode().config.getOrNull(SemanticsProperties.Disabled) == null }
         rule.formatButton("Undo").performClick()
@@ -225,7 +227,8 @@ class Alpha3Test {
         rule.onNodeWithTag("move-new-folder").performClick()
         rule.onNodeWithTag("name-field").performTextInput("Work")
         rule.onNodeWithText("Create").performClick()
-        rule.waitFor("the folder", { "" }) { runBlocking { app.repository.listFolders().map { it.name } } == listOf("Work") }
+        rule.waitFor("the note filed in the folder", { "" }) { runBlocking { app.repository.listNotes().single().folderId } != null }
+        assertEquals(listOf("Work"), runBlocking { app.repository.listFolders().map { it.name } })
         assertEquals("Plan\n\ntext\n", file.readText()) // the file itself is untouched
         restart()
         rule.waitForRowTexts(listOf("Plan", "text"))
@@ -241,7 +244,8 @@ class Alpha3Test {
     @Test fun theUiIsGermanUnderAGermanLocale() {
         app.getSystemService(LocaleManager::class.java).applicationLocales = LocaleList.forLanguageTags("de")
         launch()
-        openDrawer()
+        rule.onNodeWithContentDescription("Navigation öffnen").performClick()
+        rule.waitForIdle()
         rule.onNodeWithText("+ Neue Notiz").assertExists()
         rule.onNodeWithText("+ Neue Checkliste").assertExists()
         rule.onNodeWithText("DATEIEN").assertExists()

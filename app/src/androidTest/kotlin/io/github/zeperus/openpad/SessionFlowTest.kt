@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -98,7 +99,7 @@ class SessionFlowTest {
 
     private fun overflow(item: String) {
         rule.onNodeWithContentDescription("More options").performClick()
-        rule.onNodeWithText(item).performClick()
+        rule.onNodeWithText(item).performScrollTo().performClick()
     }
 
     // ---- Startup modes ---------------------------------------------------------------------------------------

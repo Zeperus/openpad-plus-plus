@@ -16,6 +16,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.core.content.FileProvider
 import androidx.test.core.app.ActivityScenario
@@ -66,7 +67,7 @@ class ExternalFlowTest {
 
     private fun overflow(item: String) {
         rule.onNodeWithContentDescription("More options").performClick()
-        rule.onNodeWithText(item).performClick()
+        rule.onNodeWithText(item).performScrollTo().performClick()
     }
 
     // ---- Open with -------------------------------------------------------------------------------------------
