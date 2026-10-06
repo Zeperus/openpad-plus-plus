@@ -88,8 +88,8 @@ flanking rule (flanking is defined on code points, not UTF-16 units), the task-l
 
 ```
 keyboard / formatting bar
-        -> RichEditor (Compose, one text field per row)
-        -> NotesViewModel.onRowText / toggleStyle / ...
+        -> RichEditor (Compose, one text field per run of text rows; SegmentField)
+        -> NotesViewModel.applyFieldOp / toggleStyle / ...
         -> EditorSession  -> EditorOps (pure) -> EditorDocument (rows)
         -> EditorDocument.toMarkdown()  (MarkdownSerializer.serializeIncremental)
         -> NoteEditor.onTextChanged -> Autosaver -> .md file
@@ -151,6 +151,12 @@ Backspace-join makes the focused row the survivor, leaving a list changes the ki
 `StructuralEditingTest` asserts that none is disposed by a conversion, that the focused field keeps its focus, and that a
 simulated key repeat of Backspace over a list boundary stays in one field.
 
+**Alpha 4.** The row-per-field structure above kept the focus stable but could not select across rows (see below), so consecutive
+text rows now share one field. The rule is unchanged and stricter: *no field is created or disposed by an edit* - rows become lines
+of the same field, and the key of a field (`SegmentKeys`) follows the overlap of row ids with the previous layout, so Enter, joins,
+conversions and a ticked task move text inside the field instead of replacing it. `StructuralEditingTest` (15, unchanged in intent)
+passes on the new structure.
+
 ## Smart checklist
 
 A per-note mode (a flag in `index.json`, shown in the overflow menu as "Smart checklist: on/off"; never written into the
@@ -178,21 +184,30 @@ persisted across app restarts.
 
 ## Compose layer (`ui/editor/`)
 
-- `RichEditor`: a `LazyColumn` with one `BasicTextField` per row. The field holds *plain* text; `SpanTransformation` (a
-  `VisualTransformation` with the identity offset mapping) draws bold/italic/strike/code/link on top, so the keyboard's
-  composing text, selection, copy/cut/paste and emoji behave exactly as in any text field. Headings differ by typography,
-  lists by marker/checkbox, quotes by a bar, code by monospace on a tinted background.
-- **Backspace at the start**: soft keyboards report nothing when there is nothing to delete, so every field's text starts
-  with an invisible zero-width character. Deleting it *is* "Backspace at the start"; the field never lets the caret in front
-  of it. Hardware keys: Ctrl+B / Ctrl+I / Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y, Tab / Shift+Tab (indent/outdent).
-- The view model publishes one immutable `EditorUi` (rows, caret, active styles, undo availability); operations that move the
-  caret to another row set a `FocusRequest` the row consumes.
+- `RichEditor`: a `LazyColumn` of *segments* and *blocks*. A segment is a maximal run of consecutive text rows (paragraph, heading, quote,
+  list item, code, a raw row shown as source) and is **one** `BasicTextField(state = TextFieldState, ...)` whose text is the rows joined by
+  `"\n"`. A rule, table, image or simple-HTML row is a separate block item and splits the note into several segments. Segment logic is pure
+  Kotlin (`editor/Segments.kt`, `SegmentEditing.kt`, `Numbering.kt`); the Compose side is `SegmentField.kt`.
+- The field holds *plain* text. Formatting (bold/italic/strike/code/link), headings, quote and code backgrounds and the checked-task
+  strike-through are applied by an `OutputTransformation` (`addStyle`) and drawn behind the text; bullets, numbers, checkboxes and
+  quote bars are overlays aligned to the line positions. Nothing of Markdown syntax is ever in the field.
+- **User edits are interpreted before they are committed.** An `InputTransformation` compares the field before and after a keyboard edit,
+  `SegmentEditing.interpret` turns it into a `SegmentOp` (typing, newline, Backspace at a line start, delete, replace a selection,
+  paste, ...) and the view model applies it to the document model (`applyFieldOp`). The model stays the single truth; the field is
+  then rewritten to what the model says with the *smallest* text edit (`replaceMinimal`), so the IME's composing region and the caret
+  survive. Cross-row Cut/Delete/Replace are single model operations (one undo step).
+- The caret is kept as a logical position (row id + offset, `cursorEpoch` marks model-driven moves), not as a field offset.
+- **Backspace at the start**: soft keyboards report nothing when there is nothing to delete, so every field's text starts with an
+  invisible zero-width character (`FIELD_PREFIX`). Deleting it *is* "Backspace at the start of the first row" (leave the list, join
+  the block above); the field never lets the caret in front of it, and all offsets in the field are one more than in the segment. Later
+  rows have their line break instead. Hardware keys: Ctrl+B / Ctrl+I / Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y, Tab / Shift+Tab.
+- The view model publishes one immutable `EditorUi` (rows, caret, active styles, undo availability).
 - `FormattingBar`: one thin, horizontally scrolling row above the keyboard (paragraph style, **B**, *I*, ~~S~~, code, link,
   bullets, numbers, checklist, indent/outdent, rule, undo, redo). It exists only while the open document can be changed and
-  never takes focus from the text. Links: the dialog edits the address; opening is a separate, explicit "Open" button
-  (http/https/mailto/tel only), so placing the caret never launches a browser.
-- Read-only external documents render formatted with the read-only banner; there is no bar, fields are read-only (selection and
-  copy work), checkboxes are disabled.
+  never takes focus from the text. Formatting acts on every row the selection touches. Links: the dialog edits the address; opening is
+  a separate, explicit "Open" button (http/https/mailto/tel only), so placing the caret never launches a browser.
+- Read-only external documents render formatted with a read-only banner (and the reason); there is no bar, fields are read-only
+  (selection, copy and search work), checkboxes are disabled.
 
 ## Autosave and safety
 
@@ -202,30 +217,36 @@ Markdown stays in the editor and on disk and the user sees a message. A blank pa
 text that is not whitespace creates the file. Clear gives an empty document and an empty file; Delete/Rename/Favorite are
 unchanged (metadata or Trash).
 
-## Selecting across rows, clipboard (Alpha 3)
+## Selecting across rows, clipboard (Alpha 4)
 
-The native text selection of a field cannot leave its field, so a selection across rows is a separate, *logical* one.
+**Why Alpha 3's selection was not native.** Android's text selection - the handles, the floating toolbar, long-press word selection - belongs
+to *one* text field and cannot leave it. With one field per row the handles stopped at the edge of a paragraph, and Alpha 3 papered over
+it with a separate "logical" selection (custom long-press-and-drag gesture, our own handles and a selection bar). On a real phone that
+was rejected: it was not the native behaviour.
 
-- **Model** (`editor/DocumentSelection.kt`): `DocumentPosition(rowId, offset)` and `DocumentSelection(anchor, focus)`. Positions use the
-  stable row id, never an index, so a selection survives rows that move (a ticked task in a smart checklist) and edits elsewhere;
-  `validated` clamps offsets and drops the selection if a row is gone. A rule has offsets 0 and 1. Raw rows count as text.
-- **Gesture** (`ui/editor/SelectionUi.kt`): a long press that stays in one row is the field's own selection (unchanged). If the finger
-  then moves into another row, the gesture takes over (it is watched in the Initial pointer pass and only consumes events from that
-  moment): the selection runs from where the press began to where the finger is, with edge auto-scroll. Two drag handles then
-  adjust either end; "Select all" is in the overflow menu and the selection bar. A tap in any row ends the selection. While it
-  exists the fields show no native selection (our highlight is drawn by the visual transformation), so there is one selection at
-  a time and no field is replaced - the Alpha 2 focus/keyboard behaviour is untouched.
-- **Selection bar** (replaces the formatting bar while a selection exists): Copy, Cut, Copy as Markdown, Paste, Delete, Select all, Done.
+**Alpha 4 makes it the native behaviour by removing the cause**: consecutive text rows share one `BasicTextField(state = TextFieldState)`,
+so the *system's own* long press, selection handles, magnifier, double-tap word selection and floating toolbar run across paragraphs,
+headings, list items, checklist items and quotes, forward and backward. There is no custom gesture, handle or bar any more. A selection
+cannot cross a rule, table, image or HTML block (they are separate items); it ends at them.
+
+- **Model**: `editor/DocumentSelection.kt` (`DocumentPosition(rowId, offset)`, `DocumentSelection`) is still the pure model for
+  slices, readable text, Markdown and cross-row delete/replace; the view model builds it from the field's selection
+  (`onFieldSelection`, offsets mapped through `Segment.position`).
+- **Toolbar**: the official text context menu API (`appendTextContextMenuComponents` / `filterTextContextMenuComponents`) replaces the
+  system's Cut / Copy / Paste / Select all with ours - they know the invisible marker, the structure and the undo step - and adds
+  **Copy as Markdown**. Everything else the system offers stays.
 - **Copy** = readable plain text: list items get their bullet / number / box (•, `1.`, ☐ / ☑), blocks are separated by a
   blank line, items of one list by a line break; a part of one row is just that text. **Copy as Markdown** keeps the structure
-  (`# Heading`, `- [ ] task`, `1.`, `>`), cuts partial first/last rows into plain text pieces, and is also in the overflow menu (the
+  (`# Heading`, `- [ ] task`, `1.`, `>`) and cuts partial first/last rows into plain text pieces; it is also in the overflow menu (the
   selection, or the whole note if nothing is selected).
 - **Cut** = Copy + delete as **one** undo step. Deleting joins the first and last row when both are ordinary text rows (the first row's
   kind and id are kept; if the selection started at the very start of the first row, the last row gives the kind); whole rows that were
   covered simply disappear; code/raw rows at the edges are never merged with text; the document keeps a paragraph to type into.
-- **Paste** is plain text everywhere (Markdown in it is *not* interpreted); with a selection it replaces it (one undo step). "Paste as
-  Markdown" (overflow menu) is the explicit alternative: the clipboard is parsed and its blocks inserted at the caret row (or over
-  the selection), as one undo step.
+  Typing or pasting over a selection replaces it the same way (one step).
+- **Paste** is plain text everywhere (Markdown in it is *not* interpreted); with a selection it replaces it. "Paste as Markdown"
+  (overflow menu) is the explicit alternative: the clipboard is parsed and its blocks inserted at the caret row (or over the
+  selection), as one undo step.
+- Android drops a range selection when a field loses focus, so a remembered range comes back as a caret.
 
 ## Tables, images, HTML (Alpha 3)
 
@@ -292,11 +313,12 @@ text might not stay separate from its neighbour without a blank line); CRLF file
   their state; completed tasks are struck through *and* have a checked box (not colour alone); tabs announce "selected"; folders announce
   open/closed.
 
-## Limitations (Alpha 3)
+## Limitations (Alpha 4)
 
 - Inline images (inside a sentence), tables with inline HTML cells, nested block content inside list items and reference-style images are
   still shown as text/source; tables cannot be edited cell by cell (edit source instead).
-- A selection across rows cannot be extended with the keyboard (shift+arrows); typing while one exists first ends it.
+- A selection cannot continue across a rule, table, image or HTML block (those are separate blocks).
+- Pasting from another app into a selection that spans rows is plain text (no rich paste).
 - Copy puts plain text (or Markdown on request) on the clipboard, not rich text.
 - External files: relative image paths cannot be resolved (no access to sibling files), so such images are placeholders.
 - Search reads the notes directly (fine for hundreds of notes); there is no index.
@@ -307,5 +329,5 @@ text might not stay separate from its neighbour without a blank line); CRLF file
 `editor/EditorOpsTest`, `EditorDocumentTest`, `StructuralEditingTest` (row identity, Enter/Backspace on lists, smart checklist), `EditorPropertyTest` (random operation sequences on adversarial documents: after
 every operation the model written and read back must mean exactly what the editor holds; undoing everything restores the
 original file byte for byte; 1500 sessions per run, 6000 checked during development) and `NotesViewModelEditorTest`; on a
-device `SelectionTest` (selection across rows, copy, cut, undo), `Alpha3Test` (new checklist, tables, images, remembered caret/undo, search, folders, German, wide screens), `StructuralEditingTest` (focus and field identity, ghost rows, smart checklist) and `RichEditorTest` (formatting shown, typing persists, formatting bar, lists, checkboxes, tab switching with undo,
+device `SelectionTest` (real touch: long press and a native handle dragged across paragraphs, into a list, backwards, copy as Markdown, cut + undo, the toolbar), `Alpha3Test` (new checklist, tables, images, remembered caret/undo, search, folders, German, wide screens), `StructuralEditingTest` (focus and field identity, ghost rows, smart checklist) and `RichEditorTest` (formatting shown, typing persists, formatting bar, lists, checkboxes, tab switching with undo,
 blank page, external Markdown).

@@ -4,6 +4,29 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.1.0-alpha.4] - 2026-10-06 (pre-release / test build)
+
+### Changed
+- **Native text selection across paragraphs, headings, lists, checklists and quotes.** Consecutive text rows now share one text field,
+  so the system's own long press, selection handles and toolbar work across them, forward and backward. (Alpha 3's custom gesture,
+  handles and selection bar - which did not behave like Android's - are gone.) Copy puts readable text on the clipboard, **Copy as
+  Markdown** is in the same toolbar, Cut is one undo step, typing or Delete replaces/removes a selection, formatting applies to every
+  selected row. The Alpha 2 keyboard/focus behaviour is kept (no field is created or disposed by an edit; checkboxes keep the keyboard).
+
+### Fixed
+- **Files opened with "Open file..." were read-only.** The picker was asked for read access only; it now asks for read + write +
+  persistable access and for openable documents. A document handed over by another app ("Open with") with only a read grant stays
+  read-only, now says so (`README.md · Read only`, with the reason) and offers **Open with write access...** (the file picker again,
+  no copy). Write capability is decided from the granted/persisted permission, the provider's capability flag and, when that is
+  missing, a harmless open-for-append probe.
+
+### Added
+- **Language selector** in Settings: System default / Deutsch / English (Android per-app locales; system default stays the default).
+  Settings are now Startup / Language / Version.
+
+### Notes
+- Same signing certificate as Alpha 1-3 (installs over them); index format 5 unchanged.
+
 ## [0.1.0-alpha.3] - 2026-10-06 (pre-release / test build)
 
 ### Added

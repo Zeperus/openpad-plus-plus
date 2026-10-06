@@ -68,8 +68,8 @@ app's storage.
   recovery copy `external-backups/<id>.md`, (2) the document is overwritten, (3) its content is **read back and compared**.
   If the provider fails or writes only part, the save fails visibly (the editor keeps the text and retries) and the original
   or the recovery copy still has the content.
-- **Read-only:** a document without a write grant (or whose provider says it cannot be written) is detected when it is opened;
-  it is shown with a "Read-only" banner and is never written (editor, Clear and autosave are blocked).
+- **Read-only:** detected when the document is opened (see "Write access" below); it is shown as `Name · Read only` with a banner that says
+  why, and is never written (editor, Clear and autosave are blocked). Copy, search, share and closing still work.
 - **No Trash:** moving an external file to the Trash would delete it from the user's storage. Instead *Remove from
   openPad++* only forgets the entry; **the file is never deleted** (and a pending edit is written first). Rename is not
   offered for external documents (the title follows the provider's file name).
@@ -83,6 +83,32 @@ app's storage.
 - **Intent filters:** `text/markdown`, `text/x-markdown`, and files whose name ends in `.md`/`.markdown` with a generic type.
   Other files are not claimed. `MainActivity` is `singleTask`, so a second "Open with" arrives in the running screen instead
   of creating another session.
+
+## Write access of external documents (Alpha 4)
+
+**Root cause of "external Markdown opens read-only" (Alpha 1-3).** `ACTION_OPEN_DOCUMENT` grants *read* access only unless the request intent
+itself carries `FLAG_GRANT_WRITE_URI_PERMISSION`; the picker used for "Open file..." did not, so every picked file arrived with a read-only
+grant and was (correctly, but unhelpfully) treated as read-only. Alpha 4's `OpenWritableDocument` requests read + write + persistable
+access and `CATEGORY_OPENABLE`.
+
+Entry paths: **Open file (picker)** - write requested, persisted when the provider allows it. **Open with / Edit with / share into the app** -
+the *sending* app decides: it must add `FLAG_GRANT_WRITE_URI_PERMISSION` to its intent; many only send a read grant, and then the document
+stays read-only (the banner says "The app that opened this file did not grant write access") and offers **Open with write access...**,
+which opens the picker (pre-pointed at the document where the provider supports it) so the user can grant write access explicitly. No
+silent copy is ever made. **Downloads / other providers**: the provider's own flags apply. No `MANAGE_EXTERNAL_STORAGE` is used.
+
+**Detection** (`WriteAccessPolicy`, never destructive): (1) a document URI without a granted/persisted write permission is read-only
+(`NoWriteGrant`); (2) with a grant, `Document.FLAG_SUPPORTS_WRITE` is trusted when present; (3) if the provider reports no flags or says
+"no", the document is opened for *append* and closed again without writing: opened = writable, `SecurityException` = no grant, refusal =
+`ProviderRefuses`, anything else = `Unavailable` (treated as read-only). The probe is not run when the flag says yes because some
+providers treat unknown modes loosely and could truncate; a provider that claims support but refuses is caught by the verified save
+(the failure is shown, the text is kept and nothing is lost).
+
+## Language (Alpha 4)
+
+Settings -> Language: System default / Deutsch / English. The choice is stored in the settings DataStore (`language`: `system`, `de`, `en`;
+anything else falls back to system) and applied through `AppCompatDelegate.setApplicationLocales`, the Android per-app locale API (on
+Android 13+ the system's per-app language screen and this selector are the same setting). No strings are swapped manually.
 
 ## Drafts (no `Untitled` clutter)
 

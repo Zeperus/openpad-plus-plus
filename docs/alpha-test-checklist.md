@@ -1,4 +1,4 @@
-# Alpha test checklist (0.1.0-alpha.3)
+# Alpha test checklist (0.1.0-alpha.4)
 
 Short on purpose. Tick what works, note what does not (what you did, what you expected). **Keep backups of important
 notes while testing.** Settings shows the installed version at the bottom.
@@ -42,13 +42,42 @@ notes while testing.** Settings shows the installed version at the bottom.
 - [ ] Tapping a checkbox does not close the keyboard or move the text cursor
 - [ ] A normal Markdown checklist (mode off) does not auto-sort
 
+## Alpha 4
+
+### Selection (native, across blocks)
+- [ ] Long press a word in paragraph A and drag the **system selection handle** down into paragraph B: the text between is selected, the handle follows the finger
+- [ ] Same into a heading, a bullet item, a numbered item, a checklist item and a quote; and backwards (drag the start handle up)
+- [ ] Copy, paste elsewhere: readable text. Copy as Markdown (in the same toolbar): `# `, `- [ ]` etc. are in the clipboard
+- [ ] Cut: the text is gone, the rows join; one Undo brings everything back
+- [ ] Type a letter over a multi-row selection: it replaces the selection; Delete/Backspace removes it
+- [ ] Bold/italic from the formatting bar applies to every selected row
+- [ ] Nothing shows `#`, `**`, `- [ ]`; checkboxes are still real boxes (tap one: it toggles, keyboard and selection stay)
+
+### Keyboard regression (must still be perfect)
+- [ ] Held Backspace across a list boundary; Backspace at the start of a list item leaves the list; no keyboard flicker, caret does not jump
+- [ ] Enter in a list, Enter on an empty item, paragraph <-> bullet/number/checklist conversion from the bar: keyboard stays open
+- [ ] Tap a checkbox while typing: the keyboard stays; Smart Checklist still moves the item below the unchecked ones
+- [ ] Switch tabs and back; swipe the app away and reopen: caret and text are right
+
+### External files
+- [ ] Menu -> Open file... pick a `.md` (Downloads, Documents, a cloud provider): the title has no "Read only", you can type, the original file changes
+- [ ] "Open with" from a file manager / another app: if the app gave only read access the title says `· Read only` and the banner says why; "Open with write access..." lets you pick the file again
+- [ ] A truly read-only file stays read-only, can still be copied, searched, shared and closed
+
+### Language
+- [ ] Settings -> Language: System default / Deutsch / English switch the app immediately and survive a restart; System default follows the phone
+- [ ] Settings order: Startup, Language, Version `0.1.0-alpha.4`
+
+### Update
+- [ ] Install Alpha 4 directly over Alpha 3: notes, favorites, folders, session remain
+
 ## Alpha 3
 
 ### Selection
-- [ ] Long press in a paragraph and drag into another paragraph: the text between is highlighted, handles appear
+- [ ] Long press in a paragraph and drag a handle into another paragraph: the text between is highlighted
 - [ ] Select across a paragraph and a list, and across a checklist
 - [ ] Copy, paste somewhere else: readable text (bullets/boxes shown)
-- [ ] Copy as Markdown (selection bar, or menu): the Markdown structure
+- [ ] Copy as Markdown (toolbar, or menu): the Markdown structure
 - [ ] Cut, then Undo: everything comes back in one step
 - [ ] Menu: Select all; Paste as Markdown with Markdown text on the clipboard
 

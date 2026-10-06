@@ -95,10 +95,21 @@ Operations change rows in place (kind, text, depth) and the focused row survives
 [editor.md](editor.md#identity-and-focus-why-the-keyboard-used-to-flicker)). The smart checklist flag is note metadata
 (`NoteInfo.smartChecklist`, `index.json`), handed to the `EditorSession`; the ordering rules live in `editor/Checklist.kt`.
 
+## Alpha 4 additions
+
+- **Unified text field per run of rows** (`editor/Segments.kt`, `SegmentEditing.kt`, `Numbering.kt`, `ui/editor/SegmentField.kt`): the pure
+  segment logic maps rows <-> field text/offsets and interprets keyboard edits as document operations; the Compose side is one
+  `BasicTextField(TextFieldState)` per segment with input/output transformations. This is what makes the system's own selection cross
+  rows. `NotesViewModel.applyFieldOp` is the only way field edits reach the model. Details: [editor.md](editor.md).
+- **External write access** (`domain/WriteAccess.kt`, `data/ContentResolverDocuments.kt`): `WriteAccessPolicy` combines the URI permission,
+  the provider's flag and a probe; the picker contract `OpenWritableDocument` asks for read+write+persistable. See [storage.md](storage.md).
+- **Language** (`domain/AppLanguage.kt`, `data/AppCompatLocaleApplier.kt`): `LanguageManager` persists the choice (DataStore key `language`)
+  and applies it with `AppCompatDelegate.setApplicationLocales`; `MainActivity` is an `AppCompatActivity`.
+
 ## Alpha 3 additions
 
-- **Selection and clipboard**: `editor/DocumentSelection.kt` (pure: positions by row id, slices, plain text, Markdown, delete/replace) and
-  `ui/editor/SelectionUi.kt` (gesture, handles, bar, clipboard); the view model owns `docSelection` and clears it on any edit or tap.
+- **Selection and clipboard**: `editor/DocumentSelection.kt` (pure: positions by row id, slices, plain text, Markdown, delete/replace); since
+  Alpha 4 the selection itself is the native one of the segment field and `ui/editor/SelectionUi.kt` only holds the clipboard helper.
 - **Rendered raw blocks**: `editor/RawBlocks.kt` classifies a raw row (table / image / simple HTML / other); `ui/editor/RawViews.kt` draws it.
   The model is unchanged: they are still raw rows written back verbatim.
 - **Remembered state**: `editor/PersistedState.kt` (fingerprint, bounded steps) with `FileEditorStateStore` (`editor-state.json`); the view
