@@ -10,7 +10,9 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -154,6 +156,7 @@ class NotesFlowTest {
         launch()
         openDrawer()
         rule.onNodeWithText("FAVORITES").assertIsDisplayed()
+        rule.onNodeWithTag("drawer").performScrollToNode(hasText("TRASH")) // a small screen does not show the whole drawer
         assertTrue(top("FAVORITES") < top("RECENT"))
         assertTrue(top("RECENT") < top("FILES"))
         assertTrue(top("FILES") < top("TRASH"))

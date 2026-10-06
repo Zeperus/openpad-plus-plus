@@ -301,7 +301,7 @@ private fun DrawerContent(
     onOpen: (NoteInfo) -> Unit,
     onPurge: (NoteInfo) -> Unit,
 ) {
-    LazyColumn(contentPadding = PaddingValues(vertical = 12.dp), modifier = Modifier.fillMaxSize()) {
+    LazyColumn(contentPadding = PaddingValues(vertical = 12.dp), modifier = Modifier.fillMaxSize().testTag("drawer")) {
         item {
             Button(
                 onClick = onNewNote,

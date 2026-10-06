@@ -65,24 +65,26 @@ class ContentResolverDocuments(
     }
 
     /**
-     * Writable only if we hold a write grant *and* (for document providers) the document says it supports writing.
-     * When in doubt this says "read-only": showing a document read-only is safe, writing into one that refuses is not.
+     * Whether the document can be written. Document providers (file picker, cloud storage) say so themselves
+     * (`FLAG_SUPPORTS_WRITE`) and need a write grant; for every other kind of `content://` URI the only reliable test is
+     * to try opening it for writing in append mode, which changes nothing. When in doubt this says "read-only": showing
+     * a document read-only is safe, writing into one that refuses is not.
      */
     override suspend fun isWritable(uri: String): Boolean = withContext(dispatcher) {
         val parsed = Uri.parse(uri)
         try {
             if (parsed.scheme == "file") return@withContext parsed.path?.let { File(it).canWrite() } == true
-            val granted = context.checkUriPermission(parsed, Process.myPid(), Process.myUid(), Intent.FLAG_GRANT_WRITE_URI_PERMISSION) ==
-                android.content.pm.PackageManager.PERMISSION_GRANTED
-            val persisted = resolver.persistedUriPermissions.any { it.uri == parsed && it.isWritePermission }
-            val documentAllows = if (DocumentsContract.isDocumentUri(context, parsed)) {
-                resolver.query(parsed, arrayOf(DocumentsContract.Document.COLUMN_FLAGS), null, null, null)?.use { c ->
+            if (DocumentsContract.isDocumentUri(context, parsed)) {
+                val granted = context.checkUriPermission(parsed, Process.myPid(), Process.myUid(), Intent.FLAG_GRANT_WRITE_URI_PERMISSION) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                val persisted = resolver.persistedUriPermissions.any { it.uri == parsed && it.isWritePermission }
+                val supports = resolver.query(parsed, arrayOf(DocumentsContract.Document.COLUMN_FLAGS), null, null, null)?.use { c ->
                     c.moveToFirst() && (c.getInt(0) and DocumentsContract.Document.FLAG_SUPPORTS_WRITE) != 0
                 } ?: false
+                (granted || persisted) && supports
             } else {
-                true
+                resolver.openFileDescriptor(parsed, "wa")?.use { true } ?: false
             }
-            (granted || persisted) && documentAllows
         } catch (e: Exception) {
             false
         }

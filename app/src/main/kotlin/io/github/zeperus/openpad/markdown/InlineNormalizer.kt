@@ -116,11 +116,20 @@ object InlineNormalizer {
             break
         }
         out += before
-        if (inner.isNotEmpty()) {
-            val only = inner.singleOrNull()
-            // canonical order for a single nested Strong/Emphasis pair (what `***x***` parses to)
-            if (style == Style.Strong && only is Inline.Emphasis) out += Inline.Emphasis(listOf(Inline.Strong(only.children)))
-            else out += make(inner)
+        // A style around nothing but another style (or a link) means the same with the two swapped. One canonical order,
+        // outermost first: link, strike, italic, bold (italic around bold is also what `***x***` parses to). After the
+        // swap the new inner part is normalized again, so chains of three settle completely.
+        val only = inner.singleOrNull()
+        val swapped: Inline? = when {
+            only is Inline.Link && Style.Link !in active -> Inline.Link(listOf(make(only.children)), only.destination, only.title)
+            only is Inline.Strikethrough && style != Style.Strike && Style.Strike !in active -> Inline.Strikethrough(listOf(make(only.children)))
+            only is Inline.Emphasis && style == Style.Strong && Style.Emphasis !in active -> Inline.Emphasis(listOf(make(only.children)))
+            else -> null
+        }
+        if (swapped != null) {
+            out += normalize(listOf(swapped), active)
+        } else if (inner.isNotEmpty()) {
+            out += make(inner)
         }
         out += after
     }

@@ -472,3 +472,8 @@ internal object BlockNormalizer {
         )
     }
 }
+
+/** Test hook: the comparison form of a block (everything that carries meaning, none of the spelling). */
+object BlockNormalizerAccess {
+    fun form(block: Block): Block? = BlockNormalizer.compareForm(block)
+}

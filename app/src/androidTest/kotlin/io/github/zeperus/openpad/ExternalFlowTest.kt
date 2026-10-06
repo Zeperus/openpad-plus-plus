@@ -21,6 +21,7 @@ import androidx.core.content.FileProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -163,10 +164,19 @@ class ExternalFlowTest {
         assertTrue(app.packageName in handlers("content://provider/doc/1", "text/markdown", Intent.ACTION_EDIT))
     }
 
+    /** On failure the test shows which intent filters Android registered for the app (the way to debug manifest matching). */
+    private fun assertHandled(uri: String, type: String) {
+        if (app.packageName in handlers(uri, type)) return
+        val dump = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("dumpsys package ${app.packageName}")
+            .let { java.io.FileInputStream(it.fileDescriptor).bufferedReader().readText() }
+        val section = dump.lines().dropWhile { !it.contains("MainActivity filter") && !it.contains("Activity Resolver Table") }.take(60).joinToString("\n")
+        throw AssertionError("$uri ($type) is not handled. Registered filters:\n$section")
+    }
+
     @Test fun mdFilesWithAGenericTypeAreHandledByName() {
-        assertTrue(app.packageName in handlers("content://com.example.files/path/to/notes.md", "application/octet-stream"))
-        assertTrue(app.packageName in handlers("content://com.example.files/path/to/notes.markdown", "application/octet-stream"))
-        assertTrue(app.packageName in handlers("content://com.example.files/a.b/notes.v2.md", "application/octet-stream"))
+        assertHandled("content://com.example.files/path/to/notes.md", "application/octet-stream")
+        assertHandled("content://com.example.files/path/to/notes.markdown", "application/octet-stream")
+        assertHandled("content://com.example.files/a.b/notes.v2.md", "application/octet-stream")
     }
 
     @Test fun otherFilesAreNotClaimed() {

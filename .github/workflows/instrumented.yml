@@ -9,6 +9,11 @@ on:
   pull_request:
     paths-ignore: ['**.md', 'docs/**', 'LICENSE']
   workflow_dispatch:
+    inputs:
+      testClass:
+        description: "Run only this test class (fully qualified), e.g. io.github.zeperus.openpad.ExternalFlowTest"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -46,9 +51,11 @@ jobs:
           arch: x86_64
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: ./gradlew connectedDebugAndroidTest
+          script: ./gradlew connectedDebugAndroidTest ${{ inputs.testClass != '' && format('-Pandroid.testInstrumentationRunnerArguments.class={0}', inputs.testClass) || '' }} || (adb logcat -d -t 4000 > app/build/logcat.txt; exit 1)
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: instrumented-reports
-          path: app/build/reports/androidTests/
+          path: |
+            app/build/reports/androidTests/
+            app/build/logcat.txt
