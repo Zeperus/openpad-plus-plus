@@ -14,6 +14,7 @@ import io.github.zeperus.openpad.domain.NoteInfo
 import io.github.zeperus.openpad.domain.NoteLists
 import io.github.zeperus.openpad.domain.NoteNameConflictException
 import io.github.zeperus.openpad.domain.NoteNotFoundException
+import io.github.zeperus.openpad.domain.NoteSourceUnavailableException
 import io.github.zeperus.openpad.domain.NoteRepository
 import io.github.zeperus.openpad.domain.NoteStorageException
 import io.github.zeperus.openpad.domain.NoteUnreadableException
@@ -31,7 +32,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.cancellation.CancellationException
 
-enum class UserMessage { SaveFailed, NoteUnreadable, ActionFailed }
+enum class UserMessage { SaveFailed, NoteUnreadable, ActionFailed, SourceUnavailable }
 
 enum class RenameResult { Ok, InvalidName, NameTaken, Failed }
 
@@ -66,6 +67,10 @@ class NotesViewModel(
 
     /** The open note, or null while it is still an unsaved draft. */
     var current by mutableStateOf<NoteInfo?>(null)
+        private set
+
+    /** True while the open document cannot be changed (a read-only external file): shown, never written. */
+    var readOnly by mutableStateOf(false)
         private set
 
     /** The open documents. Only saved notes are persisted; the single blank draft is transient. */
@@ -127,7 +132,7 @@ class NotesViewModel(
     }
 
     fun onTextChange(newText: String) {
-        if (!ready) return
+        if (!ready || readOnly) return
         text = newText
         editor.onTextChanged(newText)
         autosaver.notifyChanged()
@@ -154,6 +159,29 @@ class NotesViewModel(
         commitSession(session.open(id))
         syncEditor(markOpened = true)
         refreshLists()
+    }
+
+    /**
+     * Opens a document that lives outside the app (file picker or "Open with"). It is edited in place and gets a tab like
+     * any note. If it cannot be read, the entry that was just created for it is not kept.
+     */
+    fun openExternal(uri: String, persistent: Boolean) = act {
+        saveNow()
+        val alreadyKnown = notes.any { it.externalUri == uri }
+        val info = repository.openExternal(uri, persistent)
+        commitSession(session.open(info.id))
+        syncEditor(markOpened = true)
+        if (current?.id != info.id && !alreadyKnown) {
+            runCatching { repository.forgetExternal(info.id) }
+        }
+        refreshLists()
+    }
+
+    /** Saves pending text and hands the current note to [onReady] (title and Markdown) for sharing as a `.md` file. */
+    fun share(onReady: (title: String, markdown: String) -> Unit) = act {
+        saveNow()
+        val note = current ?: return@act
+        onReady(note.title, editor.text)
     }
 
     fun selectTab(tab: DocumentTab) = act {
@@ -224,6 +252,15 @@ class NotesViewModel(
      * active. A draft with text is saved first, so that text ends up in the Trash rather than vanishing.
      */
     fun deleteCurrent() = act {
+        val external = current?.takeIf { it.isExternal }
+        if (external != null) { // an external file is only removed from openPad++, never deleted
+            saveNow()
+            repository.forgetExternal(external.id)
+            commitSession(session.remove(external.id))
+            syncEditor(markOpened = true)
+            refreshLists()
+            return@act
+        }
         val trashed = editor.moveToTrash()
         if (trashed != null) {
             val s = session
@@ -344,8 +381,11 @@ class NotesViewModel(
             try {
                 val content = repository.openNote(id)
                 val info = if (markOpened) repository.markOpened(id) else content.info
-                switchTo(NoteEditor(repository, NoteContent(info, content.text)))
+                switchTo(NoteEditor(repository, NoteContent(info, content.text, content.readOnly)))
                 return
+            } catch (e: NoteSourceUnavailableException) {
+                message = UserMessage.SourceUnavailable
+                commitSession(session.remove(id))
             } catch (e: NoteUnreadableException) {
                 message = UserMessage.NoteUnreadable
                 commitSession(session.remove(id))
@@ -359,6 +399,7 @@ class NotesViewModel(
         editor = next
         text = next.text
         current = next.info
+        readOnly = next.readOnly
     }
 
     private suspend fun refreshLists() {

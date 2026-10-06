@@ -31,6 +31,15 @@ interface NoteRepository {
     /** Records that an active note just became the open note (feeds Recent). */
     suspend fun markOpened(id: NoteId): NoteInfo
 
+    /**
+     * Registers an external document (or finds the existing entry for the same [uri]) so that it can be opened like a
+     * note. [persistent] says whether access survives a restart; entries that do not are forgotten on the next start.
+     */
+    suspend fun openExternal(uri: String, persistent: Boolean): NoteInfo
+
+    /** Removes an external document from openPad++. The file itself is never touched or deleted. */
+    suspend fun forgetExternal(id: NoteId)
+
     suspend fun moveToTrash(id: NoteId): NoteInfo
 
     suspend fun restoreFromTrash(id: NoteId): NoteInfo
@@ -52,3 +61,9 @@ class NoteNameConflictException(name: String) : NoteStorageException("A note nam
 /** The note's file is not valid UTF-8; it is left untouched so nothing gets corrupted by an overwrite. */
 class NoteUnreadableException(title: String, cause: Throwable? = null) :
     NoteStorageException("Cannot read '$title' as UTF-8 text", cause)
+
+/** The external document cannot be read or written right now (missing, permission revoked, provider gone, too slow). */
+class NoteSourceUnavailableException(message: String, cause: Throwable? = null) : NoteStorageException(message, cause)
+
+/** The operation does not make sense for an external document (Trash, rename). */
+class ExternalNotSupportedException(operation: String) : NoteStorageException("Not supported for external documents: $operation")

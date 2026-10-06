@@ -503,7 +503,7 @@ class FileNoteRepositoryTest {
         assertFalse(File(root, "notes/Shopping.md").exists())
         assertTrue(File(root, "trash/$trashedId.md").exists())
         assertFalse("index is rewritten without legacy names", File(root, "index.json").readText().contains("fileName"))
-        assertTrue(File(root, "index.json").readText().contains("\"version\": 3"))
+        assertTrue(File(root, "index.json").readText().contains("\"version\": 4"))
     }
 
     @Test fun `a minimal version 1 index without optional fields still loads`() = runBlocking {

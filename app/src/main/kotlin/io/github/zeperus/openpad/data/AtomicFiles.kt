@@ -43,8 +43,9 @@ internal object AtomicFiles {
     }
 
     /** Strict UTF-8 decoding: malformed input throws CharacterCodingException instead of being replaced (replacement would corrupt on re-save). */
-    fun readTextStrict(file: File): String {
-        val bytes = file.readBytes()
+    fun readTextStrict(file: File): String = decodeStrict(file.readBytes())
+
+    fun decodeStrict(bytes: ByteArray): String {
         val decoder = Charsets.UTF_8.newDecoder()
             .onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT)

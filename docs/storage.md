@@ -10,7 +10,7 @@ Below the app-private directory `filesDir/openpad/`:
 ```
 notes/<id>.md            active notes - plain UTF-8 Markdown, exactly what the user typed
 trash/<id>.md            trashed notes (same file name; only the directory differs)
-index.json               metadata only: id, title, createdAt, updatedAt, trashedAt, autoTitle, favorite, lastOpenedAt
+index.json               metadata only: id, title, createdAt, updatedAt, trashedAt, autoTitle, favorite, lastOpenedAt, uri/persistent/bom (external)
 ```
 
 `<id>` is a random UUID. The code lives behind `domain/NoteRepository`; `data/FileNoteRepository` is the
@@ -47,10 +47,42 @@ the bytes and the modification time before and after). They therefore survive re
   neither list but keep their flags, so Restore brings them back as they were.
 - FILES is always the complete list of active notes, so a favorite or recent note also appears there.
 
-Index versions: v1 (title-named files), v2 (id-named files), v3 (adds `favorite`, `lastOpenedAt`). Entries from an
+Index versions: v1 (title-named files), v2 (id-named files), v3 (adds `favorite`, `lastOpenedAt`), v4 (adds the external-document fields). Entries from an
 older index load with `favorite = false` and `lastOpenedAt = updatedAt` (the last edit is the best available
 "last use"); the index is then rewritten as v3 once. Unknown fields are ignored, so an index written by a newer
 version still loads.
+
+## External documents (Milestone 5)
+
+A `.md` file chosen with the system file picker ("Open file…") or handed over by another app ("Open with" / "Edit
+with") is **edited where it is**, through the Storage Access Framework (`content://` URI). It is never copied into the
+app's storage.
+
+- **Identity:** the document gets an entry in `index.json` (`uri`, `persistent`, `bom`) and a UUID like any note, so tabs,
+  session, Favorites and Recent need no special cases. There is no file under `notes/`. Opening the same URI again finds
+  the same entry.
+- **Reading:** strict UTF-8 (anything else is reported, never opened for editing), size limit 8 MB, a UTF-8 byte order
+  mark is stripped for editing and written back if the file had one, line endings are untouched. Every provider call has a
+  15-second timeout, so a hanging provider cannot freeze the repository.
+- **Writing:** providers cannot replace a file atomically, so (1) the new text is first written atomically to a private
+  recovery copy `external-backups/<id>.md`, (2) the document is overwritten, (3) its content is **read back and compared**.
+  If the provider fails or writes only part, the save fails visibly (the editor keeps the text and retries) and the original
+  or the recovery copy still has the content.
+- **Read-only:** a document without a write grant (or whose provider says it cannot be written) is detected when it is opened;
+  it is shown with a "Read-only" banner and is never written (editor, Clear and autosave are blocked).
+- **No Trash:** moving an external file to the Trash would delete it from the user's storage. Instead *Remove from
+  openPad++* only forgets the entry; **the file is never deleted** (and a pending edit is written first). Rename is not
+  offered for external documents (the title follows the provider's file name).
+- **Persistent access:** picker results are persisted (`takePersistableUriPermission`). Grants from "Open with" often are
+  not; such an entry is kept for the running session only and forgotten at the next start (the file is untouched).
+  A persistent document that later becomes unavailable (moved, deleted, access withdrawn) stays listed; opening it shows a
+  message, and a restored session simply drops its tab.
+- **Share** (any note): a copy is written to a private cache folder as `<Title>.md` and handed out through a FileProvider
+  (`<applicationId>.share`, not exported, read grant per intent, only the `share/` cache folder is reachable). The recipient
+  gets a real, readable `Shopping.md`.
+- **Intent filters:** `text/markdown`, `text/x-markdown`, and files whose name ends in `.md`/`.markdown` with a generic type.
+  Other files are not claimed. `MainActivity` is `singleTask`, so a second "Open with" arrives in the running screen instead
+  of creating another session.
 
 ## Drafts (no `Untitled` clutter)
 
@@ -144,5 +176,4 @@ on notes that are already in Trash. Trashed notes can be read but not saved or r
 
 ## Not implemented yet
 
-External `.md` files via the Storage Access Framework and the open-document session (Milestones 4, 7). Those will
-add metadata (URIs, session) next to, not inside, the notes.
+Nothing further.

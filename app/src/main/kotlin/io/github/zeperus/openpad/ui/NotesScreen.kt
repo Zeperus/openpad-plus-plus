@@ -1,6 +1,12 @@
 package io.github.zeperus.openpad.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.ui.platform.LocalContext
+import io.github.zeperus.openpad.ShareHelper
+import io.github.zeperus.openpad.data.ExternalAccess
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -103,6 +109,11 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
     val snackbar = remember { SnackbarHostState() }
     var dialog by remember { mutableStateOf<Dialog?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    // The system file picker: the document stays where it is and is edited in place.
+    val openFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.openExternal(uri.toString(), ExternalAccess.takePersistable(context.contentResolver, uri))
+    }
 
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
 
@@ -111,6 +122,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
         UserMessage.SaveFailed -> stringResource(R.string.message_save_failed)
         UserMessage.NoteUnreadable -> stringResource(R.string.message_note_unreadable)
         UserMessage.ActionFailed -> stringResource(R.string.message_action_failed)
+        UserMessage.SourceUnavailable -> stringResource(R.string.message_source_unavailable)
         null -> null
     }
     LaunchedEffect(message) {
@@ -127,6 +139,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
                 DrawerContent(
                     vm = vm,
                     onNewNote = { vm.newNote(); scope.launch { drawerState.close() } },
+                    onOpenFile = { scope.launch { drawerState.close() }; openFile.launch(arrayOf("*/*")) },
                     onOpen = { vm.openNote(it.id); scope.launch { drawerState.close() } },
                     onPurge = { dialog = Dialog.Purge(it) },
                 )
@@ -168,12 +181,12 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_rename)) },
-                                enabled = vm.hasNote,
+                                enabled = vm.hasNote && vm.current?.isExternal != true,
                                 onClick = { menuOpen = false; dialog = Dialog.Rename },
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_clear)) },
-                                enabled = vm.text.isNotEmpty(),
+                                enabled = vm.text.isNotEmpty() && !vm.readOnly,
                                 onClick = { menuOpen = false; dialog = Dialog.Clear },
                             )
                             DropdownMenuItem(
@@ -181,7 +194,23 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
                                 onClick = { menuOpen = false; vm.closeCurrent() },
                             )
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_delete)) },
+                                text = { Text(stringResource(R.string.action_share)) },
+                                enabled = vm.hasNote,
+                                onClick = {
+                                    menuOpen = false
+                                    vm.share { title, markdown ->
+                                        context.startActivity(ShareHelper.createIntent(context, title, markdown))
+                                    }
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        stringResource(
+                                            if (vm.current?.isExternal == true) R.string.action_remove_external else R.string.action_delete,
+                                        ),
+                                    )
+                                },
                                 enabled = vm.hasNote,
                                 onClick = { menuOpen = false; dialog = Dialog.Delete },
                             )
@@ -198,10 +227,22 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
             Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
                 if (vm.ready) {
                     TabStrip(vm)
+                    if (vm.readOnly) {
+                        Text(
+                            text = stringResource(R.string.read_only_banner),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.secondaryContainer)
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                        )
+                    }
                     // Temporary raw-Markdown editor; replaced by the formatted editor in a later milestone.
                     TextField(
                         value = vm.text,
                         onValueChange = vm::onTextChange,
+                        readOnly = vm.readOnly,
                         modifier = Modifier.fillMaxWidth().weight(1f),
                         placeholder = { Text(stringResource(R.string.editor_hint)) },
                         textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
@@ -233,12 +274,12 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
             onDismiss = { dialog = null },
         )
         Dialog.Delete -> ConfirmDialog(
-            title = stringResource(R.string.dialog_delete_title),
+            title = stringResource(if (vm.current?.isExternal == true) R.string.dialog_remove_title else R.string.dialog_delete_title),
             message = stringResource(
-                R.string.dialog_delete_message,
+                if (vm.current?.isExternal == true) R.string.dialog_remove_message else R.string.dialog_delete_message,
                 vm.current?.title ?: stringResource(R.string.untitled),
             ),
-            confirmLabel = stringResource(R.string.dialog_delete_confirm),
+            confirmLabel = stringResource(if (vm.current?.isExternal == true) R.string.dialog_remove_confirm else R.string.dialog_delete_confirm),
             onConfirm = { vm.deleteCurrent(); dialog = null },
             onDismiss = { dialog = null },
         )
@@ -256,6 +297,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
 private fun DrawerContent(
     vm: NotesViewModel,
     onNewNote: () -> Unit,
+    onOpenFile: () -> Unit,
     onOpen: (NoteInfo) -> Unit,
     onPurge: (NoteInfo) -> Unit,
 ) {
@@ -265,6 +307,10 @@ private fun DrawerContent(
                 onClick = onNewNote,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             ) { Text(stringResource(R.string.new_note)) }
+            TextButton(
+                onClick = onOpenFile,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            ) { Text(stringResource(R.string.open_file)) }
         }
         // Favorites and Recent appear only when they have entries; a note may be in FILES and in one of them.
         if (vm.favorites.isNotEmpty()) {
@@ -313,10 +359,14 @@ private fun LazyListScope.noteRows(
     onOpen: (NoteInfo) -> Unit,
 ) {
     items(notes, key = { "$section-${it.id.value}" }) { note ->
+        val externalLabel = stringResource(R.string.external_file)
         NavigationDrawerItem(
             label = { Text(note.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             selected = note.id == selected,
             onClick = { onOpen(note) },
+            badge = if (note.isExternal) {
+                { Text("↗", style = MaterialTheme.typography.labelMedium, modifier = Modifier.semantics { contentDescription = externalLabel }) }
+            } else null,
             modifier = Modifier.padding(horizontal = 12.dp),
         )
     }

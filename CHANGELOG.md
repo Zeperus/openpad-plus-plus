@@ -9,6 +9,9 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
   note's id even if the app crashes mid-operation. Older layouts are migrated automatically.
 
 ### Added
+- External Markdown documents: "Open file…" (system picker) and "Open with"/"Edit with" for `.md` files, edited in
+  place via the Storage Access Framework with a recovery copy and read-back verification, read-only detection,
+  and "Remove from openPad++" (never deletes the file). Share any note as a real `.md` file.
 - Open documents ("mobile tabs"): compact scrollable tab strip, no duplicate tabs, order kept, safe Close / Close others /
   Close all (long press or overflow menu - closing never deletes), at most one transient blank note ("New note")
   that becomes a real note on its first meaningful text. Opening an already open note just activates it.

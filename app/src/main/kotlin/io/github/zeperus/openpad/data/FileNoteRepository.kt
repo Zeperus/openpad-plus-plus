@@ -1,6 +1,10 @@
 package io.github.zeperus.openpad.data
 
+import io.github.zeperus.openpad.domain.ExternalDocuments
+import io.github.zeperus.openpad.domain.ExternalNotSupportedException
 import io.github.zeperus.openpad.domain.InvalidNoteNameException
+import io.github.zeperus.openpad.domain.NoExternalDocuments
+import io.github.zeperus.openpad.domain.NoteSourceUnavailableException
 import io.github.zeperus.openpad.domain.NoteContent
 import io.github.zeperus.openpad.domain.NoteFileName
 import io.github.zeperus.openpad.domain.NoteId
@@ -16,7 +20,9 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -31,7 +37,11 @@ import java.util.UUID
  * root/notes/<id>.md     active notes (plain UTF-8 Markdown, exactly what the user typed)
  * root/trash/<id>.md     trashed notes
  * root/index.json        metadata only: id, title, timestamps - never note text
+ * root/external-backups/<id>.md   last text written to an external document (recovery copy)
  * ```
+ *
+ * *External* documents (a `content://` URI chosen with the file picker or "Open with") have an index entry with their
+ * URI but no file here: they are read and written in place through [ExternalDocuments].
  *
  * Every operation changes at most one file *name* (Trash/Restore move `<id>.md` between the two directories) and
  * then rewrites the index atomically. Whatever the moment of a crash, [load] can reconstruct a consistent state
@@ -43,17 +53,23 @@ class FileNoteRepository internal constructor(
     private val dispatcher: CoroutineDispatcher,
     private val newId: () -> String,
     private val indexWriter: (File, String) -> Unit,
+    private val external: ExternalDocuments = NoExternalDocuments,
+    /** How long one provider call may take before the document counts as unavailable. */
+    private val externalTimeoutMs: Long = EXTERNAL_TIMEOUT_MS,
 ) : NoteRepository {
     constructor(
         root: File,
         clock: () -> Long = System::currentTimeMillis,
         dispatcher: CoroutineDispatcher = Dispatchers.IO,
         newId: () -> String = { UUID.randomUUID().toString() },
-    ) : this(root, clock, dispatcher, newId, AtomicFiles::writeText)
+        external: ExternalDocuments = NoExternalDocuments,
+        externalTimeoutMs: Long = EXTERNAL_TIMEOUT_MS,
+    ) : this(root, clock, dispatcher, newId, AtomicFiles::writeText, external, externalTimeoutMs)
 
     private val notesDir = File(root, "notes")
     private val trashDir = File(root, "trash")
     private val indexFile = File(root, "index.json")
+    private val backupsDir = File(root, "external-backups")
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true; encodeDefaults = true; explicitNulls = false }
 
     private val mutex = Mutex()
@@ -74,8 +90,14 @@ class FileNoteRepository internal constructor(
         val lastOpenedAt: Long? = null,
         /** Only present in version-1 indexes, where files were named after their title. Never written. */
         val fileName: String? = null,
+        /** The `content://` URI of an external document; null for internal notes. */
+        val uri: String? = null,
+        /** For external documents: whether access survives a restart (picker grants do, most "Open with" grants do not). */
+        val persistent: Boolean = true,
+        /** For external documents: the file started with a UTF-8 byte order mark, which is kept when writing. */
+        val bom: Boolean = false,
     ) {
-        fun toInfo() = NoteInfo(NoteId(id), title, createdAt, updatedAt, trashedAt, autoTitle, favorite, lastOpenedAt)
+        fun toInfo() = NoteInfo(NoteId(id), title, createdAt, updatedAt, trashedAt, autoTitle, favorite, lastOpenedAt, uri)
     }
 
     override suspend fun createNote(text: String): NoteInfo = locked { notes ->
@@ -104,6 +126,7 @@ class FileNoteRepository internal constructor(
 
     override suspend fun openNote(id: NoteId): NoteContent = locked { notes ->
         val entry = notes[id.value] ?: throw NoteNotFoundException(id)
+        if (entry.uri != null) return@locked openExternalContent(notes, entry)
         val text = try {
             AtomicFiles.readTextStrict(fileOf(entry))
         } catch (e: CharacterCodingException) {
@@ -114,6 +137,7 @@ class FileNoteRepository internal constructor(
 
     override suspend fun saveNote(id: NoteId, text: String): NoteInfo = locked { notes ->
         var entry = activeEntry(notes, id)
+        if (entry.uri != null) return@locked saveExternal(notes, entry, text)
         AtomicFiles.writeText(noteFile(entry.id), text)
         entry = entry.copy(updatedAt = clock())
         // Follow the first line while the user has not chosen a name. Only the index changes.
@@ -131,6 +155,7 @@ class FileNoteRepository internal constructor(
 
     override suspend fun renameNote(id: NoteId, newTitle: String): NoteInfo = locked { notes ->
         val entry = activeEntry(notes, id)
+        if (entry.uri != null) throw ExternalNotSupportedException("rename")
         val title = NoteFileName.sanitizeOrNull(newTitle) ?: throw InvalidNoteNameException(newTitle)
         val clash = notes.values.any {
             it.id != entry.id && it.trashedAt == null && it.title.equals(title, ignoreCase = true)
@@ -160,6 +185,7 @@ class FileNoteRepository internal constructor(
 
     override suspend fun moveToTrash(id: NoteId): NoteInfo = locked { notes ->
         val entry = activeEntry(notes, id)
+        if (entry.uri != null) throw ExternalNotSupportedException("move to Trash")
         AtomicFiles.move(noteFile(entry.id), trashFile(entry.id))
         val trashed = entry.copy(trashedAt = clock())
         notes[entry.id] = trashed
@@ -187,6 +213,101 @@ class FileNoteRepository internal constructor(
         persist(notes)
     }
 
+    // ---- External documents ----------------------------------------------------------------------------------
+
+    override suspend fun openExternal(uri: String, persistent: Boolean): NoteInfo = locked { notes ->
+        notes.values.firstOrNull { it.uri == uri }?.let { existing ->
+            if (persistent && !existing.persistent) {
+                val upgraded = existing.copy(persistent = true)
+                notes[upgraded.id] = upgraded
+                persist(notes)
+                return@locked upgraded.toInfo()
+            }
+            return@locked existing.toInfo()
+        }
+        val id = newId().also(::requireValidId)
+        val now = clock()
+        val entry = Entry(
+            id = id, title = externalTitle(ext { external.displayName(uri) }), createdAt = now, updatedAt = now,
+            autoTitle = false, lastOpenedAt = now, uri = uri, persistent = persistent,
+        )
+        notes[id] = entry
+        persist(notes)
+        entry.toInfo()
+    }
+
+    override suspend fun forgetExternal(id: NoteId): Unit = locked { notes ->
+        val entry = notes[id.value]?.takeIf { it.uri != null } ?: throw NoteNotFoundException(id)
+        notes.remove(entry.id)
+        persist(notes)
+        backupFile(entry.id).delete()
+    }
+
+    /** Reads an external document, keeping the entry's title and BOM flag in step with what the provider reports. */
+    private suspend fun openExternalContent(notes: MutableMap<String, Entry>, entry: Entry): NoteContent {
+        val uri = entry.uri!!
+        val bytes = ext { external.read(uri, MAX_EXTERNAL_BYTES) }
+        val hasBom = bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()
+        val text = try {
+            AtomicFiles.decodeStrict(if (hasBom) bytes.copyOfRange(3, bytes.size) else bytes)
+        } catch (e: CharacterCodingException) {
+            throw NoteUnreadableException(entry.title, e)
+        }
+        var current = entry
+        val name = runCatching { ext { external.displayName(uri) } }.getOrNull()
+        if (name != null) {
+            val title = externalTitle(name)
+            if (title != current.title) current = current.copy(title = title)
+        }
+        if (hasBom != current.bom) current = current.copy(bom = hasBom)
+        if (current != entry) {
+            notes[current.id] = current
+            persist(notes)
+        }
+        val writable = runCatching { ext { external.isWritable(uri) } }.getOrDefault(false)
+        return NoteContent(current.toInfo(), text, readOnly = !writable)
+    }
+
+    /**
+     * Writes an external document in place. Providers cannot replace a file atomically, so the new text is first kept
+     * in a private recovery copy, and after writing the content is read back and compared: a failed or partial write is
+     * reported (the editor keeps the text and retries) instead of being believed.
+     */
+    private suspend fun saveExternal(notes: MutableMap<String, Entry>, entry: Entry, text: String): NoteInfo {
+        val uri = entry.uri!!
+        val bytes = ((if (entry.bom) "\uFEFF" else "") + text).toByteArray(Charsets.UTF_8)
+        backupsDir.mkdirs()
+        AtomicFiles.writeText(backupFile(entry.id), text)
+        ext { external.write(uri, bytes) }
+        val written = ext { external.read(uri, bytes.size + 16) }
+        if (!written.contentEquals(bytes)) throw NoteSourceUnavailableException("The document was not written completely")
+        val updated = entry.copy(updatedAt = clock())
+        notes[updated.id] = updated
+        persist(notes)
+        return updated.toInfo()
+    }
+
+    private fun backupFile(id: String) = File(backupsDir, idToFileName(id).also { requireValidId(id) })
+
+    /** Provider calls can hang; bound them so that one broken provider cannot freeze every note operation. */
+    private suspend fun <T> ext(block: suspend () -> T): T = try {
+        withTimeout(externalTimeoutMs) { block() }
+    } catch (e: TimeoutCancellationException) {
+        throw NoteSourceUnavailableException("The document provider did not answer in time", e)
+    }
+
+    private fun externalTitle(displayName: String?): String {
+        val stem = displayName?.let {
+            val lower = it.lowercase()
+            when {
+                lower.endsWith(".md") -> it.dropLast(3)
+                lower.endsWith(".markdown") -> it.dropLast(9)
+                else -> it
+            }
+        }
+        return stem?.let { NoteFileName.sanitizeOrNull(it) } ?: NoteFileName.DEFAULT_TITLE
+    }
+
     // ---- internals -------------------------------------------------------------------------------------------
 
     private fun requireValidId(id: String) {
@@ -209,7 +330,7 @@ class FileNoteRepository internal constructor(
     private fun isSameTitleFamily(title: String, base: String): Boolean =
         title == base || Regex(Regex.escape(base) + """ \d+""").matches(title)
 
-    private suspend fun <T> locked(block: (MutableMap<String, Entry>) -> T): T = withContext(dispatcher) {
+    private suspend fun <T> locked(block: suspend (MutableMap<String, Entry>) -> T): T = withContext(dispatcher) {
         mutex.withLock {
             try {
                 block(entries ?: load().also { entries = it })
@@ -247,11 +368,17 @@ class FileNoteRepository internal constructor(
 
         val index = readIndex()
         // Versions before 3 had no lastOpenedAt: treat the last edit as the last use so Recent is not empty.
-        val seedLastOpened = index.version < INDEX_VERSION
-        if (seedLastOpened && index.notes.isNotEmpty()) changed = true
+        // (Later versions only add fields with defaults; they must not touch what was stored.)
+        val seedLastOpened = index.version < LAST_OPENED_SINCE_VERSION
+        if (index.version < INDEX_VERSION && index.notes.isNotEmpty()) changed = true // rewrite with the current version
 
         for (entry in index.notes) {
             if (!ID_PATTERN.matches(entry.id) || entry.id in result) { changed = true; continue }
+            if (entry.uri != null) { // an external document: there is no file to reconcile
+                // access that did not survive the previous process is gone: forget the entry (the file is untouched)
+                if (entry.persistent) result[entry.id] = entry.copy(trashedAt = null, fileName = null) else changed = true
+                continue
+            }
             var inNotes = noteFile(entry.id).isFile
             var inTrash = trashFile(entry.id).isFile
 
@@ -338,7 +465,10 @@ class FileNoteRepository internal constructor(
     }
 
     private companion object {
-        const val INDEX_VERSION = 3
+        const val INDEX_VERSION = 4
+        const val LAST_OPENED_SINCE_VERSION = 3
+        const val MAX_EXTERNAL_BYTES = 8 * 1024 * 1024
+        const val EXTERNAL_TIMEOUT_MS = 15_000L
         val ID_PATTERN = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
     }
 }

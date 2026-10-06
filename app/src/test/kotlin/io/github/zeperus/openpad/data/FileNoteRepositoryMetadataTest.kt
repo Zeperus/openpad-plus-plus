@@ -172,8 +172,8 @@ class FileNoteRepositoryMetadataTest {
         assertEquals(listOf(false, false), notes.map { it.favorite })
         assertEquals(listOf(50L, 60L), notes.map { it.lastOpenedAt })
         assertEquals(listOf("Beta", "Alpha"), NoteLists.recent(notes).map { it.title })
-        // rewritten as version 3, so the seeding happens exactly once
-        assertTrue(File(root, "index.json").readText().contains("\"version\": 3"))
+        // rewritten with the current version, so the seeding happens exactly once
+        assertTrue(File(root, "index.json").readText().contains("\"version\": 4"))
     }
 
     @Test fun `seeding happens once - a later restart keeps explicitly stored timestamps`() = runBlocking {
@@ -224,5 +224,16 @@ class FileNoteRepositoryMetadataTest {
         val note = repo().listNotes().single()
         assertTrue(note.favorite)
         assertEquals(5L, note.lastOpenedAt)
+    }
+
+    @Test fun `a version 3 index keeps notes that were never opened out of recent when it is upgraded`() = runBlocking {
+        File(root, "notes").mkdirs()
+        File(root, "notes/${id(40)}.md").writeText("never opened")
+        File(root, "index.json").writeText(
+            """{ "version": 3, "notes": [{"id":"${id(40)}","title":"Never","createdAt":1,"updatedAt":50}] }""",
+        )
+        val note = repo().listNotes().single()
+        assertNull(note.lastOpenedAt) // not invented by the upgrade
+        assertTrue(File(root, "index.json").readText().contains("\"version\": 4"))
     }
 }

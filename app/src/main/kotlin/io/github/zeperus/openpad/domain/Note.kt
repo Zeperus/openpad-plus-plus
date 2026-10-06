@@ -22,11 +22,16 @@ data class NoteInfo(
      * never opened in this app, e.g. adopted files; such notes never show up in Recent.
      */
     val lastOpenedAt: Long? = null,
+    /** Set for documents that live outside the app (a `content://` URI); the text is edited in place, never copied. */
+    val externalUri: String? = null,
 ) {
     val isTrashed: Boolean get() = trashedAt != null
+
+    val isExternal: Boolean get() = externalUri != null
 
     /** The name to use when the note leaves the app (Share/export); on disk the file is named after the id. */
     val exportFileName: String get() = title + NoteFileName.EXTENSION
 }
 
-data class NoteContent(val info: NoteInfo, val text: String)
+/** [readOnly]: the provider does not allow writing (e.g. a file opened with a read-only grant). */
+data class NoteContent(val info: NoteInfo, val text: String, val readOnly: Boolean = false)

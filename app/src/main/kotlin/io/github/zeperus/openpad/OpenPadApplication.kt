@@ -1,6 +1,7 @@
 package io.github.zeperus.openpad
 
 import android.app.Application
+import io.github.zeperus.openpad.data.ContentResolverDocuments
 import io.github.zeperus.openpad.data.DataStoreSettingsStore
 import io.github.zeperus.openpad.data.FileNoteRepository
 import io.github.zeperus.openpad.data.FileSessionStore
@@ -20,7 +21,9 @@ class OpenPadApplication : Application() {
      */
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    val repository: NoteRepository by lazy { FileNoteRepository(File(filesDir, "openpad")) }
+    val repository: NoteRepository by lazy {
+        FileNoteRepository(File(filesDir, "openpad"), external = ContentResolverDocuments(this))
+    }
 
     /** The open-document session: its own small file, separate from the notes and their index. */
     val sessionStore: SessionStore by lazy { FileSessionStore(File(filesDir, "openpad/session.json")) }

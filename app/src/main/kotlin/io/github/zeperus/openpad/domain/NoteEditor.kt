@@ -13,6 +13,8 @@ import kotlinx.coroutines.sync.withLock
 class NoteEditor(
     private val repository: NoteRepository,
     initial: NoteContent? = null,
+    /** A read-only document is shown but never written: [save], [clear] and text changes are ignored. */
+    val readOnly: Boolean = initial?.readOnly ?: false,
 ) {
     private val mutex = Mutex()
 
@@ -32,11 +34,13 @@ class NoteEditor(
         get() = if (info == null) text.isNotBlank() else text != savedText
 
     fun onTextChanged(newText: String) {
+        if (readOnly) return
         text = newText
     }
 
     /** Writes pending changes. Returns true if something was written. Safe to call repeatedly. */
     suspend fun save(): Boolean = mutex.withLock {
+        if (readOnly) return@withLock false
         val snapshot = text
         val current = info
         when {
@@ -57,6 +61,7 @@ class NoteEditor(
 
     /** Empties the text. The note (file) stays. A draft simply becomes an empty draft. */
     suspend fun clear() {
+        if (readOnly) return
         text = ""
         save()
     }
