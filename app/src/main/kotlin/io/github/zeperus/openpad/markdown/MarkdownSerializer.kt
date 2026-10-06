@@ -39,7 +39,8 @@ object MarkdownSerializer {
         require(origins.size == blocks.size) { "one origin per block" }
         if (original == null || !original.layoutValid) return serialize(OpenPadDocument(blocks), original?.eol ?: "\n")
         val eol = original.eol
-        val pieces = ArrayList<Pair<String, Int?>>() // text, original index if reused verbatim
+        class Piece(val text: String, val verbatim: Int?, val lineage: Int?) // lineage: the original block this one came from (also when rewritten)
+        val pieces = ArrayList<Piece>()
         val regenerate = HashSet<Int>() // unchanged lists that have to be written again to keep their neighbours apart
         fun verbatim(i: Int): Int? = if (i in regenerate) null else origins[i]?.takeIf { it in original.blocks.indices && original.blocks[it].block == blocks[i] }
         var written: Written? = null // the list marker of the block just written (a list written next to it must differ)
@@ -51,7 +52,7 @@ object MarkdownSerializer {
             val text: String
             if (o != null) {
                 text = original.blocks[o].source
-                pieces += text to o
+                pieces += Piece(text, o, o)
             } else {
                 // also keep clear of an unchanged list that follows: its text cannot be changed, ours can
                 val next = (i + 1 until blocks.size).firstOrNull { BlockNormalizer.compareForm(blocks[it]) != null }
@@ -62,7 +63,7 @@ object MarkdownSerializer {
                     following = null
                 }
                 text = renderVerified(block, blocks.getOrNull(i - 1), written?.let { if (following != null) it.copy(other = following) else it } ?: following)
-                if (text.isNotEmpty()) pieces += text.withEol(eol) to null
+                if (text.isNotEmpty()) pieces += Piece(text.withEol(eol), null, origins[i]?.takeIf { it in original.blocks.indices })
             }
             if (text.isNotEmpty()) {
                 written = if (block is Block.ListBlock) writtenFromText(text) else null
@@ -71,19 +72,25 @@ object MarkdownSerializer {
         }
         if (pieces.isEmpty()) return if (blocks.isEmpty() && original.blocks.isEmpty()) original.leading else ""
         val out = StringBuilder()
-        if (pieces.first().second == 0) out.append(original.leading)
+        if (pieces.first().verbatim == 0) out.append(original.leading)
         for ((i, piece) in pieces.withIndex()) {
-            out.append(piece.first)
-            val o = piece.second
+            out.append(piece.text)
+            val o = piece.lineage
             val next = pieces.getOrNull(i + 1)
             when {
-                next == null -> out.append(if (o != null && o == original.blocks.lastIndex) original.blocks[o].gapAfter else eol)
-                o != null && next.second == o + 1 -> out.append(original.blocks[o].gapAfter)
+                next == null -> out.append(if (piece.verbatim != null && piece.verbatim == original.blocks.lastIndex) original.blocks[piece.verbatim].gapAfter else eol)
+                // two untouched neighbours keep exactly the gap they had
+                piece.verbatim != null && next.verbatim == piece.verbatim + 1 -> out.append(original.blocks[piece.verbatim].gapAfter)
+                // next to a rewritten block the blank lines of the original are kept (a lone line break is not: the rewritten text
+                // might not stay separate from its neighbour without a blank line)
+                o != null && next.lineage == o + 1 && lineBreaks.findAll(original.blocks[o].gapAfter).count() >= 2 -> out.append(original.blocks[o].gapAfter)
                 else -> out.append(eol).append(eol)
             }
         }
         return out.toString()
     }
+
+    private val lineBreaks = Regex("\r\n|\n|\r")
 
     // ---- Blocks ----------------------------------------------------------------------------------------------
 
