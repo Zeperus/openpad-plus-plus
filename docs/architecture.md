@@ -77,6 +77,19 @@ files or Android.
   long press opens Close / Close others / Close all; the overflow menu has Close too) and a minimal `SettingsScreen`
   (Startup: Resume session / Resume + blank note / Blank note). The blank tab is labelled "New note".
 
+## The editor (Milestones 6 and 7)
+
+`markdown/` (parser, document model, verified serializer) and `editor/` (rows, operations, undo) are plain Kotlin without
+Compose or Android types; `ui/editor/` is the Compose layer (see [editor.md](editor.md)). `NotesViewModel` owns one
+`EditorSession` per open tab and turns every edit into Markdown for `NoteEditor` and the autosave:
+
+```
+RichEditor -> NotesViewModel -> EditorSession -> EditorOps -> EditorDocument -> Markdown -> NoteEditor -> Autosaver -> file
+```
+
+A tab's session is reused when its Markdown equals the freshly loaded file, so caret and undo survive tab switches but can
+never overwrite a changed file. `appScope` still runs on `Dispatchers.Main.immediate` (Compose state).
+
 Principles: constructor injection by hand (no DI framework), no layer without a purpose, Compose-independent
 domain/markdown code, build entirely from the terminal with `./gradlew`.
 

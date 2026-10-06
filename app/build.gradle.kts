@@ -13,7 +13,7 @@ android {
         minSdk = 28
         targetSdk = 37
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.1.0-alpha.1"
         testInstrumentationRunner = "io.github.zeperus.openpad.OpenPadTestRunner"
         // Each instrumented test gets a fresh process and cleared app data, so "cold start" tests are real.
         testInstrumentationRunnerArguments["clearPackageData"] = "true"

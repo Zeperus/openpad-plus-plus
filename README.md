@@ -14,7 +14,10 @@ Inspired by the simplicity of Notepad++, built for Android. Your notes are plain
 
 ## Status
 
-Early development. See [docs/roadmap.md](docs/roadmap.md) for the milestones and
+**Alpha (`0.1.0-alpha.1`, test build).** Notes are edited as formatted text (headings, bold/italic/strike, lists,
+checklists, quotes, code, links) and saved as plain Markdown; tabs, Favorites, Recent, Trash, external `.md` files
+(Open with / file picker) and Share work. Keep backups of important notes while testing, and see
+[docs/alpha-test-checklist.md](docs/alpha-test-checklist.md). See [docs/roadmap.md](docs/roadmap.md) for the milestones and
 [CURRENT_TASK.md](CURRENT_TASK.md) for the exact state of work.
 
 ## Building
@@ -48,6 +51,7 @@ Framework), never through broad file access. Sharing uses a non-exported FilePro
 - [Editor design](docs/editor.md)
 - [Storage and data safety](docs/storage.md)
 - [Roadmap](docs/roadmap.md)
+- [Alpha test checklist](docs/alpha-test-checklist.md)
 - [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
 ## License

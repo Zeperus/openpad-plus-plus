@@ -1,8 +1,8 @@
 # Editor
 
 openPad++ edits Markdown as *formatted text*: the user never sees `#`, `**` or `- [ ]` in normal editing, and the file on
-disk stays plain Markdown. This document covers the **Markdown engine** (Milestone 6); the rich editor built on top of it
-is described further down once it exists.
+disk stays plain Markdown. This document covers the **Markdown engine** (Milestone 6) and the **rich editor** (Milestone 7)
+built on top of it.
 
 ```
 Markdown file -> MarkdownParser -> ParsedDocument (OpenPadDocument + original layout)
@@ -83,3 +83,102 @@ checks), malformed-input/fuzz tests (random bytes, markup soup, 5000-deep nestin
 tests (a 6000-word note parses in tens of milliseconds; parsing/serializing scale linearly). The property tests were
 developed with a shrinker that reduces failing random documents to minimal cases; it found, among others, the emoji
 flanking rule (flanking is defined on code points, not UTF-16 units), the task-lookalike rule and list-interruption rules.
+
+# The rich editor (Milestone 7)
+
+```
+keyboard / formatting bar
+        -> RichEditor (Compose, one text field per row)
+        -> NotesViewModel.onRowText / toggleStyle / ...
+        -> EditorSession  -> EditorOps (pure) -> EditorDocument (rows)
+        -> EditorDocument.toMarkdown()  (MarkdownSerializer.serializeIncremental)
+        -> NoteEditor.onTextChanged -> Autosaver -> .md file
+```
+
+The formatted view *is* the editor. There is no source view and no preview: `# `, `**`, `- [ ]` exist only in the file.
+
+## Rows (`editor/EditorDocument.kt`)
+
+The document is a flat, immutable list of `EditorRow`s: paragraph, heading (1-6), quote line, list item (with depth and a
+`ListInfo` per list, `checked` = null/true/false), code block, rule, and **raw** (Markdown the editor does not format).
+Rows have stable ids, so UI state (focus, caret) survives edits. `RichText` is the text of a row with its formatting as
+spans (bold, italic, strike, code, link, hard break). Every edit makes a new document that shares the untouched rows.
+
+Mapping to the engine's blocks (`toBlocks`): consecutive list rows of one list form a `ListBlock` (depth = nesting),
+consecutive quote rows a `Quote`. A row remembers the parsed block it came from (`Origin`) and whether it was `touched`.
+`toMarkdown` writes **untouched blocks byte for byte** from the original text, regenerates only changed blocks and keeps
+the gaps between blocks where it can; a document that was never edited is returned as the exact original text. So opening
+a note and leaving it never rewrites the file, and changing one paragraph does not reformat the rest.
+
+What the editor cannot represent (tables, HTML blocks, a list item with several paragraphs or code inside, quotes with
+lists, link reference definitions, ...) is a **raw row**: shown in monospace in a tinted box ("Markdown kept as written"),
+editable as text, never converted. Backspace at the start of a raw row does nothing unless it is empty (then it is removed).
+
+## Operations (`editor/EditorOps.kt`) and behaviour
+
+- Typing: the field reports new text; the operation finds what changed, keeps the formatting of surrounding text and
+  continues bold/italic/strike at the caret (code and links are left by simply typing on). Toggling a style with an empty
+  selection applies to the next typed characters.
+- **Enter** splits the row. In a list it creates the next item (a task item gives an unchecked task); on an empty item it
+  leaves the list one level up / out of it; in a heading the new row is a paragraph; in a code block it inserts a line break.
+- **Backspace at the start**: list item -> outdent or paragraph; heading/quote/code -> paragraph; paragraph -> joined with
+  the previous row (never into code/raw; deletes a rule in front of it).
+- Paragraph style (Text, Heading 1-4, Quote, Code block), bullet / numbered / checklist toggles (converting rows in place),
+  indent / outdent (lists nest at most one level below the item above), horizontal rule, links (set / change / remove).
+- **Pasted text is plain text**: Markdown in pasted text is not interpreted (it is escaped on write so it reads back as the
+  same text). A blank line in pasted text starts a new paragraph. Only *opening a file* parses Markdown.
+- Checkboxes are real checkboxes; ticking one changes only that item (no reordering). Checked items are drawn dimmed and
+  struck through (display only).
+
+## Undo / redo
+
+`EditHistory` keeps at most 100 snapshots per document (rows are shared, so a step costs one list of references). A burst of
+typing in one row within one second is one step. Undo/redo cover typing, formatting, paragraph style, list conversion and
+checkbox toggles. Every open tab has its own `EditorSession` (document, caret/selection, history), kept while the tab is open.
+A tab's session is reused only if its Markdown equals the file just loaded; if the file changed meanwhile, a fresh session is
+built from disk (so undo can never write text over a newer file). Closing a tab drops its history. Caret and history are not
+persisted across app restarts.
+
+## Compose layer (`ui/editor/`)
+
+- `RichEditor`: a `LazyColumn` with one `BasicTextField` per row. The field holds *plain* text; `SpanTransformation` (a
+  `VisualTransformation` with the identity offset mapping) draws bold/italic/strike/code/link on top, so the keyboard's
+  composing text, selection, copy/cut/paste and emoji behave exactly as in any text field. Headings differ by typography,
+  lists by marker/checkbox, quotes by a bar, code by monospace on a tinted background.
+- **Backspace at the start**: soft keyboards report nothing when there is nothing to delete, so every field's text starts
+  with an invisible zero-width character. Deleting it *is* "Backspace at the start"; the field never lets the caret in front
+  of it. Hardware keys: Ctrl+B / Ctrl+I / Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y, Tab / Shift+Tab (indent/outdent).
+- The view model publishes one immutable `EditorUi` (rows, caret, active styles, undo availability); operations that move the
+  caret to another row set a `FocusRequest` the row consumes.
+- `FormattingBar`: one thin, horizontally scrolling row above the keyboard (paragraph style, **B**, *I*, ~~S~~, code, link,
+  bullets, numbers, checklist, indent/outdent, rule, undo, redo). It exists only while the open document can be changed and
+  never takes focus from the text. Links: the dialog edits the address; opening is a separate, explicit "Open" button
+  (http/https/mailto/tel only), so placing the caret never launches a browser.
+- Read-only external documents render formatted with the read-only banner; there is no bar, fields are read-only (selection and
+  copy work), checkboxes are disabled.
+
+## Autosave and safety
+
+Only document changes reach the autosave: caret moves and style toggles with an empty selection do not. Each change
+serializes the document and hands the Markdown to `NoteEditor`; if the serializer or an operation throws, the previous
+Markdown stays in the editor and on disk and the user sees a message. A blank page (one empty paragraph) is not a note: only
+text that is not whitespace creates the file. Clear gives an empty document and an empty file; Delete/Rename/Favorite are
+unchanged (metadata or Trash).
+
+## Limitations of the Alpha
+
+- Selection works inside one row; selecting across paragraphs, and drag-moving rows, are not supported. Copying yields plain
+  text, not Markdown.
+- Images, tables, HTML and similar content are kept as raw rows (shown as source), not rendered.
+- A list item can hold text and nested lists only; richer items are raw.
+- Whitespace between untouched and regenerated blocks can be normalized to one blank line next to an edited block.
+- The caret and undo history of a tab live only while the app runs.
+- Android's `.md` "Open with" filter for generic MIME types matches paths with up to six dots.
+
+## Editor tests
+
+`editor/EditorOpsTest`, `EditorDocumentTest`, `EditorPropertyTest` (random operation sequences on adversarial documents: after
+every operation the model written and read back must mean exactly what the editor holds; undoing everything restores the
+original file byte for byte; 1500 sessions per run, 6000 checked during development) and `NotesViewModelEditorTest`; on a
+device `RichEditorTest` (formatting shown, typing persists, formatting bar, lists, checkboxes, tab switching with undo,
+blank page, external Markdown).

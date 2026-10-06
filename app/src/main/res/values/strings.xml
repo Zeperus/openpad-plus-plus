@@ -36,6 +36,7 @@
 
     <string name="settings_title">Settings</string>
     <string name="settings_back">Back</string>
+    <string name="settings_version">openPad++ %1$s (test build)</string>
     <string name="settings_startup">Startup</string>
     <string name="startup_resume_session">Resume session</string>
     <string name="startup_resume_blank">Resume + blank note</string>

@@ -4,6 +4,20 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.1.0-alpha.1] - 2026-10-06 (pre-release / test build)
+
+### Added
+- **Rich Markdown editor**: the formatted text is the editor (no visible `#`, `**`, `- [ ]`). Paragraphs, headings 1-6, bold,
+  italic, strikethrough, inline code, links, bullet / numbered / task lists (real checkboxes, nesting), quotes, code blocks,
+  horizontal rules. Unsupported Markdown (tables, HTML, ...) is kept as raw rows. Compact formatting bar above the keyboard.
+- Undo / redo (bounded, 100 steps per tab); every tab keeps its caret and undo history while it is open.
+- **Markdown engine**: commonmark-java 0.30 + own document model and verified serializer; untouched parts of a file are written back
+  byte for byte; property/fuzz/performance tests.
+- Version shown in Settings; launcher icon from the supplied artwork.
+
+### Changed
+- The temporary raw-Markdown text field is gone.
+
 ### Changed
 - Note files are now named by id (`notes/<uuid>.md`) and titles live in the index, so rename/trash cannot change a
   note's id even if the app crashes mid-operation. Older layouts are migrated automatically.

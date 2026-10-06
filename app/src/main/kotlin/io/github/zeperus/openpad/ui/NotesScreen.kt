@@ -551,6 +551,14 @@ private fun SettingsScreen(vm: NotesViewModel, onBack: () -> Unit) {
                     }
                 }
             }
+            val context = LocalContext.current
+            val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull().orEmpty() }
+            Text(
+                text = stringResource(R.string.settings_version, version),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 24.dp).testTag("version"),
+            )
         }
     }
 }
