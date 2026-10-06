@@ -565,4 +565,60 @@ class NotesViewModelEditorTest {
         vm.closeFind()
         assertNull(vm.find)
     }
+
+    // ---- Folders ---------------------------------------------------------------------------------------------
+
+    @Test fun `a note can be filed in a new folder and the note itself stays the same`() = runTest {
+        val vm = launch()
+        vm.onTextChange("Plan\n\n- [ ] a\n")
+        settle()
+        val before = vm.file("Plan").readText()
+        assertEquals(RenameResult.Ok, vm.createFolderAndMove("Work"))
+        runCurrent()
+        assertEquals("Work", vm.folders.single().name)
+        assertEquals(vm.folders.single().id, vm.current?.folderId)
+        assertEquals(before, vm.file("Plan").readText())
+        assertEquals(1, vm.notes.size)
+        assertEquals(RenameResult.NameTaken, vm.createFolder("work"))
+        assertEquals(RenameResult.InvalidName, vm.createFolder("  "))
+    }
+
+    @Test fun `folders survive a restart and the note is still found in its folder`() = runTest {
+        val vm = launch()
+        vm.onTextChange("Plan")
+        settle()
+        vm.createFolderAndMove("Work")
+        runCurrent()
+        val again = launch()
+        runCurrent()
+        assertEquals(listOf("Work"), again.folders.map { it.name })
+        assertEquals(again.folders.single().id, again.notes.single().folderId)
+    }
+
+    @Test fun `a folder with notes is not deleted and says so, an empty one is`() = runTest {
+        val vm = launch()
+        vm.onTextChange("Plan")
+        settle()
+        vm.createFolderAndMove("Work")
+        runCurrent()
+        val folder = vm.folders.single()
+        vm.deleteFolder(folder.id); runCurrent()
+        assertEquals(UserMessage.FolderNotEmpty, vm.message)
+        assertEquals(1, vm.folders.size)
+        vm.moveCurrentToFolder(null); runCurrent()
+        vm.deleteFolder(folder.id); runCurrent()
+        assertTrue(vm.folders.isEmpty())
+        assertEquals(1, vm.notes.size)
+    }
+
+    @Test fun `moving a note does not change favorites or recent`() = runTest {
+        val vm = launch()
+        vm.onTextChange("Plan")
+        settle()
+        vm.toggleFavorite(); runCurrent()
+        val recentBefore = vm.recent.map { it.id }
+        vm.createFolderAndMove("Work"); runCurrent()
+        assertEquals(1, vm.favorites.size)
+        assertEquals(recentBefore, vm.recent.map { it.id })
+    }
 }

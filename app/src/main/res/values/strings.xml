@@ -136,4 +136,21 @@
     <string name="find_previous">Previous result</string>
     <string name="find_next">Next result</string>
     <string name="find_close">Close search</string>
+
+    <string name="action_move_to_folder">Move to folder…</string>
+    <string name="action_delete_folder">Delete folder…</string>
+    <string name="new_folder">New folder…</string>
+    <string name="folder_none">No folder</string>
+    <string name="folder_taken">A folder with this name already exists.</string>
+    <string name="folder_options">Folder options</string>
+    <string name="folder_expanded">Open</string>
+    <string name="folder_collapsed">Closed</string>
+    <string name="dialog_move_title">Move to folder</string>
+    <string name="dialog_new_folder_title">New folder</string>
+    <string name="dialog_new_folder_confirm">Create</string>
+    <string name="dialog_rename_folder_title">Rename folder</string>
+    <string name="dialog_delete_folder_title">Delete folder?</string>
+    <string name="dialog_delete_folder_message">The empty folder “%1$s” will be deleted.</string>
+    <string name="dialog_delete_folder_confirm">Delete folder</string>
+    <string name="message_folder_not_empty">Only an empty folder can be deleted. Move its notes out first.</string>
 </resources>

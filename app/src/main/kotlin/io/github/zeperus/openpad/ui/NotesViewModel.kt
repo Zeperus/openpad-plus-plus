@@ -11,6 +11,10 @@ import io.github.zeperus.openpad.editor.EditorStateCodec
 import io.github.zeperus.openpad.editor.PersistedEditorState
 import kotlinx.coroutines.delay
 import io.github.zeperus.openpad.domain.DocumentTab
+import io.github.zeperus.openpad.domain.FolderInfo
+import io.github.zeperus.openpad.domain.FolderNameConflictException
+import io.github.zeperus.openpad.domain.FolderNotEmptyException
+import io.github.zeperus.openpad.domain.InvalidFolderNameException
 import io.github.zeperus.openpad.domain.InvalidNoteNameException
 import io.github.zeperus.openpad.domain.NoteContent
 import io.github.zeperus.openpad.domain.NoteEditor
@@ -55,7 +59,7 @@ data class FindState(val query: String, val matches: List<FindMatch>, val curren
     val currentMatch: FindMatch? get() = matches.getOrNull(current)
 }
 
-enum class UserMessage { SaveFailed, NoteUnreadable, ActionFailed, SourceUnavailable }
+enum class UserMessage { SaveFailed, NoteUnreadable, ActionFailed, SourceUnavailable, FolderNotEmpty }
 
 enum class RenameResult { Ok, InvalidName, NameTaken, Failed }
 
@@ -155,6 +159,14 @@ class NotesViewModel(
         private set
 
     var trash by mutableStateOf<List<NoteInfo>>(emptyList())
+        private set
+
+    /** The folders (one level), sorted by name. Empty for people who never use them: then nothing about folders is shown. */
+    var folders by mutableStateOf<List<FolderInfo>>(emptyList())
+        private set
+
+    /** Folders opened in the drawer (the one holding the open note is always shown open). */
+    var expandedFolders by mutableStateOf<Set<String>>(emptySet())
         private set
 
     var startupMode by mutableStateOf(StartupMode.Default)
@@ -628,6 +640,54 @@ class NotesViewModel(
         }
     }
 
+    // ---- Folders ---------------------------------------------------------------------------------------------
+
+    fun toggleFolder(id: String) {
+        expandedFolders = if (id in expandedFolders) expandedFolders - id else expandedFolders + id
+    }
+
+    suspend fun createFolder(name: String): RenameResult = actions.withLock { folderResult { repository.createFolder(name); refreshLists() } }
+
+    suspend fun renameFolder(id: String, name: String): RenameResult = actions.withLock { folderResult { repository.renameFolder(id, name); refreshLists() } }
+
+    /** Only an empty folder is removed; notes are never deleted with a folder. */
+    fun deleteFolder(id: String) = act {
+        try {
+            repository.deleteFolder(id)
+            expandedFolders = expandedFolders - id
+        } catch (e: FolderNotEmptyException) {
+            message = UserMessage.FolderNotEmpty
+        }
+        refreshLists()
+    }
+
+    /** Files the open note in [folderId] (null = no folder). Pure metadata: the note file does not move or change. */
+    fun moveCurrentToFolder(folderId: String?) = act {
+        if (editor.setFolder(folderId)) afterEditorChanged()
+        folderId?.let { expandedFolders = expandedFolders + it }
+    }
+
+    /** Creates a folder and files the open note in it. */
+    suspend fun createFolderAndMove(name: String): RenameResult = actions.withLock {
+        folderResult {
+            val folder = repository.createFolder(name)
+            if (editor.setFolder(folder.id)) afterEditorChanged()
+            expandedFolders = expandedFolders + folder.id
+            refreshLists()
+        }
+    }
+
+    private suspend fun folderResult(block: suspend () -> Unit): RenameResult = try {
+        block()
+        RenameResult.Ok
+    } catch (e: InvalidFolderNameException) {
+        RenameResult.InvalidName
+    } catch (e: FolderNameConflictException) {
+        RenameResult.NameTaken
+    } catch (e: NoteStorageException) {
+        RenameResult.Failed
+    }
+
     /** Favorites or unfavorites the open note (creating it first if it is a draft with text). */
     fun toggleFavorite() = act {
         val favorite = !(editor.info?.favorite ?: false)
@@ -845,6 +905,7 @@ class NotesViewModel(
         favorites = NoteLists.favorites(all)
         recent = NoteLists.recent(all)
         trash = repository.listTrash()
+        folders = repository.listFolders()
     }
 
     private fun act(block: suspend () -> Unit) {

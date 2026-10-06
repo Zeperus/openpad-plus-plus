@@ -89,6 +89,16 @@ class NoteEditor(
         }
     }
 
+    /** Files the note in a folder (or takes it out with null), creating the note first if it is a draft with real content. */
+    suspend fun setFolder(folderId: String?): Boolean {
+        save()
+        return mutex.withLock {
+            val current = info ?: return@withLock false
+            info = repository.moveNote(current.id, folderId)
+            true
+        }
+    }
+
     /** Switches smart checklist mode, creating the note first if it is a draft with real content. False for blank drafts. */
     suspend fun setSmartChecklist(enabled: Boolean): Boolean {
         save()

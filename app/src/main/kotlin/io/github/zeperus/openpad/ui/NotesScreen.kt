@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import io.github.zeperus.openpad.domain.DocumentTab
 import io.github.zeperus.openpad.domain.StartupMode
 import androidx.compose.foundation.layout.Arrangement
@@ -85,12 +86,17 @@ import io.github.zeperus.openpad.R
 import io.github.zeperus.openpad.ui.editor.FormattingBar
 import io.github.zeperus.openpad.ui.editor.RichEditor
 import io.github.zeperus.openpad.ui.editor.SelectionBar
+import io.github.zeperus.openpad.domain.FolderInfo
 import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteInfo
 import kotlinx.coroutines.launch
 
 private sealed interface Dialog {
     data object Rename : Dialog
+    data object MoveToFolder : Dialog
+    data object NewFolder : Dialog
+    data class RenameFolder(val folder: FolderInfo) : Dialog
+    data class DeleteFolder(val folder: FolderInfo) : Dialog
     data object Clear : Dialog
     data object Delete : Dialog
     data class Purge(val note: NoteInfo) : Dialog
@@ -141,6 +147,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
         UserMessage.NoteUnreadable -> stringResource(R.string.message_note_unreadable)
         UserMessage.ActionFailed -> stringResource(R.string.message_action_failed)
         UserMessage.SourceUnavailable -> stringResource(R.string.message_source_unavailable)
+        UserMessage.FolderNotEmpty -> stringResource(R.string.message_folder_not_empty)
         null -> null
     }
     LaunchedEffect(message) {
@@ -161,6 +168,9 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                     onOpenFile = { scope.launch { drawerState.close() }; openFile.launch(arrayOf("*/*")) },
                     onOpen = { vm.openNote(it.id); scope.launch { drawerState.close() } },
                     onPurge = { dialog = Dialog.Purge(it) },
+                    onNewFolder = { dialog = Dialog.NewFolder },
+                    onRenameFolder = { dialog = Dialog.RenameFolder(it) },
+                    onDeleteFolder = { dialog = Dialog.DeleteFolder(it) },
                 )
             }
         },
@@ -212,6 +222,11 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                                 },
                                 enabled = vm.hasNote && !vm.readOnly,
                                 onClick = { menuOpen = false; vm.toggleSmartChecklist() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_move_to_folder)) },
+                                enabled = vm.hasNote && vm.current?.isExternal != true,
+                                onClick = { menuOpen = false; dialog = Dialog.MoveToFolder },
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_rename)) },
@@ -309,6 +324,30 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
             onRename = { vm.rename(it) },
             onDismiss = { dialog = null },
         )
+        Dialog.MoveToFolder -> MoveToFolderDialog(vm, onDismiss = { dialog = null })
+        Dialog.NewFolder -> NameDialog(
+            title = stringResource(R.string.dialog_new_folder_title),
+            initial = "",
+            confirmLabel = stringResource(R.string.dialog_new_folder_confirm),
+            takenMessage = stringResource(R.string.folder_taken),
+            onSubmit = { vm.createFolder(it) },
+            onDismiss = { dialog = null },
+        )
+        is Dialog.RenameFolder -> NameDialog(
+            title = stringResource(R.string.dialog_rename_folder_title),
+            initial = d.folder.name,
+            confirmLabel = stringResource(R.string.dialog_rename_confirm),
+            takenMessage = stringResource(R.string.folder_taken),
+            onSubmit = { vm.renameFolder(d.folder.id, it) },
+            onDismiss = { dialog = null },
+        )
+        is Dialog.DeleteFolder -> ConfirmDialog(
+            title = stringResource(R.string.dialog_delete_folder_title),
+            message = stringResource(R.string.dialog_delete_folder_message, d.folder.name),
+            confirmLabel = stringResource(R.string.dialog_delete_folder_confirm),
+            onConfirm = { vm.deleteFolder(d.folder.id); dialog = null },
+            onDismiss = { dialog = null },
+        )
         Dialog.Clear -> ConfirmDialog(
             title = stringResource(R.string.dialog_clear_title),
             message = stringResource(R.string.dialog_clear_message),
@@ -344,6 +383,9 @@ private fun DrawerContent(
     onOpenFile: () -> Unit,
     onOpen: (NoteInfo) -> Unit,
     onPurge: (NoteInfo) -> Unit,
+    onNewFolder: () -> Unit,
+    onRenameFolder: (FolderInfo) -> Unit,
+    onDeleteFolder: (FolderInfo) -> Unit,
 ) {
     LazyColumn(contentPadding = PaddingValues(vertical = 12.dp), modifier = Modifier.fillMaxSize().testTag("drawer")) {
         item {
@@ -373,7 +415,23 @@ private fun DrawerContent(
         if (vm.notes.isEmpty()) {
             item(key = "files-empty") { EmptyHint(stringResource(R.string.files_empty)) }
         }
-        noteRows("file", vm.notes, vm.current?.id, onOpen)
+        if (vm.folders.isEmpty()) {
+            noteRows("file", vm.notes, vm.current?.id, onOpen)
+        } else {
+            // folders first (collapsible), then the notes that are in no folder
+            for (folder in vm.folders) {
+                val inside = vm.notes.filter { it.folderId == folder.id }
+                val open = folder.id in vm.expandedFolders || inside.any { it.id == vm.current?.id }
+                item(key = "folder-${folder.id}") {
+                    FolderHeader(folder, inside.size, open, onToggle = { vm.toggleFolder(folder.id) }, onRename = { onRenameFolder(folder) }, onDelete = { onDeleteFolder(folder) })
+                }
+                if (open) noteRows("in-${folder.id}", inside, vm.current?.id, onOpen, indent = 16.dp)
+            }
+            noteRows("file", vm.notes.filter { n -> n.folderId == null || vm.folders.none { it.id == n.folderId } }, vm.current?.id, onOpen)
+            item(key = "new-folder") {
+                TextButton(onClick = onNewFolder, modifier = Modifier.padding(horizontal = 12.dp).testTag("new-folder")) { Text(stringResource(R.string.new_folder)) }
+            }
+        }
         item(key = "divider") { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
         item(key = "header-trash") { SectionHeader(stringResource(R.string.section_trash)) }
         if (vm.trash.isEmpty()) {
@@ -405,6 +463,7 @@ private fun LazyListScope.noteRows(
     notes: List<NoteInfo>,
     selected: NoteId?,
     onOpen: (NoteInfo) -> Unit,
+    indent: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     items(notes, key = { "$section-${it.id.value}" }) { note ->
         val externalLabel = stringResource(R.string.external_file)
@@ -415,7 +474,7 @@ private fun LazyListScope.noteRows(
             badge = if (note.isExternal) {
                 { Text("↗", style = MaterialTheme.typography.labelMedium, modifier = Modifier.semantics { contentDescription = externalLabel }) }
             } else null,
-            modifier = Modifier.padding(horizontal = 12.dp),
+            modifier = Modifier.padding(start = 12.dp + indent, end = 12.dp),
         )
     }
 }
@@ -462,13 +521,31 @@ private fun RenameDialog(
     initial: String,
     onRename: suspend (String) -> RenameResult,
     onDismiss: () -> Unit,
+) = NameDialog(
+    title = stringResource(R.string.dialog_rename_title),
+    initial = initial,
+    confirmLabel = stringResource(R.string.dialog_rename_confirm),
+    takenMessage = stringResource(R.string.rename_taken),
+    onSubmit = onRename,
+    onDismiss = onDismiss,
+)
+
+/** A one-line name dialog (rename a note, create or rename a folder) with the usual error messages. */
+@Composable
+private fun NameDialog(
+    title: String,
+    initial: String,
+    confirmLabel: String,
+    takenMessage: String,
+    onSubmit: suspend (String) -> RenameResult,
+    onDismiss: () -> Unit,
 ) {
     var name by remember { mutableStateOf(initial) }
     var error by remember { mutableStateOf<RenameResult?>(null) }
     val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.dialog_rename_title)) },
+        title = { Text(title) },
         text = {
             TextField(
                 value = name,
@@ -476,10 +553,11 @@ private fun RenameDialog(
                 label = { Text(stringResource(R.string.dialog_rename_label)) },
                 singleLine = true,
                 isError = error != null,
+                modifier = Modifier.testTag("name-field"),
                 supportingText = {
                     when (error) {
                         RenameResult.InvalidName -> Text(stringResource(R.string.rename_invalid))
-                        RenameResult.NameTaken -> Text(stringResource(R.string.rename_taken))
+                        RenameResult.NameTaken -> Text(takenMessage)
                         RenameResult.Failed -> Text(stringResource(R.string.rename_failed))
                         else -> Unit
                     }
@@ -489,10 +567,96 @@ private fun RenameDialog(
         confirmButton = {
             TextButton(onClick = {
                 scope.launch {
-                    val result = onRename(name)
+                    val result = onSubmit(name)
                     if (result == RenameResult.Ok) onDismiss() else error = result
                 }
-            }) { Text(stringResource(R.string.dialog_rename_confirm)) }
+            }) { Text(confirmLabel) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) } },
+    )
+}
+
+/** A folder in the FILES section: tap opens/closes it, long press offers Rename / Delete (only empty folders can be deleted). */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FolderHeader(folder: FolderInfo, count: Int, open: Boolean, onToggle: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    val state = stringResource(if (open) R.string.folder_expanded else R.string.folder_collapsed)
+    Box {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onToggle, onLongClick = { menu = true }, onLongClickLabel = stringResource(R.string.folder_options), role = Role.Button)
+                .padding(horizontal = 28.dp, vertical = 12.dp)
+                .semantics(mergeDescendants = true) { stateDescription = state }
+                .testTag("folder"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(if (open) "\u25BE" else "\u25B8", modifier = Modifier.padding(end = 8.dp))
+            Text(folder.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text(count.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(text = { Text(stringResource(R.string.action_rename)) }, onClick = { menu = false; onRename() })
+            DropdownMenuItem(text = { Text(stringResource(R.string.action_delete_folder)) }, onClick = { menu = false; onDelete() })
+        }
+    }
+}
+
+/** "Move to folder": the folders as a choice (plus "No folder"), and a way to start a new one. */
+@Composable
+private fun MoveToFolderDialog(vm: NotesViewModel, onDismiss: () -> Unit) {
+    var creating by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<RenameResult?>(null) }
+    val scope = rememberCoroutineScope()
+    val currentFolder = vm.current?.folderId
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.dialog_move_title)) },
+        text = {
+            Column(Modifier.selectableGroup()) {
+                val options = listOf<Pair<String?, String>>(null to stringResource(R.string.folder_none)) + vm.folders.map { it.id to it.name }
+                for ((id, label) in options) {
+                    Row(
+                        Modifier.fillMaxWidth().selectable(selected = currentFolder == id, role = Role.RadioButton, onClick = { vm.moveCurrentToFolder(id); onDismiss() }).padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = currentFolder == id, onClick = null)
+                        Text(label, modifier = Modifier.padding(start = 12.dp))
+                    }
+                }
+                if (creating) {
+                    TextField(
+                        value = name,
+                        onValueChange = { name = it; error = null },
+                        label = { Text(stringResource(R.string.dialog_rename_label)) },
+                        singleLine = true,
+                        isError = error != null,
+                        modifier = Modifier.testTag("name-field"),
+                        supportingText = {
+                            when (error) {
+                                RenameResult.InvalidName -> Text(stringResource(R.string.rename_invalid))
+                                RenameResult.NameTaken -> Text(stringResource(R.string.folder_taken))
+                                RenameResult.Failed -> Text(stringResource(R.string.rename_failed))
+                                else -> Unit
+                            }
+                        },
+                    )
+                } else {
+                    TextButton(onClick = { creating = true }, modifier = Modifier.testTag("move-new-folder")) { Text(stringResource(R.string.new_folder)) }
+                }
+            }
+        },
+        confirmButton = {
+            if (creating) {
+                TextButton(onClick = {
+                    scope.launch {
+                        val result = vm.createFolderAndMove(name)
+                        if (result == RenameResult.Ok) onDismiss() else error = result
+                    }
+                }) { Text(stringResource(R.string.dialog_new_folder_confirm)) }
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) } },
     )
