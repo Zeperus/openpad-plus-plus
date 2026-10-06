@@ -143,6 +143,10 @@ class NotesViewModel(
     var readOnly by mutableStateOf(false)
         private set
 
+    /** Why [readOnly] is true, for an external document (null otherwise). */
+    var readOnlyReason by mutableStateOf<io.github.zeperus.openpad.domain.ReadOnlyReason?>(null)
+        private set
+
     /** The open documents. Only saved notes are persisted; the single blank draft is transient. */
     var session by mutableStateOf(OpenDocuments.blank())
         private set
@@ -584,6 +588,24 @@ class NotesViewModel(
         refreshLists()
     }
 
+    /**
+     * The user picked the document again through the picker to get write access to a file that arrived read-only ("Open with write
+     * access"). If it now opens writable it replaces the read-only entry (the file is the same, only the access differs); if it is
+     * still read-only both stay and the reason is shown again. Nothing is copied.
+     */
+    fun upgradeExternal(uri: String, persistent: Boolean) = act {
+        val old = current?.takeIf { it.isExternal && readOnly }
+        saveNow()
+        val info = repository.openExternal(uri, persistent)
+        commitSession(session.open(info.id))
+        syncEditor(markOpened = true)
+        if (old != null && old.id != info.id && current?.id == info.id && !readOnly) {
+            commitSession(session.remove(old.id))
+            runCatching { repository.forgetExternal(old.id) }
+        }
+        refreshLists()
+    }
+
     /** Saves pending text and hands the current note to [onReady] (title and Markdown) for sharing as a `.md` file. */
     fun share(onReady: (title: String, markdown: String) -> Unit) = act {
         saveNow()
@@ -866,7 +888,7 @@ class NotesViewModel(
             try {
                 val content = repository.openNote(id)
                 val info = if (markOpened) repository.markOpened(id) else content.info
-                switchTo(NoteEditor(repository, NoteContent(info, content.text, content.readOnly)))
+                switchTo(NoteEditor(repository, NoteContent(info, content.text, content.readOnly, content.readOnlyReason)))
                 return
             } catch (e: NoteSourceUnavailableException) {
                 message = UserMessage.SourceUnavailable
@@ -886,6 +908,7 @@ class NotesViewModel(
         text = next.text
         current = next.info
         readOnly = next.readOnly
+        readOnlyReason = next.readOnlyReason
         docSelection = null
         find = null
         rich = sessionFor(next)

@@ -9,6 +9,10 @@ import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import io.github.zeperus.openpad.domain.ExternalDocuments
 import io.github.zeperus.openpad.domain.NoteSourceUnavailableException
+import io.github.zeperus.openpad.domain.ReadOnlyReason
+import io.github.zeperus.openpad.domain.WriteAccess
+import io.github.zeperus.openpad.domain.WriteAccessPolicy
+import io.github.zeperus.openpad.domain.WriteProbe
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -65,29 +69,56 @@ class ContentResolverDocuments(
     }
 
     /**
-     * Whether the document can be written. Document providers (file picker, cloud storage) say so themselves
-     * (`FLAG_SUPPORTS_WRITE`) and need a write grant; for every other kind of `content://` URI the only reliable test is
-     * to try opening it for writing in append mode, which changes nothing. When in doubt this says "read-only": showing
-     * a document read-only is safe, writing into one that refuses is not.
+     * Whether the document can be written, and why not - from several signals together (see [WriteAccessPolicy]): the granted or
+     * persisted write permission, the provider's `FLAG_SUPPORTS_WRITE`, and what opening the document for writing in append mode
+     * ("wa": changes nothing) really does. When in doubt this says "read-only": showing a document read-only is safe, writing into
+     * one that refuses is not.
      */
-    override suspend fun isWritable(uri: String): Boolean = withContext(dispatcher) {
+    override suspend fun writeAccess(uri: String): WriteAccess = withContext(dispatcher) {
         val parsed = Uri.parse(uri)
         try {
-            if (parsed.scheme == "file") return@withContext parsed.path?.let { File(it).canWrite() } == true
-            if (DocumentsContract.isDocumentUri(context, parsed)) {
-                val granted = context.checkUriPermission(parsed, Process.myPid(), Process.myUid(), Intent.FLAG_GRANT_WRITE_URI_PERMISSION) ==
-                    android.content.pm.PackageManager.PERMISSION_GRANTED
-                val persisted = resolver.persistedUriPermissions.any { it.uri == parsed && it.isWritePermission }
-                val supports = resolver.query(parsed, arrayOf(DocumentsContract.Document.COLUMN_FLAGS), null, null, null)?.use { c ->
-                    c.moveToFirst() && (c.getInt(0) and DocumentsContract.Document.FLAG_SUPPORTS_WRITE) != 0
-                } ?: false
-                (granted || persisted) && supports
-            } else {
-                resolver.openFileDescriptor(parsed, "wa")?.use { true } ?: false
+            if (parsed.scheme == "file") {
+                val writable = parsed.path?.let { File(it).canWrite() } == true
+                return@withContext if (writable) WriteAccess.Writable else WriteAccess.ReadOnly(ReadOnlyReason.ProviderRefuses)
             }
+            val isDocument = DocumentsContract.isDocumentUri(context, parsed)
+            val granted = context.checkUriPermission(parsed, Process.myPid(), Process.myUid(), Intent.FLAG_GRANT_WRITE_URI_PERMISSION) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            val persisted = resolver.persistedUriPermissions.any { it.uri == parsed && it.isWritePermission }
+            WriteAccessPolicy.evaluate(
+                requiresGrant = isDocument,
+                hasWriteGrant = granted || persisted,
+                supportsWriteFlag = if (isDocument) supportsWriteFlag(parsed) else null,
+                probe = { probeWrite(parsed) },
+            )
         } catch (e: Exception) {
-            false
+            WriteAccess.ReadOnly(ReadOnlyReason.Unavailable)
         }
+    }
+
+    /** The provider's capability flag; null if it does not report flags at all (incomplete metadata). */
+    private fun supportsWriteFlag(uri: Uri): Boolean? = try {
+        resolver.query(uri, arrayOf(DocumentsContract.Document.COLUMN_FLAGS), null, null, null)?.use { c ->
+            if (c.moveToFirst() && !c.isNull(0)) (c.getInt(0) and DocumentsContract.Document.FLAG_SUPPORTS_WRITE) != 0 else null
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    /** Opens the document for appending and closes it again: tells whether writing is possible without writing anything. */
+    private fun probeWrite(uri: Uri): WriteProbe = try {
+        val fd = resolver.openFileDescriptor(uri, "wa")
+        if (fd == null) WriteProbe.Refused else { fd.close(); WriteProbe.Opened }
+    } catch (e: SecurityException) {
+        WriteProbe.Denied
+    } catch (e: java.io.FileNotFoundException) {
+        WriteProbe.Refused
+    } catch (e: UnsupportedOperationException) {
+        WriteProbe.Refused
+    } catch (e: IOException) {
+        WriteProbe.Refused
+    } catch (e: Exception) {
+        WriteProbe.Unknown
     }
 
     private inline fun <T> unavailable(what: String, block: () -> T): T = try {
@@ -121,4 +152,21 @@ object ExternalAccess {
         }
         return false
     }
+}
+
+/**
+ * The document picker, asking for what editing needs. `ActivityResultContracts.OpenDocument` asks for *read* access only, and the
+ * system file picker then grants nothing more - which made every file picked in Alpha 3 read-only. Editing in place needs
+ * `FLAG_GRANT_WRITE_URI_PERMISSION` in the request (and `FLAG_GRANT_PERSISTABLE_URI_PERMISSION` to keep the access after a restart).
+ * A provider that cannot write simply does not grant it. [initial] is where the picker opens (e.g. next to a file that arrived
+ * read-only), when the system supports a hint.
+ */
+class OpenWritableDocument(private val initial: Uri? = null) : androidx.activity.result.contract.ActivityResultContracts.OpenDocument() {
+    override fun createIntent(context: Context, input: Array<String>): Intent =
+        super.createIntent(context, input).apply {
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
+            )
+            if (initial != null) putExtra(DocumentsContract.EXTRA_INITIAL_URI, initial)
+        }
 }

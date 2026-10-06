@@ -9,6 +9,8 @@ import io.github.zeperus.openpad.domain.FolderNotFoundException
 import io.github.zeperus.openpad.domain.InvalidFolderNameException
 import io.github.zeperus.openpad.domain.InvalidNoteNameException
 import io.github.zeperus.openpad.domain.NoExternalDocuments
+import io.github.zeperus.openpad.domain.ReadOnlyReason
+import io.github.zeperus.openpad.domain.WriteAccess
 import io.github.zeperus.openpad.domain.NoteSourceUnavailableException
 import io.github.zeperus.openpad.domain.NoteContent
 import io.github.zeperus.openpad.domain.NoteFileName
@@ -22,6 +24,7 @@ import io.github.zeperus.openpad.domain.NoteStorageException
 import io.github.zeperus.openpad.domain.NoteTitles
 import io.github.zeperus.openpad.domain.NoteUnreadableException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -337,8 +340,15 @@ class FileNoteRepository internal constructor(
             notes[current.id] = current
             persist(notes)
         }
-        val writable = runCatching { ext { external.isWritable(uri) } }.getOrDefault(false)
-        return NoteContent(current.toInfo(), text, readOnly = !writable)
+        val access = try {
+            ext { external.writeAccess(uri) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            WriteAccess.ReadOnly(ReadOnlyReason.Unavailable)
+        }
+        val readOnly = access as? WriteAccess.ReadOnly
+        return NoteContent(current.toInfo(), text, readOnly = readOnly != null, readOnlyReason = readOnly?.reason)
     }
 
     /**

@@ -227,4 +227,94 @@ class NotesViewModelExternalTest {
         assertNotNull(vm.current)
         assertNull(vm.current?.externalUri)
     }
+
+    // ---- Why a document is read-only, and getting write access ------------------------------------------------
+
+    @Test fun `the reason for read-only is carried to the screen`() = runTest {
+        provider.put(uri, "x", name = "A.md"); provider.readOnly += uri
+        val vm = launch()
+        vm.openExternal(uri, persistent = true)
+        assertTrue(vm.readOnly)
+        assertEquals(io.github.zeperus.openpad.domain.ReadOnlyReason.NoWriteGrant, vm.readOnlyReason)
+        val other = "content://docs/doc/other"
+        provider.put(other, "y", name = "B.md"); provider.providerReadOnly += other
+        vm.openExternal(other, persistent = true)
+        assertEquals(io.github.zeperus.openpad.domain.ReadOnlyReason.ProviderRefuses, vm.readOnlyReason)
+        val unknown = "content://docs/doc/unknown"
+        provider.put(unknown, "z", name = "C.md"); provider.undetermined += unknown
+        vm.openExternal(unknown, persistent = true)
+        assertEquals(io.github.zeperus.openpad.domain.ReadOnlyReason.Unavailable, vm.readOnlyReason)
+        assertTrue(vm.readOnly)
+    }
+
+    @Test fun `a writable document has no reason and is edited in place`() = runTest {
+        provider.put(uri, "# T\n", name = "T.md")
+        val vm = launch()
+        vm.openExternal(uri, persistent = true)
+        assertFalse(vm.readOnly)
+        assertNull(vm.readOnlyReason)
+        vm.onTextChange("# T\n\nedited\n")
+        vm.flush(); runCurrent()
+        assertEquals("# T\n\nedited\n", provider.text(uri))
+    }
+
+    @Test fun `a read-only document cannot be changed and nothing is written`() = runTest {
+        provider.put(uri, "keep", name = "K.md"); provider.readOnly += uri
+        val vm = launch()
+        vm.openExternal(uri, persistent = true)
+        vm.onTextChange("changed")
+        vm.onRowText(vm.ui.doc.rows[0].id, "keep!", 5)
+        vm.toggleStyle(io.github.zeperus.openpad.editor.SpanKind.Bold)
+        vm.flush(); runCurrent()
+        assertEquals("keep", provider.text(uri))
+        assertEquals(0, provider.writes.size)
+        // copy and share still work
+        var shared: String? = null
+        vm.share { _, markdown -> shared = markdown }
+        runCurrent()
+        assertEquals("keep", shared)
+    }
+
+    @Test fun `opening through the picker again upgrades a read-only document to writable`() = runTest {
+        val viaOpenWith = "content://other.provider/doc/readme"
+        val viaPicker = "content://docs/doc/readme"
+        provider.put(viaOpenWith, "# Readme\n", name = "README.md"); provider.readOnly += viaOpenWith
+        provider.put(viaPicker, "# Readme\n", name = "README.md")
+        val vm = launch()
+        vm.openExternal(viaOpenWith, persistent = false)
+        assertTrue(vm.readOnly)
+        val oldId = vm.current!!.id
+        vm.upgradeExternal(viaPicker, persistent = true); runCurrent()
+        assertFalse(vm.readOnly)
+        assertTrue(vm.current!!.id != oldId)
+        assertTrue("the read-only entry is gone", vm.notes.none { it.id == oldId })
+        assertEquals(1, vm.notes.size)
+        vm.onTextChange("# Readme\n\nnow edited\n")
+        vm.flush(); runCurrent()
+        assertEquals("# Readme\n\nnow edited\n", provider.text(viaPicker))
+        assertEquals("# Readme\n", provider.text(viaOpenWith))
+    }
+
+    @Test fun `if the picker also gives read-only access both stay and the reason remains`() = runTest {
+        val a = "content://one/doc/a"
+        val b = "content://two/doc/a"
+        provider.put(a, "x", name = "A.md"); provider.readOnly += a
+        provider.put(b, "x", name = "A.md"); provider.providerReadOnly += b
+        val vm = launch()
+        vm.openExternal(a, persistent = false)
+        vm.upgradeExternal(b, persistent = true); runCurrent()
+        assertTrue(vm.readOnly)
+        assertEquals(io.github.zeperus.openpad.domain.ReadOnlyReason.ProviderRefuses, vm.readOnlyReason)
+        assertEquals(2, vm.notes.size)
+    }
+
+    @Test fun `a document whose access was withdrawn is dropped with a message instead of showing nothing`() = runTest {
+        provider.put(uri, "x", name = "A.md")
+        val vm = launch()
+        vm.openExternal(uri, persistent = true)
+        vm.closeCurrent(); runCurrent()
+        provider.failReads = true
+        vm.openNote(vm.notes.single().id); runCurrent()
+        assertEquals(UserMessage.SourceUnavailable, vm.message)
+    }
 }

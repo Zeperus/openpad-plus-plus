@@ -40,8 +40,8 @@ data class NoteInfo(
     val exportFileName: String get() = title + NoteFileName.EXTENSION
 }
 
-/** [readOnly]: the provider does not allow writing (e.g. a file opened with a read-only grant). */
-data class NoteContent(val info: NoteInfo, val text: String, val readOnly: Boolean = false)
+/** [readOnly]: the document cannot be written (e.g. a file opened with a read-only grant); [readOnlyReason] says why. */
+data class NoteContent(val info: NoteInfo, val text: String, val readOnly: Boolean = false, val readOnlyReason: ReadOnlyReason? = null)
 
 /** A simple one-level folder, kept as metadata in the index. Notes in it are still plain `.md` files with their own stable ids. */
 data class FolderInfo(val id: String, val name: String)

@@ -139,4 +139,10 @@
         <item quantity="other">%d Treffer</item>
     </plurals>
     <string name="action_edit_menu">Auswählen, Kopieren, Einfügen …</string>
+
+    <string name="read_only_short">Schreibgeschützt</string>
+    <string name="read_only_reason_no_grant">Schreibgeschützt: Die App, die diese Datei geöffnet hat, hat keinen Schreibzugriff erlaubt.</string>
+    <string name="read_only_reason_provider">Schreibgeschützt: Der Anbieter dieser Datei erlaubt kein Schreiben.</string>
+    <string name="read_only_reason_unknown">Schreibgeschützt: Der Schreibzugriff konnte nicht geprüft werden.</string>
+    <string name="action_open_writable">Mit Schreibzugriff öffnen …</string>
 </resources>

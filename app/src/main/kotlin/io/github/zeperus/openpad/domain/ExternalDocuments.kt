@@ -15,7 +15,10 @@ interface ExternalDocuments {
     suspend fun displayName(uri: String): String?
 
     /** True if the document can be written (false for read-only grants or providers). */
-    suspend fun isWritable(uri: String): Boolean
+    suspend fun isWritable(uri: String): Boolean = writeAccess(uri) is WriteAccess.Writable
+
+    /** Whether the document can be written and, if not, why - from every signal available, never by changing the file. */
+    suspend fun writeAccess(uri: String): WriteAccess
 }
 
 /** Used where external documents are not available. */
@@ -23,5 +26,5 @@ object NoExternalDocuments : ExternalDocuments {
     override suspend fun read(uri: String, maxBytes: Int): ByteArray = throw NoteSourceUnavailableException("External documents are not available")
     override suspend fun write(uri: String, bytes: ByteArray) = throw NoteSourceUnavailableException("External documents are not available")
     override suspend fun displayName(uri: String): String? = null
-    override suspend fun isWritable(uri: String): Boolean = false
+    override suspend fun writeAccess(uri: String): WriteAccess = WriteAccess.ReadOnly(ReadOnlyReason.Unavailable)
 }

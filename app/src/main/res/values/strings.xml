@@ -157,4 +157,10 @@
     <string name="task_open_description">Task, not done: %1$s</string>
     <string name="task_done_description">Task, done: %1$s</string>
     <string name="action_edit_menu">Select, copy, paste…</string>
+
+    <string name="read_only_short">Read only</string>
+    <string name="read_only_reason_no_grant">Read only: the app that opened this file did not grant write access.</string>
+    <string name="read_only_reason_provider">Read only: this file\'s provider does not allow writing.</string>
+    <string name="read_only_reason_unknown">Read only: write access could not be checked.</string>
+    <string name="action_open_writable">Open with write access…</string>
 </resources>

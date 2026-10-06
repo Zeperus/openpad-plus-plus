@@ -146,8 +146,16 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
     val context = LocalContext.current
     val clipboard = io.github.zeperus.openpad.ui.editor.rememberAppClipboard()
     // The system file picker: the document stays where it is and is edited in place.
-    val openFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val openFile = rememberLauncherForActivityResult(io.github.zeperus.openpad.data.OpenWritableDocument()) { uri ->
         if (uri != null) vm.openExternal(uri.toString(), ExternalAccess.takePersistable(context.contentResolver, uri))
+    }
+
+    // "Open with write access": pick the same file again, this time asking for write access (the picker opens next to it)
+    val currentUri = vm.current?.externalUri
+    val openWritable = rememberLauncherForActivityResult(
+        remember(currentUri) { io.github.zeperus.openpad.data.OpenWritableDocument(currentUri?.let { android.net.Uri.parse(it) }) },
+    ) { uri ->
+        if (uri != null) vm.upgradeExternal(uri.toString(), ExternalAccess.takePersistable(context.contentResolver, uri))
     }
 
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
@@ -191,9 +199,11 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                 TopAppBar(
                     title = {
                         Text(
-                            text = vm.current?.title ?: stringResource(R.string.untitled),
+                            text = (vm.current?.title ?: stringResource(R.string.untitled)) +
+                                if (vm.readOnly) " \u00B7 " + stringResource(R.string.read_only_short) else "",
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("title"),
                         )
                     },
                     navigationIcon = {
@@ -325,15 +335,32 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                     TabStrip(vm)
                     FindBar(vm)
                     if (vm.readOnly) {
-                        Text(
-                            text = stringResource(R.string.read_only_banner),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        val reason = when (vm.readOnlyReason) {
+                            io.github.zeperus.openpad.domain.ReadOnlyReason.NoWriteGrant -> R.string.read_only_reason_no_grant
+                            io.github.zeperus.openpad.domain.ReadOnlyReason.ProviderRefuses -> R.string.read_only_reason_provider
+                            io.github.zeperus.openpad.domain.ReadOnlyReason.Unavailable -> R.string.read_only_reason_unknown
+                            null -> R.string.read_only_banner
+                        }
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(MaterialTheme.colorScheme.secondaryContainer)
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
-                        )
+                                .padding(start = 16.dp, end = 8.dp)
+                                .testTag("read-only-banner"),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = stringResource(reason),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.weight(1f).padding(vertical = 6.dp),
+                            )
+                            if (vm.current?.isExternal == true && vm.readOnlyReason != io.github.zeperus.openpad.domain.ReadOnlyReason.ProviderRefuses) {
+                                TextButton(onClick = { openWritable.launch(arrayOf("*/*")) }, modifier = Modifier.testTag("open-writable")) {
+                                    Text(stringResource(R.string.action_open_writable))
+                                }
+                            }
+                        }
                     }
                     RichEditor(vm, Modifier.fillMaxWidth().weight(1f))
                     if (vm.docSelection != null) SelectionBar(vm) else if (!vm.readOnly) FormattingBar(vm)

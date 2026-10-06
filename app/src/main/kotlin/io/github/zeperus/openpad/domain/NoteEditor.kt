@@ -15,6 +15,7 @@ class NoteEditor(
     initial: NoteContent? = null,
     /** A read-only document is shown but never written: [save], [clear] and text changes are ignored. */
     val readOnly: Boolean = initial?.readOnly ?: false,
+    val readOnlyReason: ReadOnlyReason? = initial?.readOnlyReason,
     /** For a draft: the note is created as a smart checklist ("New checklist"). */
     val smartOnCreate: Boolean = false,
 ) {
