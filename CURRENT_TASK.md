@@ -4,10 +4,10 @@
 Next (do not start without being asked): Milestone 8, checklist mode (completed items sink to the bottom).
 
 ## Status
-- Unit tests: see `./gradlew test` (editor, engine, view model, storage); lint clean; `assembleDebug` and
-  `assembleDebugAndroidTest` build.
-- Instrumented tests run only on GitHub (`Instrumented tests` workflow, API 36 emulator, Test Orchestrator): see the
-  latest run; the final result is recorded in the release notes / final report.
+- Unit tests: 570, 0 failing (`./gradlew test`: engine, editor incl. property tests, view model, storage); lint clean;
+  `assembleDebug` and `assembleDebugAndroidTest` build.
+- Instrumented tests on GitHub (`Instrumented tests` workflow, API 36 emulator, Test Orchestrator): **47/47 green**
+  (ColdStart 1, NotesFlow 8, SessionFlow 16, ExternalFlow 9, RichEditor 13), run 37426617123; regular CI green.
 - Version `0.1.0-alpha.1` (versionName), shown at the bottom of Settings.
 
 ## What exists
