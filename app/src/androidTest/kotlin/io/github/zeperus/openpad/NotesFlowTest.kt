@@ -46,7 +46,7 @@ class NotesFlowTest {
 
     /** A drawer entry: clickable, unlike the same words in the title bar or the editor - and not an open tab. */
     private fun drawerEntry(title: String) =
-        hasText(title) and hasClickAction() and !hasSetTextAction() and !hasTestTag("tab")
+        hasText(title) and hasClickAction() and !hasSetTextAction() and !hasTestTag("tab") and !hasTestTag("title")
 
     @Before fun emptyStore() = runBlocking {
         val repo = app.repository

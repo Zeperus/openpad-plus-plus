@@ -95,7 +95,7 @@ class SessionFlowTest {
     }
 
     private fun drawerEntry(title: String) =
-        hasText(title) and hasClickAction() and !hasSetTextAction() and !hasTestTag("tab")
+        hasText(title) and hasClickAction() and !hasSetTextAction() and !hasTestTag("tab") and !hasTestTag("title")
 
     private fun overflow(item: String) {
         rule.onNodeWithContentDescription("More options").performClick()

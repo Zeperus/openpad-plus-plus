@@ -58,6 +58,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.editableText
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.ParagraphStyle
 import androidx.compose.ui.text.SpanStyle
@@ -446,6 +447,9 @@ internal fun SegmentField(
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("segment")
+                // what is *drawn* has an invisible character where the rows break (see SegmentOutput); what assistive technology and
+                // the tests read is the field's own text, with its real line breaks
+                .semantics { editableText = androidx.compose.ui.text.AnnotatedString(state.text.toString()) }
                 .focusRequester(focus)
                 .onPreviewKeyEvent { shortcut(it, vm) }
                 .appendTextContextMenuComponents {

@@ -236,7 +236,7 @@ class Alpha3Test {
         openDrawer()
         rule.waitFor("the folder in the drawer", { "" }) { rule.tagCount("folder") == 1 }
         rule.onNodeWithText("Work").assertExists()
-        rule.onAllNodes(hasText("Plan") and androidx.compose.ui.test.hasClickAction() and !hasTestTag("tab")).onFirst().assertExists()
+        rule.onAllNodes(hasText("Plan") and androidx.compose.ui.test.hasClickAction() and !hasTestTag("tab") and !hasTestTag("title")).onFirst().assertExists()
         assertEquals(runBlocking { app.repository.listFolders().single().id }, runBlocking { app.repository.listNotes().single().folderId })
     }
 

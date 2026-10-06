@@ -157,10 +157,29 @@ class NotesViewModelTest {
         assertEquals("Other", vm.current?.title)
     }
 
-    @Test fun `renaming a blank page is refused`() = runTest {
+    @Test fun `naming a blank page makes it an empty note that stays`() = runTest {
         val vm = newViewModel()
-        assertEquals(RenameResult.Failed, vm.rename("Name"))
-        assertTrue(mdFiles().isEmpty())
+        assertTrue(vm.canRename)
+        assertFalse(vm.hasExplicitTitle)
+        assertEquals(RenameResult.Ok, vm.rename("Name"))
+        assertEquals("Name", vm.current?.title)
+        assertTrue(vm.hasExplicitTitle)
+        assertEquals(1, mdFiles().size)
+        assertEquals("", vm.noteFile("Name").readText())
+        // a "restart": the titled empty note is still there
+        assertEquals(listOf("Name"), newViewModel().notes.map { it.title })
+    }
+
+    @Test fun `typing in an automatically titled note keeps following the first line until it is renamed`() = runTest {
+        val vm = newViewModel()
+        vm.onTextChange("Shopping list"); vm.flush(); runCurrent()
+        assertEquals("Shopping list", vm.current?.title)
+        assertFalse(vm.hasExplicitTitle) // a tap on the title renames it
+        assertEquals(RenameResult.Ok, vm.rename("Groceries"))
+        assertTrue(vm.hasExplicitTitle) // from now on a tap does nothing, a long press renames
+        vm.onTextChange("Shopping Monday"); vm.flush(); runCurrent()
+        assertEquals("Groceries", vm.current?.title)
+        assertEquals("Shopping Monday", vm.noteFile("Groceries").readText())
     }
 
     @Test fun `clear empties the text but keeps the note and file`() = runTest {

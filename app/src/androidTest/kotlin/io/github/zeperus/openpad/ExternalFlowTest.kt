@@ -100,11 +100,11 @@ class ExternalFlowTest {
 
         rule.onNodeWithContentDescription("Open navigation").performClick()
         rule.waitForIdle()
-        rule.onAllNodes(hasText("Keep") and hasClickAction() and !hasTestTag("tab")).onFirst().assertIsDisplayed()
+        rule.onAllNodes(hasText("Keep") and hasClickAction() and !hasTestTag("tab") and !hasTestTag("title")).onFirst().assertIsDisplayed()
         rule.onAllNodes(androidx.compose.ui.test.hasContentDescription("External file")).onFirst().assertIsDisplayed()
         rule.onNodeWithText("Open file…").assertIsDisplayed()
         // leave the drawer by selecting the open note
-        rule.onAllNodes(hasText("Keep") and hasClickAction() and !hasTestTag("tab")).onFirst().performClick()
+        rule.onAllNodes(hasText("Keep") and hasClickAction() and !hasTestTag("tab") and !hasTestTag("title")).onFirst().performClick()
         rule.waitForIdle()
 
         overflow("Remove from openPad++…")
