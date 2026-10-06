@@ -1,4 +1,4 @@
-# Alpha test checklist (0.1.0-alpha.4)
+# Alpha test checklist (0.1.0-alpha.5)
 
 Short on purpose. Tick what works, note what does not (what you did, what you expected). **Keep backups of important
 notes while testing.** Settings shows the installed version at the bottom.
@@ -41,6 +41,31 @@ notes while testing.** Settings shows the installed version at the bottom.
 - [ ] Undo restores checkbox and previous order in one action
 - [ ] Tapping a checkbox does not close the keyboard or move the text cursor
 - [ ] A normal Markdown checklist (mode off) does not auto-sort
+
+## Alpha 5
+
+### Editor density
+- [ ] Write 4 normal lines (Enter between them)
+- [ ] They appear naturally underneath each other (no blank-line-sized gaps)
+- [ ] Create 4 checklist items
+- [ ] They look like one compact list
+- [ ] Touch targets still feel easy to hit (tap the checkboxes, also at the left edge of the row)
+- [ ] Headings, quotes, code and tables still look right; a note with a real blank line between paragraphs is not damaged
+
+### Enter
+- [ ] Press Enter after a checklist item
+- [ ] The cursor is immediately right of the new checkbox
+- [ ] Type without tapping again
+- [ ] Same works for a bullet list
+- [ ] Same works for a numbered list
+- [ ] Keyboard never flickers (also when pressing Enter several times in a row)
+
+### Title
+- [ ] New note -> tap the automatic/"Untitled" title -> rename
+- [ ] Edit the first line -> the manually renamed title stays unchanged
+- [ ] Long press the explicit title -> rename (a plain tap does nothing)
+- [ ] Give a blank note a title: it stays in the list, also after closing and reopening
+- [ ] Rename survives an app restart
 
 ## Alpha 4
 

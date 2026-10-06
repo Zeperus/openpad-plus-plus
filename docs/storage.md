@@ -30,6 +30,13 @@ implementation, so the editor and UI never see paths.
   explicit rename to a taken title fails with `NoteNameConflictException`.
 - **Auto-title:** until the user renames a note, its title follows the first non-blank line (block markers such
   as `#`, `-`, `[ ]` removed). Emptying a note keeps its title. A manual rename switches this off for good.
+- **Automatic vs explicit title (Alpha 5):** `NoteInfo.autoTitle` (index only, never in the Markdown) is the whole model; `hasExplicitTitle` is
+  its negation. In the top bar a tap on an *automatic* title (or on "Untitled" of a blank page) opens the rename dialog; on an *explicit* title
+  a tap does nothing and a long press opens it (the overflow menu's "Rename..." stays). Confirming the dialog always makes the title explicit,
+  even if the text is unchanged. External documents keep their file name (no rename).
+- **A titled blank note stays.** Naming a blank page is a deliberate act, so the note is created then (with an empty `.md` file) and, like every
+  existing note, is never removed implicitly because its body is empty. An invalid or taken name creates nothing. Without a name a blank page is
+  still only an in-memory draft.
 
 ## Favorites and Recent
 

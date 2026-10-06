@@ -116,11 +116,12 @@ class EditorDensityTest {
         rule.waitForRowTexts(listOf(first, ""))
         rule.field().assertIsFocused()
         assertEquals("the caret is at the start of the new item's text", TextRange(first.length + 1), rule.selectionRange())
-        val before = layout().getCursorRect(first.length + 1 + 1 /* marker */ + 1 /* line break */)
+        val rowStart = first.length + 1 /* marker */ + 1 /* line break */
+        val before = layout().getCursorRect(rowStart)
         rule.typeInLastRow(next)
         rule.waitForRowTexts(listOf(first, next))
         // typing did not move the start of the text: the caret was already where the text begins
-        val after = layout().getCursorRect(first.length + 1 + 1 + 1)
+        val after = layout().getCursorRect(rowStart)
         assertEquals("the caret sat ${before.left}px from the left, the text starts at ${after.left}px", after.left, before.left, 2f)
         assertTrue("the caret is right of the marker column (${before.left}px)", before.left >= dp(24f))
         assertEquals("no field was disposed or created", disposedBefore, EditorDiagnostics.fieldsDisposed)

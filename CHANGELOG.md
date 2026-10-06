@@ -4,6 +4,24 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.1.0-alpha.5] - 2026-10-07 (pre-release / test build)
+
+### Fixed
+- **Rows were spaced far too wide apart.** Every row was followed by a phantom empty line (Compose adds one after a paragraph style that ends in
+  a line break). The breaks between rows are now drawn as invisible characters, lines are 1.5 x the text size (headings a little more), so
+  normal lines, bullets, numbers and checklists sit under each other like in a notepad. Blank lines in the Markdown are still kept in the file.
+- **Enter in a list left the caret behind the checkbox** until something was typed: the empty last row had no paragraph style (no indent).
+  The new item now has the caret at the start of its text immediately - bullets, numbers and checklists alike - without any focus change.
+- Checkboxes keep a comfortable touch target (48 dp wide, one line tall) although the rows are closer together.
+
+### Added
+- **Title from the top bar:** tap an automatic title (first line, or "Untitled") to rename the note; once you chose a name, a long press renames
+  it (a tap does nothing) and editing the first line never changes it. Giving a blank note a title makes it a real (empty) note that stays.
+  The title is metadata only; the Markdown file is not touched.
+
+### Notes
+- "Untitled" / "Unbenannt" is shown for a blank page (the tab still says "New note"). Same signing certificate as Alpha 1-4.
+
 ## [0.1.0-alpha.4] - 2026-10-06 (pre-release / test build)
 
 ### Changed

@@ -209,6 +209,26 @@ persisted across app restarts.
 - Read-only external documents render formatted with a read-only banner (and the reason); there is no bar, fields are read-only
   (selection, copy and search work), checkboxes are disabled.
 
+## Density: why rows used to be far apart, and what a row costs now (Alpha 5)
+
+**Cause.** In Alpha 4 each row's paragraph style (indent, line height) covered the row's text *and the line break after it*. Compose's
+layout adds an empty line after a paragraph whose text ends in a line break (probed on a real emulator: `a\nb\nc` with three paragraph
+styles = 5 lines, without styles = 3), so every row was followed by a phantom empty line: "Line one", blank, "Line two". Rows were also
+28 sp apart for 16 sp text and checkboxes sat in 26 dp boxes.
+
+**Fix.** (1) The break between two rows is *drawn* as an invisible zero-width character (`SegmentOutput`, one character replaced by one
+character, so every offset is unchanged); the paragraph styles end there and no line break is inside any paragraph. The field's own
+text - what the keyboard, the clipboard and screen readers see - still has the line breaks. (2) An empty *last* row gets one drawn
+invisible character too, so that its paragraph style (the indent that keeps the caret to the right of the marker) applies to it.
+(3) Line heights: text, list items and quotes 24 sp (1.5 x), headings 34/30/26/24 sp, code 20 sp. (4) The marker column is 32 dp.
+
+**Blank lines.** Markdown blank lines separate blocks; they are not rows and not spacing. Enter creates an adjacent row and no blank
+paragraph (an empty row is not written, `EditorOpsTest`). Extra blank lines in a file are kept byte for byte while the block is untouched.
+
+**Touch targets.** A task's checkbox is drawn 24 dp but its toggle target is 48 dp wide (reaching into the page margin) and one line tall.
+48 dp *tall* would overlap the neighbouring rows' targets at this density, so the height is the line height (24 dp, more with a larger font).
+The tap on the text of the row places the caret as before.
+
 ## Autosave and safety
 
 Only document changes reach the autosave: caret moves and style toggles with an empty selection do not. Each change

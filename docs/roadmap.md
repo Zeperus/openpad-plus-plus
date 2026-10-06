@@ -13,6 +13,7 @@
 | 7a | Alpha 2: focus/keyboard stability, list editing, Smart Checklist (completed items sink) | done (`0.1.0-alpha.2`) |
 | 7b | Alpha 3: selection across rows, clipboard, tables/images/HTML, search, folders, German, wide screens, remembered caret/undo | done (`0.1.0-alpha.3`) |
 | 7c | Alpha 4: native selection across blocks (one text field per run of rows), external files writable (Open File asks for write access; read-only explained), language selector | done (`0.1.0-alpha.4`) |
+| 7d | Alpha 5: compact editor spacing, caret after Enter in lists, title rename from the top bar | done (`0.1.0-alpha.5`) |
 | 8 | Checklist polish (global default, drag reorder), table cell editing | planned |
 | 9 | Trash and safety polish | planned |
 | 10 | Polish (themes, accessibility, tablet layout, tables/images) | planned |
