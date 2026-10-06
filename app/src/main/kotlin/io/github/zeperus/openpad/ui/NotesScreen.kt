@@ -80,6 +80,8 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.zeperus.openpad.R
+import io.github.zeperus.openpad.ui.editor.FormattingBar
+import io.github.zeperus.openpad.ui.editor.RichEditor
 import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteInfo
 import kotlinx.coroutines.launch
@@ -238,22 +240,8 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
                                 .padding(horizontal = 16.dp, vertical = 6.dp),
                         )
                     }
-                    // Temporary raw-Markdown editor; replaced by the formatted editor in a later milestone.
-                    TextField(
-                        value = vm.text,
-                        onValueChange = vm::onTextChange,
-                        readOnly = vm.readOnly,
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                        placeholder = { Text(stringResource(R.string.editor_hint)) },
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
-                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.background,
-                            unfocusedContainerColor = MaterialTheme.colorScheme.background,
-                            focusedIndicatorColor = MaterialTheme.colorScheme.background,
-                            unfocusedIndicatorColor = MaterialTheme.colorScheme.background,
-                        ),
-                    )
+                    RichEditor(vm, Modifier.fillMaxWidth().weight(1f))
+                    if (!vm.readOnly) FormattingBar(vm)
                 }
             }
         }

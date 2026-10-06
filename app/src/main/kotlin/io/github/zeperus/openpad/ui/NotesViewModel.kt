@@ -1,6 +1,7 @@
 package io.github.zeperus.openpad.ui
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
@@ -25,6 +26,11 @@ import io.github.zeperus.openpad.domain.SettingsStore
 import io.github.zeperus.openpad.domain.StartupMode
 import io.github.zeperus.openpad.domain.StartupPlanner
 import io.github.zeperus.openpad.domain.TabItem
+import io.github.zeperus.openpad.editor.Cursor
+import io.github.zeperus.openpad.editor.EditorDocument
+import io.github.zeperus.openpad.editor.EditorSession
+import io.github.zeperus.openpad.editor.RowKind
+import io.github.zeperus.openpad.editor.SpanKind
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
@@ -47,6 +53,10 @@ enum class RenameResult { Ok, InvalidName, NameTaken, Failed }
  * There is exactly one live [NoteEditor] - the active tab's. Switching tabs saves it and loads the other note
  * from the repository, so unsaved text only ever exists in the active editor. Every state change runs under
  * [actions] (including autosave), so draft materialization can never interleave with a tab operation.
+ *
+ * The text the user edits is an [EditorSession] (rows, caret, undo history) on top of that Markdown: every edit goes
+ * keyboard -> operation -> document model -> Markdown -> [NoteEditor] -> autosave. Each open tab keeps its session, so
+ * caret and undo history survive switching tabs; a session is only reused if its Markdown is exactly what is on disk.
  */
 class NotesViewModel(
     private val repository: NoteRepository,
@@ -57,12 +67,29 @@ class NotesViewModel(
     private val actions = Mutex() // user actions and autosave run one at a time, in order
     private var editor = NoteEditor(repository)
 
+    private var rich = EditorSession(EditorDocument.empty())
+    private val sessions = HashMap<NoteId, EditorSession>() // the sessions of the open tabs
+    private var uiVersion = 0L
+    private var focusToken = 0L
+
     /** False until the previous session has been restored; the editor must not be used before that. */
     var ready by mutableStateOf(false)
         private set
 
-    /** Text shown in the editor. */
+    /** The Markdown of the open document, as last handed to the autosave. */
     var text by mutableStateOf("")
+        private set
+
+    /** What the editor shows: rows, caret, formatting state. */
+    var ui by mutableStateOf(snapshot())
+        private set
+
+    /** Changes whenever a different document (or a cleared one) is loaded into the editor; row ids restart then. */
+    var epoch by mutableIntStateOf(0)
+        private set
+
+    /** Set when an operation moved the caret to another row; the row takes the keyboard focus and calls [focusHandled]. */
+    var focusRequest by mutableStateOf<FocusRequest?>(null)
         private set
 
     /** The open note, or null while it is still an unsaved draft. */
@@ -131,11 +158,131 @@ class NotesViewModel(
         act { startup() }
     }
 
+    /** Replaces the whole document with [newText] (Markdown). Used for programmatic changes; typing uses [onRowText]. */
     fun onTextChange(newText: String) {
         if (!ready || readOnly) return
-        text = newText
-        editor.onTextChanged(newText)
+        rich = EditorSession(EditorDocument.fromMarkdown(newText))
+        epoch++
+        registerSession()
+        publish()
+        pushMarkdown(newText)
+    }
+
+    // ---- Editing (the rich editor reports what the user did; the session turns it into document changes) ----------
+
+    /** The text field of row [rowId] now holds [newText] with the caret at [caret]. */
+    fun onRowText(rowId: Long, newText: String, caret: Int) = edit { it.onText(rowId, newText, caret) }
+
+    fun onBackspaceAtStart(rowId: Long) = edit { it.backspaceAtStart(rowId) }
+
+    /** The caret or selection moved inside row [rowId]. */
+    fun onSelection(rowId: Long, start: Int, end: Int) {
+        if (!ready) return
+        val next = Cursor(rowId, start, end)
+        if (rich.cursor == next) return
+        rich.moveCursor(next)
+        publish()
+    }
+
+    fun toggleStyle(kind: SpanKind) = edit { it.toggleStyle(kind) }
+
+    fun setLink(href: String) = edit { it.setLink(href.trim()) }
+
+    fun removeLink() = edit { it.removeLink() }
+
+    fun setBlock(kind: RowKind) = edit { it.setKind(kind) }
+
+    fun toggleList(ordered: Boolean) = edit { it.toggleList(ordered) }
+
+    fun toggleTask() = edit { it.toggleTask() }
+
+    fun setChecked(rowId: Long, checked: Boolean) = edit { it.setChecked(rowId, checked) }
+
+    fun indent() = edit { it.indent() }
+
+    fun outdent() = edit { it.outdent() }
+
+    fun insertRule() = edit { it.insertRule() }
+
+    fun undo() = edit { it.undo() }
+
+    fun redo() = edit { it.redo() }
+
+    /** A tap below the last row: the caret goes to the end of the last row that can hold text. */
+    fun focusEnd() {
+        if (!ready || readOnly) return
+        val row = rich.doc.rows.lastOrNull { it.isTextual } ?: return
+        rich.moveCursor(Cursor(row.id, row.text.length))
+        publish()
+        requestFocus(row.id)
+    }
+
+    fun focusHandled(request: FocusRequest) {
+        if (focusRequest == request) focusRequest = null
+    }
+
+    /**
+     * Runs one editing operation. An exception in the editor never reaches the file: the last Markdown that was handed to
+     * the autosave stays as it is, and the user is told.
+     */
+    private inline fun edit(operation: (EditorSession) -> Boolean) {
+        if (!ready || readOnly) return
+        val before = rich.cursor?.rowId
+        val changed = try {
+            operation(rich)
+        } catch (e: Exception) {
+            message = UserMessage.ActionFailed
+            false
+        }
+        publish()
+        if (changed) commitMarkdown()
+        val row = rich.cursor?.rowId
+        if (row != null && row != before) requestFocus(row)
+    }
+
+    private fun commitMarkdown() {
+        val markdown = try {
+            rich.markdown()
+        } catch (e: Exception) {
+            message = UserMessage.SaveFailed // the previous Markdown stays in the editor and on disk
+            return
+        }
+        pushMarkdown(markdown)
+    }
+
+    private fun pushMarkdown(markdown: String) {
+        text = markdown
+        editor.onTextChanged(markdown)
         autosaver.notifyChanged()
+    }
+
+    private fun requestFocus(rowId: Long) {
+        focusRequest = FocusRequest(rowId, ++focusToken)
+    }
+
+    private fun snapshot(): EditorUi {
+        val session = rich
+        val cursor = session.cursor
+        val row = cursor?.let { session.doc.row(it.rowId) }
+        return EditorUi(
+            doc = session.doc,
+            cursor = cursor,
+            active = session.activeKinds(),
+            rowKind = row?.kind,
+            link = session.linkAtCaret(),
+            canUndo = session.history.canUndo,
+            canRedo = session.history.canRedo,
+            version = ++uiVersion,
+        )
+    }
+
+    private fun publish() {
+        ui = snapshot()
+    }
+
+    /** The open note's session belongs to its tab. A draft has none until it becomes a note. */
+    private fun registerSession() {
+        editor.info?.id?.let { sessions[it] = rich }
     }
 
     /** Called when the app goes to the background: make sure everything is on disk. */
@@ -242,8 +389,13 @@ class NotesViewModel(
 
     /** Empties the open note. The note and its file stay. */
     fun clear() = act {
+        if (readOnly) return@act
         editor.clear()
         text = editor.text
+        rich = EditorSession(EditorDocument.empty())
+        epoch++
+        registerSession()
+        publish()
         afterEditorChanged()
     }
 
@@ -359,6 +511,7 @@ class NotesViewModel(
         if (info != null && session.activeNoteId == null && session.draftOpen) {
             commitSession(session.materializeDraft(info.id))
         }
+        if (info != null) sessions[info.id] = rich
     }
 
     private fun commitSession(next: OpenDocuments) {
@@ -400,6 +553,20 @@ class NotesViewModel(
         text = next.text
         current = next.info
         readOnly = next.readOnly
+        rich = sessionFor(next)
+        epoch++
+        focusRequest = null
+        publish()
+    }
+
+    /** The open tab's own session if it still matches the file exactly (keeps caret and undo), otherwise a fresh one. */
+    private fun sessionFor(next: NoteEditor): EditorSession {
+        val id = next.info?.id
+        val kept = id?.let { sessions[it] }?.takeIf { runCatching { it.markdown() == next.text }.getOrDefault(false) }
+        val result = kept ?: EditorSession(EditorDocument.fromMarkdown(next.text))
+        if (id != null) sessions[id] = result
+        sessions.keys.retainAll((session.noteIds + listOfNotNull(id)).toSet())
+        return result
     }
 
     private suspend fun refreshLists() {

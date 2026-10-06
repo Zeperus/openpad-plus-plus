@@ -68,4 +68,34 @@
     <string name="message_note_unreadable">This file is not valid UTF-8 text and was not opened.</string>
     <string name="message_source_unavailable">That file is not available (moved, deleted or access was withdrawn). Open it again from your files.</string>
     <string name="message_action_failed">That did not work. Your notes were not changed.</string>
+
+    <string name="raw_block_label">Markdown kept as written</string>
+
+    <string name="format_paragraph_style">Paragraph style</string>
+    <string name="format_text">Text</string>
+    <string name="format_heading_1">Heading 1</string>
+    <string name="format_heading_2">Heading 2</string>
+    <string name="format_heading_3">Heading 3</string>
+    <string name="format_heading_4">Heading 4</string>
+    <string name="format_quote">Quote</string>
+    <string name="format_code_block">Code block</string>
+    <string name="format_bold">Bold</string>
+    <string name="format_italic">Italic</string>
+    <string name="format_strike">Strikethrough</string>
+    <string name="format_code">Inline code</string>
+    <string name="format_link">Link</string>
+    <string name="format_bullets">Bulleted list</string>
+    <string name="format_numbers">Numbered list</string>
+    <string name="format_tasks">Checklist</string>
+    <string name="format_outdent">Decrease indent</string>
+    <string name="format_indent">Increase indent</string>
+    <string name="format_rule">Horizontal rule</string>
+    <string name="format_undo">Undo</string>
+    <string name="format_redo">Redo</string>
+
+    <string name="link_title">Link</string>
+    <string name="link_address">Address</string>
+    <string name="link_apply">Apply</string>
+    <string name="link_open">Open</string>
+    <string name="link_remove">Remove link</string>
 </resources>

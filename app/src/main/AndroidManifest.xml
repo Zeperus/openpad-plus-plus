@@ -33,16 +33,24 @@
                 <data android:mimeType="text/markdown" />
                 <data android:mimeType="text/x-markdown" />
             </intent-filter>
-            <!-- Many providers label .md files with a generic type: match by name instead -->
+            <!-- Many providers label .md files with a generic type: match by name instead. Android's glob has no backtracking (`.*` stops at the first next character), so a pattern is needed per number of dots in the path (up to six) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <action android:name="android.intent.action.EDIT" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.md" />
-                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.markdown" />
                 <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\.md" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\..*\\.md" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\..*\\..*\\.md" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\..*\\..*\\..*\\.md" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.md" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.markdown" />
                 <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\.markdown" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\..*\\.markdown" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\..*\\..*\\.markdown" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\..*\\..*\\..*\\.markdown" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.markdown" />
             </intent-filter>
         </activity>
 

@@ -42,8 +42,10 @@ class ExternalFlowTest {
     @get:Rule val rule = createEmptyComposeRule()
     private var scenario: ActivityScenario<MainActivity>? = null
 
+    // The scenario is deliberately not closed: with a singleTask activity started by a VIEW intent `close()` waits 45 s for
+    // a DESTROYED that never comes. The orchestrator gives every test its own process, so nothing leaks.
     @After fun closeActivity() {
-        scenario?.close()
+        scenario = null
     }
 
     private fun externalFile(name: String, text: String): Pair<File, Uri> {
