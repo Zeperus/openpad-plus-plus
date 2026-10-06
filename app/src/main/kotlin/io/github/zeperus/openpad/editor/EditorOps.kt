@@ -21,7 +21,7 @@ object EditorOps {
      * typed line break splits the row (Enter); everything else - including pasted text with line breaks - is plain text.
      * [typingStyle] is the formatting for new text when the user toggled it with an empty selection.
      */
-    fun edit(doc: EditorDocument, rowId: Long, newText: String, caret: Int, typingStyle: Set<SpanKind>? = null): Edit {
+    fun edit(doc: EditorDocument, rowId: Long, newText: String, caret: Int, typingStyle: Set<SpanKind>? = null, smart: Boolean = false): Edit {
         val index = doc.indexOf(rowId)
         val row = doc.rows[index]
         val old = row.text.text
@@ -36,7 +36,7 @@ object EditorOps {
         val inserted = newText.substring(prefix, newText.length - suffix)
 
         // a single typed line break is the Enter key, in every kind of row (code inserts a line break, others split)
-        if (removedEnd == prefix && inserted == "\n" && row.kind != RowKind.Rule) return enter(doc, rowId, prefix)
+        if (removedEnd == prefix && inserted == "\n" && row.kind != RowKind.Rule) return enter(doc, rowId, prefix, smart)
 
         val isPlain = row.kind is RowKind.Code || row.kind == RowKind.Raw
         val replaced = if (isPlain) RichText(newText) else row.text.replace(prefix, removedEnd, inserted, typingStyle)
@@ -95,7 +95,12 @@ object EditorOps {
 
     // ---- Enter / Backspace -----------------------------------------------------------------------------------
 
-    fun enter(doc: EditorDocument, rowId: Long, offset: Int): Edit {
+    /**
+     * Enter. The row that has the keyboard focus **keeps its identity**: it becomes the second half and a new row for the first
+     * half appears above it, so the text field the user is typing in is never replaced and the caret just stays at the start
+     * of it. ([smart]: in a smart checklist a new item next to completed ones goes above the first completed item.)
+     */
+    fun enter(doc: EditorDocument, rowId: Long, offset: Int, smart: Boolean = false): Edit {
         val index = doc.indexOf(rowId)
         val row = doc.rows[index]
         val o = offset.coerceIn(0, row.text.length)
@@ -105,60 +110,37 @@ object EditorOps {
         fun newRow(kind: RowKind, text: RichText, depth: Int = row.depth) = EditorRow(next++, kind, text, depth, touched = true)
 
         when (val kind = row.kind) {
-            RowKind.Paragraph -> {
-                val (left, right) = row.text.split(o)
-                rows[index] = row.copy(text = left, touched = true)
-                val created = newRow(RowKind.Paragraph, right)
-                rows.add(index + 1, created)
-                return Edit(doc.withRows(rows, next), Cursor(created.id, 0))
-            }
-            is RowKind.Heading -> {
-                if (o == 0 && !row.text.isEmpty) { // pushes the heading down
-                    val above = newRow(RowKind.Paragraph, RichText(""))
-                    rows.add(index, above)
+            RowKind.Paragraph, is RowKind.Heading, RowKind.Quote, is RowKind.ListItem -> {
+                if (row.text.isEmpty) {
+                    if (kind is RowKind.ListItem) return leaveList(doc, rowId)
+                    if (kind == RowKind.Quote) { // Enter on an empty quote line leaves the quote
+                        rows[index] = row.copy(kind = RowKind.Paragraph, touched = true)
+                        return Edit(doc.withRows(rows), Cursor(row.id, 0))
+                    }
+                }
+                val fresh = if (kind is RowKind.ListItem) kind.copy(checked = if (kind.checked != null) false else null) else kind
+                if (o == 0 && !row.text.isEmpty) { // pushes the row down, an empty one appears above it
+                    val aboveKind = if (kind is RowKind.Heading) RowKind.Paragraph else fresh
+                    rows.add(index, newRow(aboveKind, RichText("")))
                     return Edit(doc.withRows(rows, next), Cursor(row.id, 0))
                 }
                 val (left, right) = row.text.split(o)
-                rows[index] = row.copy(text = left, touched = true)
-                val created = newRow(RowKind.Paragraph, right)
-                rows.add(index + 1, created)
-                return Edit(doc.withRows(rows, next), Cursor(created.id, 0))
-            }
-            RowKind.Quote -> {
-                if (row.text.isEmpty) { // Enter on an empty quote line leaves the quote
-                    rows[index] = row.copy(kind = RowKind.Paragraph, touched = true)
-                    return Edit(doc.withRows(rows), Cursor(row.id, 0))
-                }
-                val (left, right) = row.text.split(o)
-                rows[index] = row.copy(text = left, touched = true)
-                val created = newRow(RowKind.Quote, right)
-                rows.add(index + 1, created)
-                return Edit(doc.withRows(rows, next), Cursor(created.id, 0))
-            }
-            is RowKind.ListItem -> {
-                if (row.text.isEmpty) return leaveList(doc, rowId)
-                val fresh = kind.copy(checked = if (kind.checked != null) false else null)
-                if (o == 0) { // pushes the item down, an empty one appears above it
-                    val above = newRow(fresh, RichText(""))
-                    rows.add(index, above)
-                    return Edit(doc.withRows(rows, next), Cursor(row.id, 0))
-                }
-                val (left, right) = row.text.split(o)
-                rows[index] = row.copy(text = left, touched = true)
-                val created = newRow(fresh, right)
-                // following nested items stay with the first half, so the new item goes after them
+                val secondKind = if (kind is RowKind.Heading) RowKind.Paragraph else fresh
+                rows[index] = row.copy(id = next++, text = left, touched = true) // the first half is the new row (keeps where it came from) ...
                 var at = index + 1
-                while (at < rows.size && rows[at].isListItem && rows[at].depth > row.depth) at++
-                rows.add(at, created)
-                return Edit(doc.withRows(rows, next), Cursor(created.id, 0))
+                // ... following nested items stay with the first half, so the second half goes after them
+                if (kind is RowKind.ListItem) while (at < rows.size && rows[at].isListItem && rows[at].depth > row.depth) at++
+                rows.add(at, row.copy(kind = secondKind, text = right, touched = true)) // ... and this row keeps its id
+                var result: List<EditorRow> = rows
+                if (smart && kind is RowKind.ListItem && kind.checked == true) result = Checklist.placeNewUnchecked(rows, row.id)
+                return Edit(doc.withRows(result, next), Cursor(row.id, 0))
             }
             is RowKind.Code -> {
                 val text = row.text.text
                 if (o == text.length && text.endsWith("\n")) { // a second Enter at the end leaves the code block
-                    rows[index] = row.copy(text = RichText(text.dropLast(1)), touched = true)
-                    val created = newRow(RowKind.Paragraph, RichText(""), 0)
-                    rows.add(index + 1, created)
-                    return Edit(doc.withRows(rows, next), Cursor(created.id, 0))
+                    rows[index] = row.copy(id = next++, text = RichText(text.dropLast(1)), touched = true) // the code stays, the focused row continues as a paragraph
+                    rows.add(index + 1, row.copy(kind = RowKind.Paragraph, text = RichText(""), depth = 0, touched = true))
+                    return Edit(doc.withRows(rows, next), Cursor(row.id, 0))
                 }
                 rows[index] = row.copy(text = RichText(text.substring(0, o) + "\n" + text.substring(o)), touched = true)
                 return Edit(doc.withRows(rows), Cursor(row.id, o + 1))
@@ -198,11 +180,12 @@ object EditorOps {
                 Edit(doc.withRows(rows), Cursor(rowId, 0))
             }
             RowKind.Paragraph, is RowKind.Heading, RowKind.Quote, is RowKind.ListItem -> {
+                // the focused row survives (it takes the place and kind of the previous one), so the keyboard stays on the same field
                 val at = previous.text.length
                 val joined = collapseBlankLines(previous.text.plus(row.text))
-                rows[index - 1] = previous.copy(text = joined, touched = true)
+                rows[index - 1] = previous.copy(id = row.id, text = joined, touched = true)
                 rows.removeAt(index)
-                Edit(doc.withRows(rows), Cursor(previous.id, minOf(at, joined.length)))
+                Edit(doc.withRows(rows), Cursor(row.id, minOf(at, joined.length)))
             }
             is RowKind.Code, RowKind.Raw -> {
                 if (row.text.isEmpty) { // only an empty line is removed; never merge text into code
@@ -340,15 +323,23 @@ object EditorOps {
         return Edit(bullet.doc.withRows(bulletRows), bullet.cursor)
     }
 
-    /** Tapping a checkbox. */
-    fun setChecked(doc: EditorDocument, rowId: Long, checked: Boolean): Edit {
+    /** Tapping a checkbox. In a smart checklist ([smart]) the item then moves (see [Checklist]); that is part of the same edit. */
+    fun setChecked(doc: EditorDocument, rowId: Long, checked: Boolean, smart: Boolean = false): Edit {
         val index = doc.indexOf(rowId)
         val row = doc.rows[index]
         val kind = row.kind as? RowKind.ListItem ?: return Edit(doc, Cursor(rowId, 0))
         if (kind.checked == null || kind.checked == checked) return Edit(doc, Cursor(rowId, 0))
         val rows = doc.rows.toMutableList()
         rows[index] = row.copy(kind = kind.copy(checked = checked), touched = true)
-        return Edit(doc.withRows(rows), Cursor(rowId, 0))
+        val placed = if (smart) Checklist.place(rows, rowId, checked) else rows
+        return Edit(doc.withRows(placed), Cursor(rowId, 0))
+    }
+
+    /** Switching smart checklist mode on: sorts the task checklists once (unchecked first). Null if nothing changes. */
+    fun sortChecklists(doc: EditorDocument): Edit? {
+        val sorted = Checklist.normalize(doc.rows)
+        if (sorted === doc.rows || sorted.map { it.id } == doc.rows.map { it.id }) return null
+        return Edit(doc.withRows(sorted), Cursor(doc.rows.first().id, 0))
     }
 
     /** Makes the item a child of the item above it (with everything nested below it). */

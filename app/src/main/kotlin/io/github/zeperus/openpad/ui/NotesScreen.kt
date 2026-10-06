@@ -182,6 +182,18 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit) {
                                 onClick = { menuOpen = false; vm.toggleFavorite() },
                             )
                             DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        stringResource(
+                                            if (vm.current?.smartChecklist == true) R.string.action_smart_checklist_off
+                                            else R.string.action_smart_checklist_on,
+                                        ),
+                                    )
+                                },
+                                enabled = vm.hasNote && !vm.readOnly,
+                                onClick = { menuOpen = false; vm.toggleSmartChecklist() },
+                            )
+                            DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_rename)) },
                                 enabled = vm.hasNote && vm.current?.isExternal != true,
                                 onClick = { menuOpen = false; dialog = Dialog.Rename },

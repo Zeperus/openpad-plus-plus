@@ -77,6 +77,9 @@ class EditorSession(
 
     val history = EditHistory(historyLimit, clock)
 
+    /** Smart checklist mode of this document (a property of the note, not of the Markdown): see [Checklist]. */
+    var smartChecklist: Boolean = false
+
     /** The Markdown of the document right now. */
     fun markdown(): String = doc.toMarkdown()
 
@@ -91,7 +94,7 @@ class EditorSession(
     /** A text field reported new text for a row. Returns true if the document changed. */
     fun onText(rowId: Long, newText: String, caret: Int): Boolean {
         val before = doc
-        val edit = EditorOps.edit(doc, rowId, newText, caret, typingStyle)
+        val edit = EditorOps.edit(doc, rowId, newText, caret, typingStyle, smartChecklist)
         if (edit.doc === before) { cursor = edit.cursor; return false }
         val typedOnly = edit.doc.rows.size == before.rows.size && edit.doc.rows.map { it.id } == before.rows.map { it.id }
         history.record(Snapshot(before, cursor), if (typedOnly) rowId else null)
@@ -124,7 +127,10 @@ class EditorSession(
 
     fun toggleTask(): Boolean = cursor?.let { commit(EditorOps.toggleTask(doc, it.rowId)) } ?: false
 
-    fun setChecked(rowId: Long, checked: Boolean): Boolean = commit(EditorOps.setChecked(doc, rowId, checked), keepCursor = true)
+    fun setChecked(rowId: Long, checked: Boolean): Boolean = commit(EditorOps.setChecked(doc, rowId, checked, smartChecklist), keepCursor = true)
+
+    /** Switching smart checklist mode on sorts the existing checklists once, as one undoable step. */
+    fun sortChecklists(): Boolean = EditorOps.sortChecklists(doc)?.let { commit(it, keepCursor = true) } ?: false
 
     fun indent(): Boolean = cursor?.let { commit(EditorOps.indent(doc, it.rowId)) } ?: false
 

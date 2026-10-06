@@ -106,6 +106,7 @@ class EditorPropertyTest {
             val r = Random(seed)
             val md = MarkdownSerializer.serialize(OpenPadDocument(Gen(seed + 1_000_000).document()))
             val s = EditorSession(EditorDocument.fromMarkdown(md), clock = { now })
+            s.smartChecklist = seed % 2 == 0 // half of the sessions run in smart checklist mode
             now = 0
             s.moveCursor(Cursor(s.doc.rows[0].id, 0))
             for (n in 0 until 25) {

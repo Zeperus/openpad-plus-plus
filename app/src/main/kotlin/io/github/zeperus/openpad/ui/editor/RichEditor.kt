@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -120,6 +121,14 @@ fun RichEditor(vm: NotesViewModel, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * One row. Every kind of row (paragraph, heading, list item, quote, code, raw) is drawn by the **same composable structure**:
+ * a `Row` with a leading slot (bullet / number / checkbox / nothing) and the text field. Only modifiers, the slot content and
+ * the text style depend on the kind, so turning a paragraph into a list item (or back) *changes* the row instead of replacing
+ * it, and the text field - with its focus, caret and keyboard connection - is the same field before and after. (Drawing each
+ * kind in its own branch looked simpler, but made Compose dispose the focused field and create a new one on every
+ * structural edit: the keyboard closed and reopened, and a held Backspace stopped.)
+ */
 @Composable
 private fun RowView(
     row: EditorRow,
@@ -130,73 +139,64 @@ private fun RowView(
     focusRequest: FocusRequest?,
     showHint: Boolean,
 ) {
+    val kind = row.kind
+    if (kind == RowKind.Rule) { // never has a text field, so no identity to keep
+        HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 12.dp).testTag("rule"))
+        return
+    }
     val colors = MaterialTheme.colorScheme
     val body = MaterialTheme.typography.bodyLarge.copy(color = colors.onBackground, lineHeight = 26.sp)
-    when (val kind = row.kind) {
-        is RowKind.Paragraph -> Box(Modifier.padding(horizontal = 16.dp, vertical = 5.dp)) {
-            RowField(row, vm, cursorStart, readOnly, focusRequest, body, hintText = if (showHint) stringResource(R.string.editor_hint) else null)
-        }
-        is RowKind.Heading -> Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)) {
-            RowField(row, vm, cursorStart, readOnly, focusRequest, headingStyle(kind.level, body))
-        }
-        RowKind.Quote -> Box(
-            Modifier
-                .padding(horizontal = 16.dp, vertical = 2.dp)
-                .drawBehind { drawRect(colors.primary, Offset.Zero, Size(3.dp.toPx(), size.height)) }
-                .padding(start = 14.dp),
-        ) {
-            RowField(row, vm, cursorStart, readOnly, focusRequest, body.copy(color = colors.onSurfaceVariant))
-        }
-        is RowKind.Code -> Box(
-            Modifier
-                .padding(horizontal = 16.dp, vertical = 4.dp)
-                .fillMaxWidth()
-                .background(colors.surfaceVariant, RoundedCornerShape(6.dp))
-                .padding(10.dp),
-        ) {
-            RowField(row, vm, cursorStart, readOnly, focusRequest, mono(body), plain = true)
-        }
-        RowKind.Raw -> Column(
-            Modifier
-                .padding(horizontal = 16.dp, vertical = 4.dp)
-                .fillMaxWidth()
-                .background(colors.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
-                .padding(10.dp),
-        ) {
-            Text(stringResource(R.string.raw_block_label), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
-            RowField(row, vm, cursorStart, readOnly, focusRequest, mono(body).copy(color = colors.onSurfaceVariant), plain = true)
-        }
-        RowKind.Rule -> HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 12.dp).testTag("rule"))
-        is RowKind.ListItem -> {
-            val checked = kind.checked
-            val done = checked == true
-            val style = if (done) body.copy(color = colors.onSurfaceVariant, textDecoration = TextDecoration.LineThrough) else body
-            Row(
-                Modifier.padding(start = 16.dp + 22.dp * row.depth, end = 16.dp, top = 2.dp, bottom = 2.dp),
-                verticalAlignment = Alignment.Top,
-            ) {
-                Box(Modifier.width(30.dp).height(26.dp), contentAlignment = Alignment.CenterStart) {
-                    if (checked != null) {
-                        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 26.dp) {
-                            Checkbox(
-                                checked = done,
-                                onCheckedChange = { vm.setChecked(row.id, it) },
-                                enabled = !readOnly,
-                                modifier = Modifier.size(26.dp).testTag("checkbox"),
-                            )
-                        }
-                    } else {
-                        Text(
-                            text = if (kind.list.ordered) "${number ?: 1}${if (kind.list.marker == ')') ")" else "."}" else BULLETS[row.depth.coerceAtLeast(0) % BULLETS.size],
-                            style = body,
-                            modifier = Modifier.testTag("marker"),
+    val list = kind as? RowKind.ListItem
+    val checked = list?.checked
+    val style = when (kind) {
+        is RowKind.Heading -> headingStyle(kind.level, body)
+        RowKind.Quote -> body.copy(color = colors.onSurfaceVariant)
+        is RowKind.Code -> mono(body)
+        RowKind.Raw -> mono(body).copy(color = colors.onSurfaceVariant)
+        is RowKind.ListItem -> if (checked == true) body.copy(color = colors.onSurfaceVariant, textDecoration = TextDecoration.LineThrough) else body
+        else -> body
+    }
+    val frame = when (kind) {
+        is RowKind.Heading -> Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)
+        RowKind.Quote -> Modifier
+            .padding(horizontal = 16.dp, vertical = 2.dp)
+            .drawBehind { drawRect(colors.primary, Offset.Zero, Size(3.dp.toPx(), size.height)) }
+            .padding(start = 14.dp)
+        is RowKind.Code -> Modifier.padding(horizontal = 16.dp, vertical = 4.dp).background(colors.surfaceVariant, RoundedCornerShape(6.dp)).padding(10.dp)
+        RowKind.Raw -> Modifier.padding(horizontal = 16.dp, vertical = 4.dp).background(colors.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(6.dp)).padding(10.dp)
+        is RowKind.ListItem -> Modifier.padding(start = 16.dp + 22.dp * row.depth, end = 16.dp, top = 2.dp, bottom = 2.dp)
+        else -> Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
+    }
+    Row(Modifier.fillMaxWidth().then(frame), verticalAlignment = Alignment.Top) {
+        Box(Modifier.width(if (list != null) 30.dp else 0.dp).height(if (list != null) 26.dp else 0.dp), contentAlignment = Alignment.CenterStart) {
+            if (list != null) {
+                if (checked != null) {
+                    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 26.dp) {
+                        Checkbox(
+                            checked = checked,
+                            onCheckedChange = { vm.setChecked(row.id, it) },
+                            enabled = !readOnly,
+                            modifier = Modifier.size(26.dp).testTag("checkbox"),
                         )
                     }
-                }
-                Box(Modifier.weight(1f)) {
-                    RowField(row, vm, cursorStart, readOnly, focusRequest, style)
+                } else {
+                    Text(
+                        text = if (list.list.ordered) "${number ?: 1}${if (list.list.marker == ')') ")" else "."}" else BULLETS[row.depth.coerceAtLeast(0) % BULLETS.size],
+                        style = body,
+                        modifier = Modifier.testTag("marker"),
+                    )
                 }
             }
+        }
+        Column(Modifier.weight(1f)) {
+            if (kind == RowKind.Raw) {
+                Text(stringResource(R.string.raw_block_label), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+            }
+            RowField(
+                row, vm, cursorStart, readOnly, focusRequest, style,
+                plain = kind is RowKind.Code || kind == RowKind.Raw,
+                hintText = if (showHint && kind == RowKind.Paragraph) stringResource(R.string.editor_hint) else null,
+            )
         }
     }
 }
@@ -242,6 +242,10 @@ private fun RowField(
         SpanTransformation(row.text, SpanColors(link = colors.primary, codeBackground = colors.surfaceVariant, muted = colors.onSurfaceVariant))
     }
     val focus = remember { FocusRequester() }
+    DisposableEffect(Unit) {
+        EditorDiagnostics.fieldCreated()
+        onDispose { EditorDiagnostics.fieldDisposed() }
+    }
     LaunchedEffect(focusRequest) {
         if (focusRequest != null) {
             try { focus.requestFocus() } catch (_: IllegalStateException) { /* not attached yet: the next request retries */ }

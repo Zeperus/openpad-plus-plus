@@ -59,6 +59,23 @@ class FileNoteRepositoryMetadataTest {
         assertEquals(modified, file.lastModified())
     }
 
+    // ---- Smart checklist -------------------------------------------------------------------------------------
+
+    @Test fun `smart checklist is off by default, persists, and never touches the Markdown`() = runBlocking {
+        val r = repo()
+        val a = r.createNote("- [ ] A")
+        assertFalse(a.smartChecklist)
+        assertTrue(r.setSmartChecklist(a.id, true).smartChecklist)
+        assertEquals("- [ ] A", File(root, "notes/${a.id.value}.md").readText())
+        val again = repo()
+        assertTrue(again.listNotes().single().smartChecklist)
+        again.saveNote(a.id, "- [x] A")
+        again.renameNote(a.id, "Shopping")
+        assertTrue(repo().listNotes().single().smartChecklist) // survives edits and a rename
+        assertFalse(repo().setSmartChecklist(a.id, false).smartChecklist)
+        assertFalse(repo().listNotes().single().smartChecklist)
+    }
+
     @Test fun `favorite survives a rename and later edits`() = runBlocking {
         val r = repo()
         val a = r.createNote("Old")

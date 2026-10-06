@@ -162,6 +162,7 @@ class NotesViewModel(
     fun onTextChange(newText: String) {
         if (!ready || readOnly) return
         rich = EditorSession(EditorDocument.fromMarkdown(newText))
+        rich.smartChecklist = current?.smartChecklist == true
         epoch++
         registerSession()
         publish()
@@ -228,7 +229,6 @@ class NotesViewModel(
     private inline fun edit(operation: (EditorSession) -> Boolean) {
         if (!ready || readOnly) return
         val before = rich.cursor?.rowId
-        val kindBefore = rich.cursor?.let { rich.doc.row(it.rowId)?.kind }
         val changed = try {
             operation(rich)
         } catch (e: Exception) {
@@ -238,10 +238,7 @@ class NotesViewModel(
         publish()
         if (changed) commitMarkdown()
         val row = rich.cursor?.rowId
-        // a row that changes kind (paragraph -> list item, ...) is drawn by a new text field: give it the focus again
-        val kindAfter = rich.cursor?.let { rich.doc.row(it.rowId)?.kind }
-        val restyled = row == before && kindBefore != null && kindAfter != null && kindBefore::class != kindAfter::class
-        if (row != null && (row != before || restyled)) requestFocus(row)
+        if (row != null && row != before) requestFocus(row)
     }
 
     private fun commitMarkdown() {
@@ -391,12 +388,26 @@ class NotesViewModel(
         if (editor.setFavorite(favorite)) afterEditorChanged()
     }
 
+    /**
+     * Smart checklist mode for the open note (stored as metadata, never in the Markdown). Switching it on sorts the note's
+     * checklists once - unchecked first - as one undoable step; from then on ticking an item moves it.
+     */
+    fun toggleSmartChecklist() = act {
+        if (readOnly) return@act
+        val enable = !(editor.info?.smartChecklist ?: false)
+        if (!editor.setSmartChecklist(enable)) return@act
+        rich.smartChecklist = enable
+        if (enable) edit { it.sortChecklists() }
+        afterEditorChanged()
+    }
+
     /** Empties the open note. The note and its file stay. */
     fun clear() = act {
         if (readOnly) return@act
         editor.clear()
         text = editor.text
         rich = EditorSession(EditorDocument.empty())
+        rich.smartChecklist = current?.smartChecklist == true
         epoch++
         registerSession()
         publish()
@@ -558,6 +569,7 @@ class NotesViewModel(
         current = next.info
         readOnly = next.readOnly
         rich = sessionFor(next)
+        rich.smartChecklist = next.info?.smartChecklist == true
         epoch++
         focusRequest = null
         publish()

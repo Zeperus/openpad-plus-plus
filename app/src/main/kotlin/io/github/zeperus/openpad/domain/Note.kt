@@ -24,6 +24,11 @@ data class NoteInfo(
     val lastOpenedAt: Long? = null,
     /** Set for documents that live outside the app (a `content://` URI); the text is edited in place, never copied. */
     val externalUri: String? = null,
+    /**
+     * Smart checklist mode (metadata only, never written into the Markdown): checked task items sink below the unchecked
+     * ones. Off for every note until the user switches it on; plain Markdown task lists keep their order.
+     */
+    val smartChecklist: Boolean = false,
 ) {
     val isTrashed: Boolean get() = trashedAt != null
 

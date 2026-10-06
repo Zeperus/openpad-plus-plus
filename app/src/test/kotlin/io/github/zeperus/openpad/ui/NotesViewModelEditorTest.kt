@@ -320,4 +320,77 @@ class NotesViewModelEditorTest {
         assertEquals("# Ext\n\n- [x] item\n", provider.text(uri))
         assertTrue(File(root, "notes").listFiles().isNullOrEmpty()) // no internal copy
     }
+
+    // ---- Smart checklist -----------------------------------------------------------------------------------
+
+    @Test fun `smart checklist is off by default and ticking keeps the order`() = runTest {
+        val vm = launch()
+        vm.onTextChange("- [ ] A\n- [ ] B\n- [ ] C\n")
+        settle()
+        assertFalse(vm.current!!.smartChecklist)
+        vm.setChecked(vm.ui.doc.rows[0].id, true)
+        settle()
+        assertEquals("- [x] A\n- [ ] B\n- [ ] C\n", vm.file("A").readText())
+    }
+
+    @Test fun `turning smart checklist on sorts once and from then on ticking moves items`() = runTest {
+        val vm = launch()
+        vm.onTextChange("- [x] A\n- [ ] B\n- [ ] C\n")
+        settle()
+        vm.toggleSmartChecklist(); runCurrent()
+        assertTrue(vm.current!!.smartChecklist)
+        settle()
+        assertEquals("- [ ] B\n- [ ] C\n- [x] A\n", vm.file("B").readText())
+        vm.setChecked(vm.ui.doc.rows[0].id, true)
+        settle()
+        assertEquals("- [ ] C\n- [x] A\n- [x] B\n".replace("- [x] A\n- [x] B", "- [x] A\n- [x] B"), vm.file("C").readText())
+        // the mode is metadata: it is not in the file, and it survives a restart
+        assertFalse(vm.file("C").readText().contains("smart", ignoreCase = true))
+        val again = launch()
+        again.openNote(again.notes.single().id)
+        assertTrue(again.current!!.smartChecklist)
+        again.setChecked(again.ui.doc.rows[0].id, true)
+        again.flush(); runCurrent()
+        assertEquals("- [x] A\n- [x] B\n- [x] C\n", again.file("A").readText())
+    }
+
+    @Test fun `smart checklist can be turned off again and a blank page cannot have it`() = runTest {
+        val vm = launch()
+        vm.toggleSmartChecklist(); runCurrent()
+        assertNull(vm.current) // nothing to attach it to
+        vm.onTextChange("- [ ] A\n- [ ] B\n")
+        settle()
+        vm.toggleSmartChecklist(); runCurrent()
+        vm.toggleSmartChecklist(); runCurrent()
+        assertFalse(vm.current!!.smartChecklist)
+        vm.setChecked(vm.ui.doc.rows[0].id, true)
+        settle()
+        assertEquals("- [x] A\n- [ ] B\n", vm.file("A").readText())
+    }
+
+    @Test fun `undo after ticking in smart mode restores the order in one step`() = runTest {
+        val vm = launch()
+        vm.onTextChange("- [ ] A\n- [ ] B\n- [ ] C\n")
+        settle()
+        vm.toggleSmartChecklist(); runCurrent()
+        vm.setChecked(vm.ui.doc.rows[0].id, true)
+        assertEquals("- [ ] B\n- [ ] C\n- [x] A\n", vm.text)
+        vm.undo()
+        assertEquals("- [ ] A\n- [ ] B\n- [ ] C\n", vm.text)
+    }
+
+    // ---- Focus: the same row stays the focused one -----------------------------------------------------------
+
+    @Test fun `structural edits do not ask for a new focus`() = runTest {
+        val vm = launch()
+        vm.type(0, "item")
+        val id = vm.ui.doc.rows[0].id
+        vm.toggleList(false)
+        vm.toggleTask()
+        vm.onBackspaceAtStart(id)
+        vm.onBackspaceAtStart(id)
+        assertEquals(id, vm.ui.cursor?.rowId)
+        // no focus request was made for a row that merely changed kind: the field stays where it is
+        assertNull(vm.focusRequest?.takeIf { it.rowId == id && it.token > 1 })
+    }
 }

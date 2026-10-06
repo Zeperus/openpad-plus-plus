@@ -28,6 +28,9 @@ interface NoteRepository {
     /** Marks/unmarks an active note as favorite. Pure metadata: the `.md` file is not touched. */
     suspend fun setFavorite(id: NoteId, favorite: Boolean): NoteInfo
 
+    /** Switches smart checklist mode on/off for an active note. Pure metadata: the `.md` file is not touched. */
+    suspend fun setSmartChecklist(id: NoteId, enabled: Boolean): NoteInfo
+
     /** Records that an active note just became the open note (feeds Recent). */
     suspend fun markOpened(id: NoteId): NoteInfo
 

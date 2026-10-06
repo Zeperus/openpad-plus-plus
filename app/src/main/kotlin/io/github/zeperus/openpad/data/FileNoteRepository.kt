@@ -88,6 +88,8 @@ class FileNoteRepository internal constructor(
         val autoTitle: Boolean = true,
         val favorite: Boolean = false,
         val lastOpenedAt: Long? = null,
+        /** Smart checklist mode of this note (absent in older indexes = off). */
+        val smartChecklist: Boolean = false,
         /** Only present in version-1 indexes, where files were named after their title. Never written. */
         val fileName: String? = null,
         /** The `content://` URI of an external document; null for internal notes. */
@@ -97,7 +99,7 @@ class FileNoteRepository internal constructor(
         /** For external documents: the file started with a UTF-8 byte order mark, which is kept when writing. */
         val bom: Boolean = false,
     ) {
-        fun toInfo() = NoteInfo(NoteId(id), title, createdAt, updatedAt, trashedAt, autoTitle, favorite, lastOpenedAt, uri)
+        fun toInfo() = NoteInfo(NoteId(id), title, createdAt, updatedAt, trashedAt, autoTitle, favorite, lastOpenedAt, uri, smartChecklist)
     }
 
     override suspend fun createNote(text: String): NoteInfo = locked { notes ->
@@ -171,6 +173,15 @@ class FileNoteRepository internal constructor(
         val entry = activeEntry(notes, id)
         if (entry.favorite == favorite) return@locked entry.toInfo()
         val updated = entry.copy(favorite = favorite)
+        notes[entry.id] = updated
+        persist(notes)
+        updated.toInfo()
+    }
+
+    override suspend fun setSmartChecklist(id: NoteId, enabled: Boolean): NoteInfo = locked { notes ->
+        val entry = activeEntry(notes, id)
+        if (entry.smartChecklist == enabled) return@locked entry.toInfo()
+        val updated = entry.copy(smartChecklist = enabled)
         notes[entry.id] = updated
         persist(notes)
         updated.toInfo()

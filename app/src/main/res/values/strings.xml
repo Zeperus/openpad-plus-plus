@@ -28,6 +28,8 @@
     <string name="action_remove_external">Remove from openPad++…</string>
     <string name="read_only_banner">Read-only: this file cannot be changed.</string>
     <string name="external_file">External file</string>
+    <string name="action_smart_checklist_on">Smart checklist: off (turn on)</string>
+    <string name="action_smart_checklist_off">Smart checklist: on (turn off)</string>
     <string name="action_rename">Rename…</string>
     <string name="action_clear">Clear note…</string>
     <string name="action_delete">Delete note…</string>

@@ -86,6 +86,16 @@ class NoteEditor(
         }
     }
 
+    /** Switches smart checklist mode, creating the note first if it is a draft with real content. False for blank drafts. */
+    suspend fun setSmartChecklist(enabled: Boolean): Boolean {
+        save()
+        return mutex.withLock {
+            val current = info ?: return@withLock false
+            info = repository.setSmartChecklist(current.id, enabled)
+            true
+        }
+    }
+
     /** Moves the note to the Trash after writing pending changes. Returns the trashed note, or null for a draft. */
     suspend fun moveToTrash(): NoteInfo? {
         save()
