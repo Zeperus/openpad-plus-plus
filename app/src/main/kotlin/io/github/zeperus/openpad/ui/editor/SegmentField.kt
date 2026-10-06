@@ -19,6 +19,8 @@ import androidx.compose.foundation.text.input.TextFieldDecorator
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.selectAll
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.layout.layout
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
@@ -239,13 +241,14 @@ internal class SegmentInput(private val controller: SegmentController) : InputTr
 internal class RowStyles(private val colors: androidx.compose.material3.ColorScheme, private val density: Density, private val spans: SpanColors) {
     private fun sp(dp: Float) = with(density) { dp.dp.toSp() }
 
-    val markerIndentDp = 30f
+    val markerIndentDp = 32f
     val depthIndentDp = 22f
 
+    /** Ordinary text sits 1.5 lines apart like in a notepad; headings get what their larger type needs. */
     fun lineHeight(row: EditorRow) = when (val k = row.kind) {
-        is RowKind.Heading -> when (k.level) { 1 -> 38.sp; 2 -> 34.sp; 3 -> 30.sp; 4 -> 28.sp; else -> 26.sp }
-        is RowKind.Code, RowKind.Raw -> 21.sp
-        else -> 28.sp
+        is RowKind.Heading -> when (k.level) { 1 -> 34.sp; 2 -> 30.sp; 3 -> 26.sp; else -> 24.sp }
+        is RowKind.Code, RowKind.Raw -> 20.sp
+        else -> 24.sp
     }
 
     fun paragraph(row: EditorRow): ParagraphStyle {
@@ -283,11 +286,16 @@ internal class SegmentOutput(private val input: State<DecorationInput?>, private
         val d = input.value ?: return
         val seg = d.segment
         if (length != seg.text.length + 1) return // a frame between the field and the model: no styling rather than the wrong one
+        // A paragraph style that ends in a line break makes the layout add an empty line after it - a gap between every two rows. So
+        // the line breaks between the rows are *drawn* as invisible characters (same length: every offset stays valid) and the
+        // paragraph styles end there instead; the field's own text (what the keyboard and the clipboard see) keeps its line breaks.
+        for (i in 0 until seg.rows.lastIndex) replace(seg.end(i) + 1, seg.end(i) + 2, DRAWN_BREAK)
+        if (seg.rows.last().text.isEmpty) append(DRAWN_BREAK) // an empty last row still needs a character to carry its paragraph style
         for ((i, row) in seg.rows.withIndex()) {
             val s = seg.start(i) + 1 // everything is one further on: the field starts with the invisible marker
             val e = seg.end(i) + 1
             val paragraphStart = if (i == 0) 0 else s
-            val paragraphEnd = if (i < seg.rows.lastIndex) e + 1 else e
+            val paragraphEnd = if (i < seg.rows.lastIndex || e == s) e + 1 else e
             if (paragraphEnd > paragraphStart) addStyle(styles.paragraph(row), paragraphStart, paragraphEnd)
             if (e > s) {
                 styles.span(row)?.let { addStyle(it, s, e) }
@@ -307,6 +315,9 @@ internal class SegmentOutput(private val input: State<DecorationInput?>, private
         }
     }
 }
+
+/** What the line break between two rows is drawn as: nothing visible, but a character, so that the row's paragraph ends before the next one starts. */
+private const val DRAWN_BREAK = "\u200B"
 
 /** Hardware keyboard: Ctrl+B / Ctrl+I / Ctrl+Z / Ctrl+Y and Tab / Shift+Tab (indent / outdent). */
 private fun shortcut(event: androidx.compose.ui.input.key.KeyEvent, vm: NotesViewModel): Boolean {
@@ -410,7 +421,7 @@ internal fun SegmentField(
             .drawBehind {
                 val layout = controller.layout?.invoke() ?: return@drawBehind
                 val seg = rowsNow
-                if (layout.layoutInput.text.length != seg.text.length + 1) return@drawBehind
+                if (layout.layoutInput.text.length != seg.displayLength) return@drawBehind
                 for ((i, row) in seg.rows.withIndex()) {
                     val s = seg.start(i) + 1
                     val e = seg.end(i) + 1
@@ -481,7 +492,7 @@ internal fun SegmentField(
                             val layout = controller.layout?.invoke()
                             val seg = rowsNow
                             val i = seg.indexOf(row.id)
-                            if (layout == null || i < 0 || layout.layoutInput.text.length != seg.text.length + 1) IntOffset(-1000, -1000)
+                            if (layout == null || i < 0 || layout.layoutInput.text.length != seg.displayLength) IntOffset(-1000, -1000)
                             else IntOffset(0, layout.getLineTop(layout.getLineForOffset(seg.start(i) + 1)).toInt() - 14.dp.roundToPx())
                         }
                         .testTag("source-done"),
@@ -501,7 +512,7 @@ internal fun SegmentField(
                             val layout = controller.layout?.invoke()
                             val seg = rowsNow
                             val i = seg.indexOf(row.id)
-                            if (layout == null || i < 0 || layout.layoutInput.text.length != seg.text.length + 1) IntOffset(-1000, -1000) else {
+                            if (layout == null || i < 0 || layout.layoutInput.text.length != seg.displayLength) IntOffset(-1000, -1000) else {
                                 val line = layout.getLineForOffset(seg.start(i) + 1)
                                 val top = layout.getLineTop(line)
                                 IntOffset((styles.depthIndentDp.dp.toPx() * row.depth).toInt(), top.toInt())
@@ -511,36 +522,51 @@ internal fun SegmentField(
                 )
             }
         }
-        // real checkboxes over the first line of every task item
-        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 26.dp) {
-            for (row in segment.rows) {
-                val task = (row.kind as? RowKind.ListItem)?.takeIf { it.checked != null } ?: continue
-                androidx.compose.runtime.key(row.id) {
-                    val label = stringResource(if (task.checked == true) R.string.task_done_description else R.string.task_open_description, row.text.text.take(60))
-                    Checkbox(
-                        checked = task.checked == true,
-                        onCheckedChange = { vm.setChecked(row.id, it) },
-                        enabled = !readOnly,
-                        modifier = Modifier
-                            .offset {
-                                val layout = controller.layout?.invoke()
-                                val seg = rowsNow
-                                val i = seg.indexOf(row.id)
-                                if (layout == null || i < 0 || layout.layoutInput.text.length != seg.text.length + 1) IntOffset(-1000, -1000) else {
-                                    val line = layout.getLineForOffset(seg.start(i) + 1)
-                                    val top = layout.getLineTop(line)
-                                    val height = layout.getLineBottom(line) - top
-                                    IntOffset((styles.depthIndentDp.dp.toPx() * row.depth).toInt(), (top + (height - 26.dp.toPx()) / 2f).toInt())
-                                }
-                            }
-                            .size(26.dp)
-                            .semantics { contentDescription = label }
-                            .testTag("checkbox"),
-                    )
+        // Real checkboxes over the first line of every task item. The box is drawn 24 dp (the lines are close together, like in a
+        // notepad) but its touch target is 48 dp wide and one line tall (never overlapping the neighbours): visual density and
+        // touch target are separate things. The toggle belongs to the target, the Checkbox inside only draws.
+        for (row in segment.rows) {
+            val task = (row.kind as? RowKind.ListItem)?.takeIf { it.checked != null } ?: continue
+            androidx.compose.runtime.key(row.id) {
+                val label = stringResource(if (task.checked == true) R.string.task_done_description else R.string.task_open_description, row.text.text.take(60))
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .offset {
+                            val l = controller.layout?.invoke()
+                            val seg = rowsNow
+                            val i = seg.indexOf(row.id)
+                            if (l == null || i < 0 || l.layoutInput.text.length != seg.displayLength) IntOffset(-1000, -1000)
+                            else IntOffset((styles.depthIndentDp * row.depth + CHECKBOX_TARGET_LEFT).dp.roundToPx(), l.getLineTop(l.getLineForOffset(seg.start(i) + 1)).toInt())
+                        }
+                        .layout { measurable, _ ->
+                            val l = controller.layout?.invoke()
+                            val seg = rowsNow
+                            val i = seg.indexOf(row.id)
+                            val height = if (l == null || i < 0 || l.layoutInput.text.length != seg.displayLength) 1
+                            else l.getLineForOffset(seg.start(i) + 1).let { (l.getLineBottom(it) - l.getLineTop(it)).toInt().coerceAtLeast(1) }
+                            val width = CHECKBOX_TARGET_WIDTH.dp.roundToPx()
+                            val placeable = measurable.measure(androidx.compose.ui.unit.Constraints.fixed(width, height))
+                            layout(width, height) { placeable.place(0, 0) }
+                        }
+                        .toggleable(
+                            value = task.checked == true,
+                            enabled = !readOnly,
+                            role = androidx.compose.ui.semantics.Role.Checkbox,
+                            onValueChange = { vm.setChecked(row.id, it) },
+                        )
+                        .semantics { contentDescription = label }
+                        .testTag("checkbox"),
+                ) {
+                    Checkbox(checked = task.checked == true, onCheckedChange = null, enabled = !readOnly)
                 }
             }
         }
     }
 }
+
+/** The touch target of a task's checkbox: 48 dp wide, from [CHECKBOX_TARGET_LEFT] (into the page margin) up to the start of the text. */
+private const val CHECKBOX_TARGET_WIDTH = 48
+private const val CHECKBOX_TARGET_LEFT = -16
 
 internal val BULLETS = listOf("•", "◦", "▪")

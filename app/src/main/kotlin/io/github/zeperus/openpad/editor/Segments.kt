@@ -23,6 +23,12 @@ class Segment(val rows: List<EditorRow>) {
         text = sb.toString()
     }
 
+    /**
+     * The length of the text *as drawn* by the field: its text plus the invisible marker at the start (see `FIELD_PREFIX`), plus one
+     * invisible character if the last row is empty (a paragraph needs a character to be laid out with its own style).
+     */
+    val displayLength: Int get() = text.length + 1 + (if (rows.last().text.isEmpty) 1 else 0)
+
     fun start(index: Int): Int = starts[index]
 
     fun end(index: Int): Int = starts[index] + rows[index].text.length
