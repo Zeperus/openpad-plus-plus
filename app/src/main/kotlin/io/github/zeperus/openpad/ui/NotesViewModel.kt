@@ -294,6 +294,15 @@ class NotesViewModel(
         requestFocus(row.id)
     }
 
+    /** Puts the caret at the end of row [rowId] and gives it the keyboard focus (e.g. "Edit source" on a table). */
+    fun focusRow(rowId: Long) {
+        if (!ready || readOnly) return
+        val row = rich.doc.row(rowId) ?: return
+        rich.moveCursor(Cursor(rowId, row.text.length))
+        publish()
+        requestFocus(rowId)
+    }
+
     fun focusHandled(request: FocusRequest) {
         if (focusRequest == request) focusRequest = null
     }

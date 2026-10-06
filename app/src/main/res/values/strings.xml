@@ -111,4 +111,14 @@
     <string name="selection_all">Select all</string>
     <string name="selection_done">Done</string>
     <string name="action_paste_markdown">Paste as Markdown</string>
+
+    <string name="raw_edit_source">Edit source</string>
+    <string name="raw_done">Done</string>
+    <string name="raw_html_source_label">HTML (shown as source, not rendered)</string>
+    <string name="html_label">HTML</string>
+    <string name="table_description">Table, %1$d columns, %2$d rows</string>
+    <string name="image_generic">Image</string>
+    <string name="image_loading">Loading image…</string>
+    <string name="image_unavailable">Image not available</string>
+    <string name="image_placeholder_description">Image: %1$s, %2$s</string>
 </resources>

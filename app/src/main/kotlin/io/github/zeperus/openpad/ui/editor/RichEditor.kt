@@ -27,6 +27,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.material3.TextButton
+import io.github.zeperus.openpad.editor.RawBlock
+import io.github.zeperus.openpad.editor.RawBlocks
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.pointer.pointerInput
@@ -92,6 +96,7 @@ fun RichEditor(vm: NotesViewModel, modifier: Modifier = Modifier) {
         val readOnly = vm.readOnly
         val listState = rememberLazyListState()
         val geometry = remember { EditorGeometry() }
+        val sourceRows = remember { mutableStateListOf<Long>() } // raw blocks currently opened as text
         var container by remember { mutableStateOf<LayoutCoordinates?>(null) }
         val rows = ui.doc.rows
         // coming back to a tab: show the row the caret was in
@@ -127,6 +132,8 @@ fun RichEditor(vm: NotesViewModel, modifier: Modifier = Modifier) {
                         focusRequest = request,
                         showHint = hint,
                         selected = selected[row.id],
+                        sourceMode = row.id in sourceRows,
+                        onSourceMode = { on -> if (on) sourceRows.add(row.id) else sourceRows.remove(row.id) },
                     )
                 }
                 item(key = "end") {
@@ -164,9 +171,22 @@ private fun RowView(
     focusRequest: FocusRequest?,
     showHint: Boolean,
     selected: IntRange?,
+    sourceMode: Boolean,
+    onSourceMode: (Boolean) -> Unit,
 ) {
     val kind = row.kind
     DisposableEffect(row.id) { onDispose { geometry.forget(row.id) } }
+    val rawBlock = if (kind == RowKind.Raw) remember(row.text.text) { RawBlocks.classify(row.text.text) } else RawBlock.Other
+    if (kind == RowKind.Raw && rawBlock.isRendered() && !sourceMode) {
+        RenderedRawBlock(
+            block = rawBlock,
+            readOnly = readOnly,
+            selected = selected != null,
+            onEditSource = { onSourceMode(true); vm.focusRow(row.id) },
+            modifier = Modifier.onGloballyPositioned { geometry.of(row.id).row = it },
+        )
+        return
+    }
     if (kind == RowKind.Rule) { // never has a text field, so no identity to keep
         HorizontalDivider(
             Modifier
@@ -223,7 +243,11 @@ private fun RowView(
         }
         Column(Modifier.weight(1f)) {
             if (kind == RowKind.Raw) {
-                Text(stringResource(R.string.raw_block_label), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val label = if (rawBlock is RawBlock.Html && rawBlock.simple == null) R.string.raw_html_source_label else R.string.raw_block_label
+                    Text(stringResource(label), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    if (sourceMode) TextButton(onClick = { onSourceMode(false) }) { Text(stringResource(R.string.raw_done)) }
+                }
             }
             RowField(
                 row, vm, geometry, cursorStart, readOnly, focusRequest, style, selected,

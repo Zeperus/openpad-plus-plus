@@ -1,6 +1,7 @@
 package io.github.zeperus.openpad.editor
 
 import io.github.zeperus.openpad.markdown.Block
+import io.github.zeperus.openpad.markdown.Inline
 import io.github.zeperus.openpad.markdown.CodeStyle
 import io.github.zeperus.openpad.markdown.ListItem
 import io.github.zeperus.openpad.markdown.ListKind
@@ -105,7 +106,8 @@ class EditorDocument internal constructor(
                 is RowKind.Heading -> { block = Block.Heading(kind.level, rows[i].text.toInlines()); i++ }
                 RowKind.Rule -> { block = Block.Rule; i++ }
                 is RowKind.Code -> { block = Block.CodeBlock(rows[i].text.text, kind.info, kind.style); i++ }
-                RowKind.Raw -> { block = Block.Raw(rows[i].text.text); i++ }
+                // an image on its own is a raw row for the UI, but still the paragraph it was
+                RowKind.Raw -> { block = rows[i].text.text.let { t -> if (RawBlocks.classify(t) is RawBlock.Image) Block.Paragraph(listOf(Inline.Raw(t))) else Block.Raw(t) }; i++ }
                 RowKind.Quote -> {
                     // quote lines belong together, except that two quotes parsed from separate blocks stay separate
                     val firstOrigin = rows[i].origin?.block
@@ -272,7 +274,8 @@ class EditorDocument internal constructor(
         /** Adds the rows for [block]; false if the editor cannot represent it (then the caller keeps it as a raw row). */
         private fun flatten(block: Block, depth: Int, ctx: Ctx, out: MutableList<EditorRow>): Boolean {
             when (block) {
-                is Block.Paragraph -> out += EditorRow(ctx.take(), RowKind.Paragraph, RichText.fromInlines(block.inlines))
+                is Block.Paragraph -> out += singleImage(block.inlines)?.let { EditorRow(ctx.take(), RowKind.Raw, RichText(it)) }
+                    ?: EditorRow(ctx.take(), RowKind.Paragraph, RichText.fromInlines(block.inlines))
                 is Block.Heading -> out += EditorRow(ctx.take(), RowKind.Heading(block.level), RichText.fromInlines(block.inlines))
                 Block.Rule -> out += EditorRow(ctx.take(), RowKind.Rule, RichText(""))
                 is Block.CodeBlock -> out += EditorRow(ctx.take(), RowKind.Code(block.info, block.style), RichText(block.code))
@@ -285,6 +288,13 @@ class EditorDocument internal constructor(
                 is Block.ListBlock -> return flattenList(block, depth, ctx, out)
             }
             return true
+        }
+
+        /** The Markdown of the image if the paragraph is nothing but one image (blank text around it is ignored). */
+        private fun singleImage(inlines: List<Inline>): String? {
+            val content = inlines.filterNot { it is Inline.SoftBreak || (it is Inline.Text && it.text.isBlank()) }
+            val only = content.singleOrNull() as? Inline.Raw ?: return null
+            return only.markdown.takeIf { RawBlocks.classify(it) is RawBlock.Image }
         }
 
         private fun flattenList(list: Block.ListBlock, depth: Int, ctx: Ctx, out: MutableList<EditorRow>): Boolean {
