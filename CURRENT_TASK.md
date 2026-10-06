@@ -1,15 +1,23 @@
 # Current task
 
-**Alpha 4 (`0.1.0-alpha.4`): native selection across blocks (one text field per run of rows), external files writable / read-only explained, in-app language selector - see the status below.**
+**Alpha 5 (`0.1.0-alpha.5`): compact editor spacing, caret after Enter in lists, title rename from the top bar - done and published (Alpha 4: native cross-block selection, writable external files, language selector).**
 Next (do not start without being asked): Milestone 8 (global checklist default, drag reorder, table cell editing).
 
 ## Status
-- Unit tests: 772, 0 failing (`./gradlew test`); lint clean; `assembleDebug` and `assembleDebugAndroidTest` build.
-- Instrumented tests on GitHub (API 36 emulator, Test Orchestrator): **90/90 green** (ColdStart 1, NotesFlow 8, SessionFlow 16, ExternalFlow 9,
-  RichEditor 13, StructuralEditing 15, Selection 6 (real touch: native handle dragged across paragraphs/into a list/backwards, cut + undo,
-  Copy as Markdown, toolbar), Alpha3 14, Alpha4External 6 (writable / read-only / no-flags / refusing SAF provider), Alpha4Language 2), run 37482622603;
+- Unit tests: 789, 0 failing (`./gradlew test`); lint clean; `assembleDebug` and `assembleDebugAndroidTest` build.
+- Instrumented tests on GitHub (API 36 emulator, Test Orchestrator): **99/99 green** (ColdStart 1, NotesFlow 8, SessionFlow 16, ExternalFlow 9,
+  RichEditor 13, StructuralEditing 15, Selection 6, Alpha3 14, Alpha4External 6, Alpha4Language 2, EditorDensity 6, Title 3), run 37522499671;
   regular CI green.
-- Signing: Alpha 1-4 share one certificate (SHA-256 7c2afa95...13bf9f0); keystore in `~/.openpad-signing/`, not in the repository.
+- Signing: Alpha 1-5 share one certificate (SHA-256 7c2afa95...13bf9f0); keystore in `~/.openpad-signing/`, not in the repository.
+
+## What Alpha 5 changed (details in docs/editor.md "Density", docs/storage.md "Identity and titles")
+- Row spacing: Compose adds an empty line after a paragraph style that ends in a line break, so Alpha 4 showed a phantom blank line after every
+  row. The breaks between rows are now drawn as invisible characters (same length), line heights are 24 sp (headings 34/30/26/24), the marker
+  column is 32 dp. Checkbox touch target 48 dp wide x one line tall (separate from the 24 dp drawing).
+- Enter in a list: an empty last row now gets a drawn invisible character so its paragraph style (indent) applies: the caret is right of the marker at once.
+- Title: tap renames an automatic title, long press an explicit one; a titled blank note is created (empty) and stays. Metadata only (`autoTitle`).
+- Probed on CI: a ParagraphStyle ending at a line break yields an extra empty line (do not reintroduce); the semantics text of a field is
+  overridden to the real text (with line breaks) because the drawn text has the invisible characters.
 
 ## Regression boundary
 The Alpha 2 keyboard/focus behaviour (held Backspace across lists, no keyboard flicker, ticking a checkbox keeps the keyboard) was confirmed
