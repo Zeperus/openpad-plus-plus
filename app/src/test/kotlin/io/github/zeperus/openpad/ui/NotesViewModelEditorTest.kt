@@ -48,6 +48,7 @@ class NotesViewModelEditorTest {
             FileSessionStore(File(root, "session.json"), dispatcher),
             settings,
             CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()),
+            io.github.zeperus.openpad.data.FileEditorStateStore(File(root, "editor-state.json"), dispatcher),
         )
     }
 
@@ -443,5 +444,79 @@ class NotesViewModelEditorTest {
         assertEquals("- [ ] B\n- [ ] D\n- [x] A\n- [x] C\n", again.text)
         again.flush(); runCurrent()
         assertEquals("- [ ] B\n- [ ] D\n- [x] A\n- [x] C\n", File(root, "notes/${again.notes.single().id.value}.md").readText())
+    }
+
+    // ---- Caret and undo history across a restart -------------------------------------------------------------
+
+    @Test fun `the caret and the undo history come back after a restart`() = runTest {
+        val vm = launch()
+        vm.type(0, "Hello")
+        Thread.sleep(0)
+        vm.type(0, " world")
+        vm.select(0, 2, 4)
+        settle()
+        vm.flush(); runCurrent()
+        assertTrue(File(root, "editor-state.json").isFile)
+
+        val again = launch()
+        again.openNote(again.notes.single().id); runCurrent()
+        assertEquals("Hello world", again.ui.doc.rows[0].text.text)
+        assertEquals(2, again.ui.cursor?.start)
+        assertEquals(4, again.ui.cursor?.end)
+        assertTrue(again.ui.canUndo)
+        again.undo()
+        assertTrue(again.text.trim().length < "Hello world".length) // the last edit (or typing burst) is undone
+        again.redo()
+        assertEquals("Hello world", again.ui.doc.rows[0].text.text)
+    }
+
+    @Test fun `undo after a restart restores the previous text exactly`() = runTest {
+        val vm = launch()
+        vm.onTextChange("one\n\ntwo\n")
+        settle()
+        vm.type(1, "two!")
+        settle(); vm.flush(); runCurrent()
+        val again = launch()
+        again.openNote(again.notes.single().id); runCurrent()
+        again.undo()
+        assertEquals("one\n\ntwo\n", again.text)
+        again.flush(); runCurrent()
+        assertEquals("one\n\ntwo\n", File(root, "notes").listFiles()!!.single().readText())
+    }
+
+    @Test fun `a note that changed outside discards the remembered caret and history`() = runTest {
+        val vm = launch()
+        vm.type(0, "mine")
+        vm.type(0, "mine again")
+        vm.select(0, 1, 3)
+        settle(); vm.flush(); runCurrent()
+        File(root, "notes").listFiles()!!.single().writeText("edited elsewhere, longer text")
+        val again = launch()
+        again.openNote(again.notes.single().id); runCurrent()
+        assertEquals("edited elsewhere, longer text", again.ui.doc.rows[0].text.text)
+        assertFalse(again.ui.canUndo)
+        assertNull(again.ui.cursor)
+    }
+
+    @Test fun `a damaged state file is ignored`() = runTest {
+        val vm = launch()
+        vm.type(0, "text")
+        settle(); vm.flush(); runCurrent()
+        File(root, "editor-state.json").writeText("{ not json at all")
+        val again = launch()
+        again.openNote(again.notes.single().id); runCurrent()
+        assertEquals("text", again.ui.doc.rows[0].text.text)
+        assertFalse(again.ui.canUndo)
+    }
+
+    @Test fun `closing a tab forgets its remembered history`() = runTest {
+        val vm = launch()
+        vm.type(0, "one")
+        settle(); vm.flush(); runCurrent()
+        assertTrue(File(root, "editor-state.json").readText().contains("fingerprint"))
+        vm.closeCurrent(); runCurrent()
+        settle(); vm.flush(); runCurrent()
+        val state = File(root, "editor-state.json")
+        assertTrue(!state.exists() || !state.readText().contains("fingerprint"))
     }
 }

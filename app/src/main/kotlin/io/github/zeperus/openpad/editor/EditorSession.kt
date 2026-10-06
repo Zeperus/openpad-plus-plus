@@ -33,6 +33,19 @@ class EditHistory(
         redoStack.clear()
     }
 
+    /** The recorded steps, oldest first (for saving them between runs). */
+    fun undoSnapshots(): List<Snapshot> = undoStack.toList()
+
+    fun redoSnapshots(): List<Snapshot> = redoStack.toList()
+
+    /** Replaces the history with steps that were saved earlier (bounded by the limit). */
+    fun restore(undo: List<Snapshot>, redo: List<Snapshot>) {
+        undoStack.clear(); redoStack.clear()
+        undoStack += undo.takeLast(limit)
+        redoStack += redo.takeLast(limit)
+        typingRow = null
+    }
+
     fun undo(current: Snapshot): Snapshot? {
         if (undoStack.isEmpty()) return null
         val previous = undoStack.removeAt(undoStack.lastIndex)

@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             OpenPadTheme {
                 val vm: NotesViewModel = viewModel(
-                    factory = viewModelFactory { initializer { NotesViewModel(app.repository, app.sessionStore, app.settings, app.appScope) } },
+                    factory = viewModelFactory { initializer { NotesViewModel(app.repository, app.sessionStore, app.settings, app.appScope, app.editorStates) } },
                 )
                 viewModel = vm
                 LaunchedEffect(vm) {

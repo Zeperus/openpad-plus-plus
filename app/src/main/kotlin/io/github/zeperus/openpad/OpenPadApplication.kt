@@ -3,8 +3,10 @@ package io.github.zeperus.openpad
 import android.app.Application
 import io.github.zeperus.openpad.data.ContentResolverDocuments
 import io.github.zeperus.openpad.data.DataStoreSettingsStore
+import io.github.zeperus.openpad.data.FileEditorStateStore
 import io.github.zeperus.openpad.data.FileNoteRepository
 import io.github.zeperus.openpad.data.FileSessionStore
+import io.github.zeperus.openpad.domain.EditorStateStore
 import io.github.zeperus.openpad.domain.NoteRepository
 import io.github.zeperus.openpad.domain.SessionStore
 import io.github.zeperus.openpad.domain.SettingsStore
@@ -27,6 +29,9 @@ class OpenPadApplication : Application() {
 
     /** The open-document session: its own small file, separate from the notes and their index. */
     val sessionStore: SessionStore by lazy { FileSessionStore(File(filesDir, "openpad/session.json")) }
+
+    /** Caret and recent undo history per open note (disposable, never inside the notes). */
+    val editorStates: EditorStateStore by lazy { FileEditorStateStore(File(filesDir, "openpad/editor-state.json")) }
 
     /** Simple settings (startup mode). DataStore does its own I/O, so it gets an IO scope, not [appScope]. */
     val settings: SettingsStore by lazy {
