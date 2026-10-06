@@ -92,9 +92,9 @@ class CaretHitTestTest {
     @Test fun tappingInsideTheTextStillPlacesTheCaretBetweenTheGlyphs() {
         launch("Hello\n\nWorld\n", listOf("Hello", "World"))
         val l = layout()
-        val between = l.getBoundingBox(rowStart(0) + 2).left // between "e" and "l"... the left edge of the second "l"
+        val between = l.getBoundingBox(rowStart(0) + 2).left // the border between "e" and the first "l"
         tap(between, midY(rowStart(0)))
-        assertEquals(listOf("HelXlo", "World"), typeAndRows("X"))
+        assertEquals(listOf("HeXllo", "World"), typeAndRows("X"))
     }
 
     @Test fun tappingTheStartOfTheTextAndLeftOfIt() {

@@ -6,6 +6,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import android.os.SystemClock
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.contextmenu.builder.item
@@ -115,6 +120,9 @@ import kotlin.math.min
  */
 private val replacedMenuKeys = setOf(TextContextMenuKeys.CutKey, TextContextMenuKeys.CopyKey, TextContextMenuKeys.PasteKey, TextContextMenuKeys.SelectAllKey)
 
+/** A caret that appears this soon after a touch on the field comes from that touch. */
+private const val TAP_WINDOW_MS = 400L
+
 internal const val FIELD_PREFIX = "\u200B"
 
 internal fun fieldTextOf(segment: Segment) = FIELD_PREFIX + segment.text
@@ -137,6 +145,34 @@ internal class SegmentController(
     var appliedEpoch = -1
     val decoration = mutableStateOf<DecorationInput?>(null)
     var layout by mutableStateOf<(() -> TextLayoutResult?)?>(null)
+
+    /** The last touch on the field (in the field's coordinates) and when it happened: the caret a tap produces is checked against it. */
+    var lastTouch: Offset? = null
+    var lastTouchAt = 0L
+
+    /**
+     * Where a *collapsed caret that a tap has just placed* belongs. The text layout puts a tap to the right of a row's last line after
+     * the invisible character that ends the row (see `SegmentOutput`) - that is the start of the *next* row. A tap belongs to the row
+     * whose line it is on, so the caret may not go beyond the end of that row; a tap to the right of a wrapped line stays on that
+     * line (the layout handles it), left of the text is the start of the line (also the layout). One-shot: it only looks at the first
+     * caret that follows a touch.
+     */
+    fun correctedTapOffset(offset: Int): Int {
+        val tap = lastTouch ?: return offset
+        lastTouch = null
+        if (SystemClock.uptimeMillis() - lastTouchAt > TAP_WINDOW_MS) return offset
+        return clampToTappedRow(offset, tap.y)
+    }
+
+    /** [offset] limited to the row that owns the line at height [y] of the field. */
+    fun clampToTappedRow(offset: Int, y: Float): Int {
+        val l = layout?.invoke() ?: return offset
+        val seg = current() ?: return offset
+        if (l.layoutInput.text.length != seg.displayLength) return offset
+        val line = l.getLineForVerticalPosition(y).coerceIn(0, l.lineCount - 1)
+        val row = seg.rowIndexAt(max(0, l.getLineStart(line) - 1))
+        return min(offset, seg.end(row) + 1)
+    }
 
     /** The model's version of this field, found through any of its rows. */
     fun current(): Segment? {
@@ -199,6 +235,10 @@ internal class SegmentInput(private val controller: SegmentController) : InputTr
         val newField = asCharSequence().toString()
         if (oldField == newField) { // only the caret or the keyboard's composing text moved: the caret never goes in front of the marker
             if (selection.min < 1) selection = TextRange(max(1, selection.start), max(1, selection.end))
+            if (selection.collapsed && selection != originalSelection) { // a tap placed the caret: it belongs to the row that was tapped
+                val fixed = controller.correctedTapOffset(selection.start)
+                if (fixed != selection.start) selection = TextRange(fixed)
+            }
             return
         }
         val segment = controller.current()
@@ -415,9 +455,25 @@ internal fun SegmentField(
     val appName = stringResource(R.string.app_name)
     val hint = stringResource(R.string.editor_hint)
 
+    val marginH = with(density) { 16.dp.toPx() }
+    val marginV = with(density) { 4.dp.toPx() }
     Box(
         modifier
             .fillMaxWidth()
+            // the page margin around the field belongs to the row too: a tap there puts the caret at the nearest place of the row
+            .pointerInput(controller) {
+                detectTapGestures { tap ->
+                    val outside = tap.x < marginH || tap.x > size.width - marginH || tap.y < marginV || tap.y > size.height - marginV
+                    val l = controller.layout?.invoke()
+                    if (outside && l != null && l.layoutInput.text.length == rowsNow.displayLength) {
+                        val x = (tap.x - marginH).coerceIn(0f, l.size.width.toFloat())
+                        val y = (tap.y - marginV).coerceIn(0f, max(0f, l.size.height - 1f))
+                        val offset = max(1, controller.clampToTappedRow(l.getOffsetForPosition(Offset(x, y)), y))
+                        state.edit { selection = TextRange(offset) } // first the caret, then the focus: the caret is kept
+                        try { focus.requestFocus() } catch (_: IllegalStateException) { }
+                    }
+                }
+            }
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .drawBehind {
                 val layout = controller.layout?.invoke() ?: return@drawBehind
@@ -446,6 +502,19 @@ internal fun SegmentField(
             state = state,
             modifier = Modifier
                 .fillMaxWidth()
+                // watches the touches (without consuming them) so that the caret a tap produces can be checked against where it was
+                .pointerInput(controller) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull() ?: continue
+                            if (event.type == PointerEventType.Press || event.type == PointerEventType.Release) {
+                                controller.lastTouch = change.position
+                                controller.lastTouchAt = change.uptimeMillis
+                            }
+                        }
+                    }
+                }
                 .testTag("segment")
                 // what is *drawn* has an invisible character where the rows break (see SegmentOutput); what assistive technology and
                 // the tests read is the field's own text, with its real line breaks
