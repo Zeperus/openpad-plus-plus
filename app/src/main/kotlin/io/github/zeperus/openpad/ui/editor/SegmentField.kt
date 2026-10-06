@@ -110,6 +110,8 @@ import kotlin.math.min
  * press is noticed. (The same trick as in Alpha 2, proven on a real phone; rows after the first have their line break instead.)
  * All offsets in the field are one more than the segment's; the caret never stays in front of it.
  */
+private val replacedMenuKeys = setOf(TextContextMenuKeys.CutKey, TextContextMenuKeys.CopyKey, TextContextMenuKeys.PasteKey, TextContextMenuKeys.SelectAllKey)
+
 internal const val FIELD_PREFIX = "\u200B"
 
 internal fun fieldTextOf(segment: Segment) = FIELD_PREFIX + segment.text
@@ -448,7 +450,9 @@ internal fun SegmentField(
                     if (!readOnly) item(key = "op-paste", label = pasteLabel) { clipboard.text()?.let { vm.pasteText(it) }; close() }
                     item(key = "op-select-all", label = selectAllLabel) { state.edit { selectAll() }; close() }
                 }
-                .filterTextContextMenuComponents { false }, // the system's own items (found first) are dropped; ours come from the modifier above
+                // the system's cut/copy/paste/select-all go (ours replace them: they know about the invisible marker, the Markdown copy and
+                // the undo step); anything else the system offers stays. Filtering by key cannot remove our own items, whatever the order.
+                .filterTextContextMenuComponents { it.key !in replacedMenuKeys },
             enabled = true,
             readOnly = readOnly,
             inputTransformation = input,

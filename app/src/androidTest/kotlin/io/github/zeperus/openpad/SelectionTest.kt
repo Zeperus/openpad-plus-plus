@@ -116,6 +116,15 @@ class SelectionTest {
             .joinToString(" | ") { attr(it, "class").substringAfterLast('.') + ":" + attr(it, "text") + "/" + attr(it, "content-desc") }
     }
 
+    @Test fun aLongPressOffersCopyCutAndCopyAsMarkdownInTheSelectionToolbar() {
+        t.seed("Paragraph one\n\nParagraph two\n")
+        launch()
+        rule.waitForRowTexts(listOf("Paragraph one", "Paragraph two"))
+        longPressWord("one")
+        for (item in listOf("Copy", "Cut")) toolbar(item) ?: throw AssertionError("no $item in the toolbar; on screen: ${toolbarItems()}")
+        toolbar("Copy as Markdown") ?: throw AssertionError("no Copy as Markdown in the toolbar; on screen: ${toolbarItems()}")
+    }
+
     // ---- A: paragraph -> paragraph -------------------------------------------------------------------------------
 
     @Test fun dragTheSelectionHandleFromOneParagraphIntoTheNextAndCopy() {
