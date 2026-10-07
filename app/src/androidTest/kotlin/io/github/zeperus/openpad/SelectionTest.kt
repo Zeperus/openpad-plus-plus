@@ -154,7 +154,9 @@ class SelectionTest {
         // copy through the system toolbar: readable text of both paragraphs
         val copy = toolbar("Copy") ?: throw AssertionError("the selection toolbar did not show Copy; on screen: ${toolbarItems()}")
         copy.click()
-        rule.waitFor("the clipboard", { "${t.clipboardText()}" }) { t.clipboardText()?.contains("Paragraph two") == true }
+        // (other sizes: the selection ends somewhere in the second paragraph - the copy crosses the paragraph boundary)
+        val marker = if (size == null) "Paragraph two" else "\nParagraph"
+        rule.waitFor("the clipboard", { "${t.clipboardText()}" }) { t.clipboardText()?.contains(marker) == true }
         assertTrue(t.clipboardText()!!.startsWith("one") || t.clipboardText()!!.startsWith("Paragraph one"))
     }
 
