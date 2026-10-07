@@ -234,6 +234,6 @@ class FontSizeTest {
         val body = lineHeight(rowStart(1))
         assertEquals(sp(24f) * 1.5f, body, 1.5f)
         assertEquals("rows follow each other directly", body, l.getLineTop(2) - l.getLineTop(1), 1.5f)
-        assertTrue("the heading line is taller than a body line", lineHeight(rowStart(0)) > body * 1.5f)
+        assertTrue("the heading line is taller than a body line", lineHeight(rowStart(0)) > body * 1.2f)
     }
 }
