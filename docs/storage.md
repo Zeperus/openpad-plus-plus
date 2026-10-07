@@ -117,6 +117,11 @@ Settings -> Language: System default / Deutsch / English. The choice is stored i
 anything else falls back to system) and applied through `AppCompatDelegate.setApplicationLocales`, the Android per-app locale API (on
 Android 13+ the system's per-app language screen and this selector are the same setting). No strings are swapped manually.
 
+## Editor text size (Alpha 7)
+
+Settings -> Editor -> Text size: `editor_font_size` (Int, sp) in the settings DataStore next to `startup_mode` and `language`. 16 by default; only 12..28
+are valid, anything else (missing, out of range, a string) reads as 16. A global preference: not in `index.json`, not in a note, not in `editor-state.json`.
+
 ## Drafts (no `Untitled` clutter)
 
 A new blank page is an **in-memory draft** (`NoteEditor.isDraft`). No file exists until the text contains

@@ -1,4 +1,4 @@
-# Alpha test checklist (0.1.0-alpha.6)
+# Alpha test checklist (0.1.0-alpha.7)
 
 Short on purpose. Tick what works, note what does not (what you did, what you expected). **Keep backups of important
 notes while testing.** Settings shows the installed version at the bottom.
@@ -41,6 +41,23 @@ notes while testing.** Settings shows the installed version at the bottom.
 - [ ] Undo restores checkbox and previous order in one action
 - [ ] Tapping a checkbox does not close the keyboard or move the text cursor
 - [ ] A normal Markdown checklist (mode off) does not auto-sort
+
+## Alpha 7
+
+### Font size
+- [ ] Open Settings (Editor -> Text size) and increase the size: the preview changes at once
+- [ ] Go back: the editor text is larger immediately (no restart)
+- [ ] Decrease the size: the editor changes immediately
+- [ ] Close and restart the app: the size remains
+- [ ] Test the smallest size (12) and the largest (28): text is not clipped, rows are not double spaced
+- [ ] At a large size, tap right of text: the caret lands at the end of that row
+- [ ] Test a wrapped paragraph (right of each visual line)
+- [ ] Test a bullet, a numbered item (also "10."), a checklist item, a heading and a quote
+- [ ] Checkboxes: aligned with the text, easy to hit, text does not overlap them
+- [ ] Select across two paragraphs with the handles at a large size; Copy works
+- [ ] A table, a code block and an image placeholder follow the size
+- [ ] Android's own font size (phone Settings) on top still works
+- [ ] Keyboard never flickers; Smart Checklist still works; the Markdown file is unchanged (look at it afterwards)
 
 ## Alpha 6
 

@@ -192,6 +192,10 @@ class NotesViewModel(
     var language by mutableStateOf(io.github.zeperus.openpad.domain.AppLanguage.Default)
         private set
 
+    /** The editor's body text size in sp (Settings -> Editor -> Text size). A global preference: no effect on any note's content, undo or saving. */
+    var editorFontSize by mutableStateOf(io.github.zeperus.openpad.domain.EditorFontSize.DEFAULT)
+        private set
+
     var message by mutableStateOf<UserMessage?>(null)
         private set
 
@@ -839,6 +843,18 @@ class NotesViewModel(
         languageManager?.choose(choice) ?: settings.setLanguage(choice)
     }
 
+    /** Sets the text size (clamped to the supported range). The screen follows at once; saving the preference happens in the background. */
+    fun chooseEditorFontSize(sp: Int) {
+        val size = io.github.zeperus.openpad.domain.EditorFontSize.clamp(sp)
+        if (size == editorFontSize) return
+        editorFontSize = size
+        act { settings.setEditorFontSize(size) }
+    }
+
+    fun increaseEditorFontSize() = chooseEditorFontSize(io.github.zeperus.openpad.domain.EditorFontSize.increased(editorFontSize))
+
+    fun decreaseEditorFontSize() = chooseEditorFontSize(io.github.zeperus.openpad.domain.EditorFontSize.decreased(editorFontSize))
+
     fun chooseStartupMode(mode: StartupMode) = act {
         settings.setStartupMode(mode)
         startupMode = mode
@@ -879,6 +895,13 @@ class NotesViewModel(
                 throw e
             } catch (_: Exception) {
                 io.github.zeperus.openpad.domain.AppLanguage.Default
+            }
+            editorFontSize = try {
+                settings.editorFontSize()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                io.github.zeperus.openpad.domain.EditorFontSize.DEFAULT
             }
             try { persistedStates.putAll(editorStates.load()) } catch (e: CancellationException) { throw e } catch (_: Exception) { /* nothing remembered */ }
             refreshLists()

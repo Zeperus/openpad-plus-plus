@@ -168,4 +168,12 @@
     <string name="language_system">System default</string>
     <string name="language_german">Deutsch</string>
     <string name="language_english">English</string>
+    <string name="settings_editor">Editor</string>
+    <string name="settings_text_size">Text size</string>
+    <string name="font_size_value">%1$d sp</string>
+    <string name="font_size_decrease">Decrease text size</string>
+    <string name="font_size_increase">Increase text size</string>
+    <string name="font_preview_text">Normal text</string>
+    <string name="font_preview_heading">Heading</string>
+    <string name="font_preview_task">Checklist item</string>
 </resources>

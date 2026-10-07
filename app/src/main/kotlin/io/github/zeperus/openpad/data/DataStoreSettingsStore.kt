@@ -6,9 +6,11 @@ import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import io.github.zeperus.openpad.domain.AppLanguage
+import io.github.zeperus.openpad.domain.EditorFontSize
 import io.github.zeperus.openpad.domain.SettingsStore
 import io.github.zeperus.openpad.domain.StartupMode
 import kotlinx.coroutines.CoroutineScope
@@ -40,7 +42,21 @@ class DataStoreSettingsStore(private val dataStore: DataStore<Preferences>) : Se
         dataStore.edit { it[LANGUAGE] = language.name }
     }
 
+    override suspend fun editorFontSize(): Int = try {
+        val stored = dataStore.data
+            .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+            .first()[EDITOR_FONT_SIZE]
+        EditorFontSize.fromStored(stored)
+    } catch (e: ClassCastException) { // the key holds something that is not a number
+        EditorFontSize.DEFAULT
+    }
+
+    override suspend fun setEditorFontSize(sp: Int) {
+        dataStore.edit { it[EDITOR_FONT_SIZE] = EditorFontSize.clamp(sp) }
+    }
+
     companion object {
+        private val EDITOR_FONT_SIZE = intPreferencesKey("editor_font_size")
         private val LANGUAGE = stringPreferencesKey("language")
         private val STARTUP_MODE = stringPreferencesKey("startup_mode")
 

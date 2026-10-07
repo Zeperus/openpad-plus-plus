@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.zeperus.openpad.R
 import io.github.zeperus.openpad.editor.HtmlRun
 import io.github.zeperus.openpad.editor.RawBlock
@@ -114,7 +115,11 @@ private fun TableCell(text: AnnotatedString, align: RawBlock.Align, header: Bool
     ) {
         Text(
             text,
-            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = if (header) FontWeight.Bold else FontWeight.Normal),
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = if (header) FontWeight.Bold else FontWeight.Normal,
+                fontSize = LocalEditorTypography.current.table.sp,
+                lineHeight = (LocalEditorTypography.current.table * 1.43f).sp,
+            ),
             textAlign = when (align) { RawBlock.Align.Start -> TextAlign.Start; RawBlock.Align.Center -> TextAlign.Center; RawBlock.Align.End -> TextAlign.End },
         )
     }
@@ -202,10 +207,11 @@ private fun ImagePlaceholder(image: RawBlock.Image, remote: Boolean, loading: Bo
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("🖼", style = MaterialTheme.typography.headlineSmall)
+        val typo = LocalEditorTypography.current
+        Text("🖼", style = MaterialTheme.typography.headlineSmall.copy(fontSize = (typo.body * 1.5f).sp, lineHeight = (typo.body * 1.9f).sp))
         Column(Modifier.weight(1f)) {
-            Text(name, style = MaterialTheme.typography.bodyLarge)
-            Text(where, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+            Text(name, style = MaterialTheme.typography.bodyLarge.copy(fontSize = typo.body.sp, lineHeight = typo.bodyLineHeight.sp))
+            Text(where, style = MaterialTheme.typography.bodySmall.copy(fontSize = typo.caption.sp, lineHeight = (typo.caption * 1.35f).sp), color = colors.onSurfaceVariant)
         }
         if (remote) {
             TextButton(onClick = {
@@ -249,7 +255,8 @@ private fun HtmlBlock(runs: List<HtmlRun>) {
         }
     }
     Column(Modifier.testTag("html-block")) {
-        Text(stringResource(R.string.html_label), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
-        Text(text, style = MaterialTheme.typography.bodyLarge)
+        val typo = LocalEditorTypography.current
+        Text(stringResource(R.string.html_label), style = MaterialTheme.typography.labelSmall.copy(fontSize = typo.caption.sp, lineHeight = (typo.caption * 1.35f).sp), color = colors.onSurfaceVariant)
+        Text(text, style = MaterialTheme.typography.bodyLarge.copy(fontSize = typo.body.sp, lineHeight = typo.bodyLineHeight.sp))
     }
 }

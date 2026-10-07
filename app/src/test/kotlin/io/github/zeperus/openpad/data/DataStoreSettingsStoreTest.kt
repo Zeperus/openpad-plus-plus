@@ -2,6 +2,7 @@ package io.github.zeperus.openpad.data
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import io.github.zeperus.openpad.domain.StartupMode
 import kotlinx.coroutines.CoroutineScope
@@ -86,5 +87,47 @@ class DataStoreSettingsStoreTest {
         }
         assertEquals(io.github.zeperus.openpad.domain.AppLanguage.System, withStore { it.language() })
         assertEquals(StartupMode.BlankNote, withStore { it.startupMode() }) // the other settings are untouched
+    }
+
+    // ---- Editor font size (Alpha 7) -------------------------------------------------------------------------------
+
+    @Test fun `without a stored value the editor font size is the default`() {
+        assertEquals(16, withStore { it.editorFontSize() })
+    }
+
+    @Test fun `the editor font size is stored and survives recreating the store`() {
+        withStore { it.setEditorFontSize(22) }
+        assertEquals(22, withStore { it.editorFontSize() })
+        withStore { it.setEditorFontSize(12) }
+        assertEquals(12, withStore { it.editorFontSize() })
+    }
+
+    @Test fun `the editor font size is clamped when stored`() {
+        withStore { it.setEditorFontSize(99) }
+        assertEquals(28, withStore { it.editorFontSize() })
+    }
+
+    @Test fun `an out of range stored font size falls back to the default`() = runBlocking {
+        val job = Job()
+        try {
+            val dataStore = PreferenceDataStoreFactory.create(scope = CoroutineScope(Dispatchers.IO + job)) { file }
+            dataStore.edit { it[intPreferencesKey("editor_font_size")] = 400 }
+            assertEquals(16, DataStoreSettingsStore(dataStore).editorFontSize())
+            dataStore.edit { it[intPreferencesKey("editor_font_size")] = -3 }
+            assertEquals(16, DataStoreSettingsStore(dataStore).editorFontSize())
+        } finally {
+            job.cancelAndJoin()
+        }
+    }
+
+    @Test fun `a stored font size of the wrong type falls back to the default`() = runBlocking {
+        val job = Job()
+        try {
+            val dataStore = PreferenceDataStoreFactory.create(scope = CoroutineScope(Dispatchers.IO + job)) { file }
+            dataStore.edit { it[stringPreferencesKey("editor_font_size")] = "large" }
+            assertEquals(16, DataStoreSettingsStore(dataStore).editorFontSize())
+        } finally {
+            job.cancelAndJoin()
+        }
     }
 }

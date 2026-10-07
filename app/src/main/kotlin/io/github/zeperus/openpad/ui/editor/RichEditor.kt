@@ -39,6 +39,12 @@ import io.github.zeperus.openpad.ui.NotesViewModel
  */
 @Composable
 fun RichEditor(vm: NotesViewModel, modifier: Modifier = Modifier) {
+    val typography = androidx.compose.runtime.remember(vm.editorFontSize) { io.github.zeperus.openpad.editor.EditorTypography(vm.editorFontSize.toFloat()) }
+    androidx.compose.runtime.CompositionLocalProvider(LocalEditorTypography provides typography) { RichEditorContent(vm, modifier) }
+}
+
+@Composable
+private fun RichEditorContent(vm: NotesViewModel, modifier: Modifier = Modifier) {
     key(vm.epoch) {
         val ui = vm.ui
         val readOnly = vm.readOnly

@@ -3,6 +3,10 @@ package io.github.zeperus.openpad.ui
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.background
 import androidx.compose.ui.platform.LocalContext
 import io.github.zeperus.openpad.ShareHelper
@@ -822,7 +826,7 @@ private fun SettingsScreen(vm: NotesViewModel, onBack: () -> Unit) {
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
             SectionHeader(stringResource(R.string.settings_startup))
             val options = listOf(
                 StartupMode.ResumeSession to R.string.startup_resume_session,
@@ -871,6 +875,8 @@ private fun SettingsScreen(vm: NotesViewModel, onBack: () -> Unit) {
                     }
                 }
             }
+            SectionHeader(stringResource(R.string.settings_editor))
+            EditorTextSizeSetting(vm)
             val context = LocalContext.current
             val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull().orEmpty() }
             Text(
@@ -879,6 +885,63 @@ private fun SettingsScreen(vm: NotesViewModel, onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 24.dp).testTag("version"),
             )
+        }
+    }
+}
+
+/** Text size: [-] 16 sp [+] and a live preview in the editor's own sizes. */
+@Composable
+private fun EditorTextSizeSetting(vm: NotesViewModel) {
+    val size = vm.editorFontSize
+    val typography = remember(size) { io.github.zeperus.openpad.editor.EditorTypography(size.toFloat()) }
+    val decreaseLabel = stringResource(R.string.font_size_decrease)
+    val increaseLabel = stringResource(R.string.font_size_increase)
+    Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+        Text(stringResource(R.string.settings_text_size), style = MaterialTheme.typography.bodyLarge)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = { vm.decreaseEditorFontSize() },
+                enabled = size > io.github.zeperus.openpad.domain.EditorFontSize.MIN,
+                modifier = Modifier.testTag("font-size-minus").semantics { contentDescription = decreaseLabel },
+            ) { Text("\u2212", style = MaterialTheme.typography.headlineSmall) }
+            Text(
+                text = stringResource(R.string.font_size_value, size),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 12.dp).testTag("font-size-value"),
+            )
+            IconButton(
+                onClick = { vm.increaseEditorFontSize() },
+                enabled = size < io.github.zeperus.openpad.domain.EditorFontSize.MAX,
+                modifier = Modifier.testTag("font-size-plus").semantics { contentDescription = increaseLabel },
+            ) { Text("+", style = MaterialTheme.typography.headlineSmall) }
+        }
+        androidx.compose.runtime.CompositionLocalProvider(io.github.zeperus.openpad.ui.editor.LocalEditorTypography provides typography) {
+            Column(Modifier.padding(top = 8.dp).testTag("font-size-preview")) {
+                Text(
+                    stringResource(R.string.font_preview_text),
+                    style = androidx.compose.ui.text.TextStyle(fontSize = typography.body.sp, lineHeight = typography.bodyLineHeight.sp),
+                    modifier = Modifier.testTag("font-preview-body"),
+                )
+                Text(
+                    stringResource(R.string.font_preview_heading),
+                    style = androidx.compose.ui.text.TextStyle(
+                        fontSize = typography.headingSize(2).sp, lineHeight = typography.headingLineHeight(2).sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    ),
+                    modifier = Modifier.testTag("font-preview-heading"),
+                )
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("font-preview-task")) {
+                    androidx.compose.material3.Checkbox(
+                        checked = false,
+                        onCheckedChange = null,
+                        modifier = Modifier.graphicsLayer(scaleX = typography.checkboxScale, scaleY = typography.checkboxScale),
+                    )
+                    Text(
+                        stringResource(R.string.font_preview_task),
+                        style = androidx.compose.ui.text.TextStyle(fontSize = typography.body.sp, lineHeight = typography.bodyLineHeight.sp),
+                        modifier = Modifier.padding(start = (8 * typography.checkboxScale).dp),
+                    )
+                }
+            }
         }
     }
 }

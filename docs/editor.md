@@ -255,6 +255,35 @@ place of the row (x and y clamped into the text, same clamp) and focuses the fie
 **Markers.** A checkbox's 48 dp target (marker column and the margin in front of it) toggles it and never places a caret. A bullet or
 number is only drawn: a tap on it is a tap in the marker column of the field and places the caret at the start of the item's text.
 
+## Text size (Alpha 7)
+
+Settings -> Editor -> Text size is the editor's *body* size in `sp`: default **16**, range **12-28**, step 1 (`EditorFontSize`). A global
+app preference in the settings DataStore (`editor_font_size`); it is never written into a note. A missing, out-of-range or wrong-typed stored
+value is the default (not clamped to a limit). It sets only how the editor *looks*: it does not change the document, the undo history, the
+autosave, the caret's logical position or whether a blank page exists (`EditorFontSizeViewModelTest`).
+
+All sizes derive from that one number (`editor/EditorTypography.kt`, plain Kotlin, unit tested):
+
+| | size | line height |
+|---|---|---|
+| paragraphs, list items, checklists, quotes | base | 1.5 x base (24 sp at 16) |
+| H1 / H2 / H3 / H4 / H5 / H6 | 1.8 / 1.55 / 1.35 / 1.2 / 1.1 / 1.0 x base | 1.25 x its size, never less than a body line |
+| code and raw/source rows (monospace) | 0.875 x base (14 sp at 16) | 1.25 x base |
+| table cells | 0.875 x base | 1.43 x |
+| image / HTML captions | 0.75 x base | 1.35 x |
+
+Everything is `sp`, nothing is converted to pixels by hand, so Android's *system* font scale applies on top (18 sp at a system scale of 1.3
+is drawn at 23.4 dp-sized text). Line heights are ratios, so rows stay as compact as in Alpha 5/6 at every size and a 28 sp text is not clipped.
+
+**Marker column.** Bullets, numbers and checkboxes live in a column in front of the text: `max(32 dp, 2 x base)` wide (so "10." fits at 28 sp
+and with a large system font); a nesting level is `max(22 dp, 1.375 x base)`. The checkbox is *drawn* at 0.75-1.75 x its default size (it
+follows the text) while its touch target is the whole marker column, one line tall.
+
+**Hit testing and selection** are unchanged: they use the text layout (offsets, line tops and starts), never pixels of a particular size.
+`CaretHitTestTest` runs at 16 sp, `FontSizeTest` at 12 / 16 / 20 / 24 / 28 sp (inside the text, right of it, left of it, wrapped lines,
+checklists), `SelectionTest` drags the native handle across paragraphs at 12 and 28 sp. Changing the size happens in Settings, which replaces
+the editor; coming back rebuilds the fields from the model, so a selection is collapsed to the caret's logical position (predictably, nothing is lost).
+
 ## Autosave and safety
 
 Only document changes reach the autosave: caret moves and style toggles with an empty selection do not. Each change

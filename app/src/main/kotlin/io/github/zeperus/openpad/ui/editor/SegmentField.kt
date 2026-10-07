@@ -26,6 +26,8 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.selectAll
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.graphics.graphicsLayer
+import io.github.zeperus.openpad.editor.EditorTypography
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
@@ -278,17 +280,25 @@ internal class SegmentInput(private val controller: SegmentController) : InputTr
 }
 
 /** What each kind of row looks like, in the field's text (no characters are added; everything is style). */
-internal class RowStyles(private val colors: androidx.compose.material3.ColorScheme, private val density: Density, private val spans: SpanColors) {
+internal class RowStyles(
+    private val colors: androidx.compose.material3.ColorScheme,
+    private val density: Density,
+    private val spans: SpanColors,
+    val typography: EditorTypography,
+) {
     private fun sp(dp: Float) = with(density) { dp.dp.toSp() }
 
-    val markerIndentDp = 32f
-    val depthIndentDp = 22f
+    /** The marker column (bullet / number / checkbox) in front of list text, in dp: 32 dp, or 2 x the text size if that is more (large type, large system font). */
+    val markerIndentDp: Float = with(density) { max(32.dp.toPx(), typography.markerColumn.sp.toPx()) / this.density }
 
-    /** Ordinary text sits 1.5 lines apart like in a notepad; headings get what their larger type needs. */
+    /** One nesting level, in dp: 22 dp, or 1.375 x the text size. */
+    val depthIndentDp: Float = with(density) { max(22.dp.toPx(), typography.depthIndent.sp.toPx()) / this.density }
+
+    /** Ordinary text sits 1.5 lines apart like in a notepad; headings get what their larger type needs (see [EditorTypography]). */
     fun lineHeight(row: EditorRow) = when (val k = row.kind) {
-        is RowKind.Heading -> when (k.level) { 1 -> 34.sp; 2 -> 30.sp; 3 -> 26.sp; else -> 24.sp }
-        is RowKind.Code, RowKind.Raw -> 20.sp
-        else -> 24.sp
+        is RowKind.Heading -> typography.headingLineHeight(k.level).sp
+        is RowKind.Code, RowKind.Raw -> typography.codeLineHeight.sp
+        else -> typography.bodyLineHeight.sp
     }
 
     fun paragraph(row: EditorRow): ParagraphStyle {
@@ -307,12 +317,12 @@ internal class RowStyles(private val colors: androidx.compose.material3.ColorSch
 
     fun span(row: EditorRow): SpanStyle? = when (val k = row.kind) {
         is RowKind.Heading -> SpanStyle(
-            fontSize = when (k.level) { 1 -> 28.sp; 2 -> 24.sp; 3 -> 20.sp; 4 -> 18.sp; else -> 16.sp },
+            fontSize = typography.headingSize(k.level).sp,
             fontWeight = FontWeight.Bold,
         )
         RowKind.Quote -> SpanStyle(color = colors.onSurfaceVariant)
-        is RowKind.Code -> SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp)
-        RowKind.Raw -> SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp, color = colors.onSurfaceVariant)
+        is RowKind.Code -> SpanStyle(fontFamily = FontFamily.Monospace, fontSize = typography.code.sp)
+        RowKind.Raw -> SpanStyle(fontFamily = FontFamily.Monospace, fontSize = typography.code.sp, color = colors.onSurfaceVariant)
         is RowKind.ListItem -> if (k.checked == true) SpanStyle(color = colors.onSurfaceVariant, textDecoration = TextDecoration.LineThrough) else null
         else -> null
     }
@@ -406,7 +416,8 @@ internal fun SegmentField(
     val spanColors = remember(colors) {
         SpanColors(link = colors.primary, codeBackground = colors.surfaceVariant, muted = colors.onSurfaceVariant, highlight = colors.tertiaryContainer, match = colors.secondaryContainer)
     }
-    val styles = remember(colors, density) { RowStyles(colors, density, spanColors) }
+    val typography = LocalEditorTypography.current
+    val styles = remember(colors, density, typography.base) { RowStyles(colors, density, spanColors, typography) }
 
     // the model's text and decorations go into the field before the next frame is drawn
     SideEffect {
@@ -446,7 +457,7 @@ internal fun SegmentField(
     val input = remember(controller) { SegmentInput(controller) }
     val output = remember(controller, styles, colors) { SegmentOutput(controller.decoration, styles, colors.secondaryContainer, colors.tertiaryContainer) }
     val textStyle = TextStyle(
-        color = colors.onBackground, fontSize = 16.sp, lineHeight = 28.sp,
+        color = colors.onBackground, fontSize = typography.body.sp, lineHeight = typography.bodyLineHeight.sp,
         lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Bottom, LineHeightStyle.Trim.None),
     )
     val primary = colors.primary
@@ -625,7 +636,7 @@ internal fun SegmentField(
                             val i = seg.indexOf(row.id)
                             val height = if (l == null || i < 0 || l.layoutInput.text.length != seg.displayLength) 1
                             else l.getLineForOffset(seg.start(i) + 1).let { (l.getLineBottom(it) - l.getLineTop(it)).toInt().coerceAtLeast(1) }
-                            val width = CHECKBOX_TARGET_WIDTH.dp.roundToPx()
+                            val width = (styles.markerIndentDp - CHECKBOX_TARGET_LEFT).dp.roundToPx()
                             val placeable = measurable.measure(androidx.compose.ui.unit.Constraints.fixed(width, height))
                             layout(width, height) { placeable.place(0, 0) }
                         }
@@ -638,15 +649,19 @@ internal fun SegmentField(
                         .semantics { contentDescription = label }
                         .testTag("checkbox"),
                 ) {
-                    Checkbox(checked = task.checked == true, onCheckedChange = null, enabled = !readOnly)
+                    Checkbox(
+                        checked = task.checked == true,
+                        onCheckedChange = null,
+                        enabled = !readOnly,
+                        modifier = Modifier.graphicsLayer(scaleX = typography.checkboxScale, scaleY = typography.checkboxScale),
+                    )
                 }
             }
         }
     }
 }
 
-/** The touch target of a task's checkbox: 48 dp wide, from [CHECKBOX_TARGET_LEFT] (into the page margin) up to the start of the text. */
-private const val CHECKBOX_TARGET_WIDTH = 48
+/** The touch target of a task's checkbox: from [CHECKBOX_TARGET_LEFT] (into the page margin) up to the start of the text - 48 dp wide at the default size, wider with larger text. */
 private const val CHECKBOX_TARGET_LEFT = -16
 
 internal val BULLETS = listOf("•", "◦", "▪")

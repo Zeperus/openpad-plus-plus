@@ -4,6 +4,13 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.1.0-alpha.7] - 2026-10-07 (pre-release / test build)
+
+### Added
+- **Editor text size** (Settings -> Editor -> Text size, `[-] 16 sp [+]`, 12-28 sp, with a live preview). It sets the body size; headings (1.8 to 1.0 x),
+  code, tables and captions follow, line heights scale with it, the marker column and checkboxes adapt. Android's system font scale still applies on
+  top. Applies at once and survives a restart; it is an app preference and never touches a note.
+
 ## [0.1.0-alpha.6] - 2026-10-07 (pre-release / test build)
 
 ### Fixed

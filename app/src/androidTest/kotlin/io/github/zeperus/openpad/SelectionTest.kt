@@ -127,7 +127,15 @@ class SelectionTest {
 
     // ---- A: paragraph -> paragraph -------------------------------------------------------------------------------
 
-    @Test fun dragTheSelectionHandleFromOneParagraphIntoTheNextAndCopy() {
+    @Test fun dragTheSelectionHandleFromOneParagraphIntoTheNextAndCopy() = dragAcrossAndCopy(null)
+
+    /** The same at other text sizes: the handles, the long press and the copy all follow the real layout. */
+    @Test fun dragTheSelectionHandleAcrossParagraphsAndCopyAt12sp() = dragAcrossAndCopy(12)
+
+    @Test fun dragTheSelectionHandleAcrossParagraphsAndCopyAt28sp() = dragAcrossAndCopy(28)
+
+    private fun dragAcrossAndCopy(size: Int?) {
+        size?.let { kotlinx.coroutines.runBlocking { t.app.settings.setEditorFontSize(it) } }
         t.seed("Paragraph one\n\nParagraph two\n\nParagraph three\n")
         t.clearClipboard()
         launch()
@@ -138,7 +146,7 @@ class SelectionTest {
         // the end handle goes down into the second paragraph, to the end of its text
         dragEndHandleTo(point(text().indexOf("two") + 2, rightEdge = true))
         val range = selection()
-        val secondStart = "Paragraph one\n".length
+        val secondStart = text().indexOf("Paragraph two")
         assertTrue("the selection starts in the first paragraph (${range})", range.min < secondStart)
         assertTrue("and now reaches into the second paragraph (${range})", range.max >= secondStart + "Paragraph two".length - 1)
         // copy through the system toolbar: readable text of both paragraphs

@@ -62,4 +62,9 @@ interface SettingsStore {
     suspend fun language(): AppLanguage = AppLanguage.Default
 
     suspend fun setLanguage(language: AppLanguage) = Unit
+
+    /** The editor's body text size in sp ([EditorFontSize]); the default if none was chosen or the stored value is unusable. */
+    suspend fun editorFontSize(): Int = EditorFontSize.DEFAULT
+
+    suspend fun setEditorFontSize(sp: Int) = Unit
 }
