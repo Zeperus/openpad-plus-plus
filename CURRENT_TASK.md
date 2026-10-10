@@ -1,21 +1,22 @@
 # Current task
 
-**Alpha 7 (`0.1.0-alpha.7`): editor text size setting - done and published (Alpha 6: caret hit testing in the whole row; Alpha 5: compact spacing, caret after Enter, title rename; Alpha 4: native cross-block selection, writable external files, language).**
+**Alpha 8 (`0.1.0-alpha.8`): logical-line clipboard, several lines -> list items, Paste as Checklist (WhatsApp/messenger cleanup) - done and published (Alpha 7: editor text size; Alpha 6: caret hit testing; Alpha 5: compact spacing, title rename; Alpha 4: native cross-block selection, writable external files, language).**
 Next (do not start without being asked): Milestone 8 (global checklist default, drag reorder, table cell editing).
 
 ## Status
-- Unit tests: 818, 0 failing (`./gradlew test`); lint clean; `assembleDebug` and `assembleDebugAndroidTest` build.
-- Instrumented tests on GitHub (API 36 emulator, Test Orchestrator): **126/126 green** (ColdStart 1, NotesFlow 8, SessionFlow 16, ExternalFlow 9,
-  RichEditor 13, StructuralEditing 15, Selection 8, Alpha3 14, Alpha4External 6, Alpha4Language 2, EditorDensity 6, Title 3, CaretHitTest 13,
-  FontSize 12), run 37580301968; regular CI green.
-- Signing: Alpha 1-7 share one certificate (SHA-256 7c2afa95...13bf9f0); keystore in `~/.openpad-signing/`, not in the repository.
+- Unit tests: 920, 0 failing (`./gradlew test`); lint clean; `assembleDebug` and `assembleDebugAndroidTest` build.
+- Instrumented tests on GitHub (API 36 emulator, Test Orchestrator): **148/148 green** (Alpha3 14, Alpha4External 6, Alpha4Language 2, Alpha8 22,
+  CaretHitTest 13, ColdStart 1, EditorDensity 6, ExternalFlow 9, FontSize 12, NotesFlow 8, RichEditor 13, Selection 8, SessionFlow 16,
+  StructuralEditing 15, Title 3), run 38049734725; regular CI green.
+- Signing: Alpha 1-8 share one certificate (SHA-256 7c2afa95...13bf9f0); keystore in `~/.openpad-signing/`, not in the repository.
 
-## What Alpha 7 changed (details in docs/editor.md "Text size", docs/storage.md)
-- Settings -> Editor -> Text size `[-] 16 sp [+]` (12-28 sp, step 1, live preview); `editor_font_size` in the settings DataStore; invalid stored values = 16.
-- `editor/EditorTypography.kt` derives every editor size from the base (headings 1.8/1.55/1.35/1.2/1.1/1.0 x, body line height 1.5 x, code/table 0.875 x,
-  captions 0.75 x, marker column max(32 dp, 2 x base), checkbox drawn 0.75-1.75 x with the same touch target). `LocalEditorTypography` carries it to
-  the field, raw blocks and the Settings preview. Visual only: no document, undo, autosave or draft effect (unit tested).
-- Caret hit testing / touch selection verified at 12/16/20/24/28 sp on CI.
+## What Alpha 8 changed (details in docs/editor.md "Clipboard and lines", "Lists from several lines", "Paste as Checklist")
+- Plain Copy/Cut = one line per row (no blank line between paragraphs; wrapping is never a line break); CRLF/CR normalised on every insert.
+- Several lines pasted into a list/checklist item (or a heading) = sibling rows (`EditorOps.pasteLines`); the list buttons convert every line of
+  a row / every selected row (`ListConversion`, markers cleaned, blank lines = separator). `SegmentEditing.interpret` uses the caret to place a
+  paste that is ambiguous at a row seam.
+- "Paste as Checklist" (`ListImport`, `EditorOps.pasteChecklist`, `NotesViewModel.pasteAsChecklist`): text menu + overflow menu; messenger
+  headers only with a real timestamp; a blank note becomes a Smart Checklist.
 
 ## Regression boundary
 The Alpha 2 keyboard/focus behaviour (held Backspace across lists, no keyboard flicker, ticking a checkbox keeps the keyboard) was confirmed
