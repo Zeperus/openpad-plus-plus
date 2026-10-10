@@ -69,29 +69,26 @@ object DocumentSelections {
 
     // ---- Copy ------------------------------------------------------------------------------------------------
 
-    /** Readable plain text: list items get their bullet / number / box, blocks are separated by blank lines, nothing else is added. */
+    /**
+     * Readable plain text, one line per row - what is on screen is what is copied: list items get their bullet / number / box,
+     * nothing is added between rows (no blank lines the editor does not show; an empty row is an empty line), and a line break
+     * inside a row stays. A long paragraph that only *wraps* on the screen has no line break in it, so none is copied.
+     */
     fun plainText(doc: EditorDocument, sel: DocumentSelection): String {
         val slices = slices(doc, sel).filter { it.to > it.from || it.row.kind != RowKind.Rule }
         if (slices.isEmpty()) return ""
         if (slices.size == 1 && !slices[0].isWhole) return slices[0].row.text.text.substring(slices[0].from, slices[0].to)
         val out = StringBuilder()
-        var previous: EditorRow? = null
+        var first = true
         for (s in slices) {
             val row = s.row
-            if (previous != null) out.append(if (sameRun(previous, row)) "\n" else "\n\n")
+            if (!first) out.append('\n')
+            first = false
             val body = if (row.kind == RowKind.Rule) "---" else row.text.text.substring(s.from, s.to)
             if (s.from == 0) out.append(prefix(doc, s.index, row))
             out.append(body)
-            previous = row
         }
         return out.toString()
-    }
-
-    private fun sameRun(a: EditorRow, b: EditorRow): Boolean {
-        val x = a.kind as? RowKind.ListItem
-        val y = b.kind as? RowKind.ListItem
-        if (x != null && y != null) return x.list.id == y.list.id || a.depth > 0 || b.depth > 0 // nested items belong to their parent's list
-        return a.kind == RowKind.Quote && b.kind == RowKind.Quote
     }
 
     private fun prefix(doc: EditorDocument, index: Int, row: EditorRow): String {

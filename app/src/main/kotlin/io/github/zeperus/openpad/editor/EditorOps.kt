@@ -33,21 +33,77 @@ object EditorOps {
         var suffix = 0
         while (suffix < max - prefix && old[old.length - 1 - suffix] == newText[newText.length - 1 - suffix]) suffix++
         val removedEnd = old.length - suffix
-        val inserted = newText.substring(prefix, newText.length - suffix)
+        val rawInserted = newText.substring(prefix, newText.length - suffix)
+        // CRLF / CR from another app are line breaks like any other: the text only ever holds `\n`
+        val inserted = ListImport.normalizeNewlines(rawInserted)
+        val shrunk = rawInserted.length - inserted.length
+        val caretAfter = if (caret >= prefix + rawInserted.length) caret - shrunk else caret
 
         // a single typed line break is the Enter key, in every kind of row (code inserts a line break, others split)
         if (removedEnd == prefix && inserted == "\n" && row.kind != RowKind.Rule) return enter(doc, rowId, prefix, smart)
 
+        // several lines pasted into a list item (or a heading, which is one line): every line is its own row, like typing it with Enter
+        if ('\n' in inserted && (row.kind is RowKind.ListItem || row.kind is RowKind.Heading)) {
+            return pasteLines(doc, index, row, prefix, removedEnd, inserted)
+        }
+
         val isPlain = row.kind is RowKind.Code || row.kind == RowKind.Raw
-        val replaced = if (isPlain) RichText(newText) else row.text.replace(prefix, removedEnd, inserted, typingStyle)
+        val replaced = if (isPlain) RichText(ListImport.normalizeNewlines(newText)) else row.text.replace(prefix, removedEnd, inserted, typingStyle)
         val text = if (row.kind is RowKind.Heading) singleLine(replaced) else replaced
-        val caretInText = caret.coerceIn(0, text.length)
+        val caretInText = caretAfter.coerceIn(0, text.length)
 
         // blank lines in a paragraph (pasted, or left behind by a deletion) are paragraph breaks
         if (!isPlain && PARAGRAPH_BREAK.containsMatchIn(text.text)) return splitIntoParagraphs(doc, index, row, text, caretInText)
 
         val updated = doc.rows.toMutableList().also { it[index] = row.copy(text = text, touched = true) }
         return Edit(doc.withRows(updated), Cursor(rowId, caretInText))
+    }
+
+    /**
+     * [inserted] (two or more lines) replaced `[removedStart, removedEnd)` of the list item or heading at [index]. The first line is
+     * inserted at the caret, every following line becomes a row of its own *of the same list* (a paragraph below a heading), and the
+     * text that was behind the caret stays behind the last line - exactly what typing the lines with Enter would give. The row that
+     * had the caret keeps its id (it becomes the last row), so the keyboard stays where it is.
+     *
+     * A blank line between two lines of a list is not an empty item: it ends the list and starts a new one (an empty paragraph
+     * stands between them; items nested deeper simply skip blank lines). The caret ends after the last inserted line.
+     */
+    private fun pasteLines(doc: EditorDocument, index: Int, row: EditorRow, removedStart: Int, removedEnd: Int, inserted: String): Edit {
+        val lines = inserted.split('\n')
+        val head = row.text.substring(0, removedStart)
+        val tail = row.text.substring(removedEnd, row.text.length)
+        val kind = row.kind
+        var next = doc.nextId
+        var info = (kind as? RowKind.ListItem)?.list
+        fun freshKind(): RowKind = when (kind) {
+            is RowKind.ListItem -> kind.copy(list = info!!, checked = if (kind.checked != null) false else null)
+            else -> RowKind.Paragraph // the lines below a heading
+        }
+        val made = ArrayList<EditorRow>() // rows after the first one
+        val firstText = head.plus(RichText(lines.first()))
+        val lastText = RichText(lines.last()).plus(tail)
+        var separated = false
+        for (n in 1 until lines.lastIndex) {
+            val line = lines[n]
+            if (line.isBlank() && kind is RowKind.ListItem) { // between two items of a list
+                if (row.depth == 0 && !separated) {
+                    made += EditorRow(next++, RowKind.Paragraph, RichText(""), 0, touched = true)
+                    info = info!!.copy(id = next++, start = 1)
+                    separated = true
+                }
+                continue
+            }
+            separated = false
+            made += EditorRow(next++, freshKind(), RichText(line), row.depth, touched = true)
+        }
+        val last = EditorRow(row.id, freshKind(), lastText, row.depth, touched = true)
+        val rows = doc.rows.toMutableList()
+        rows[index] = row.copy(id = next++, text = firstText, touched = true)
+        var at = index + 1
+        // nested items stay with the first line; what follows goes behind them
+        if (kind is RowKind.ListItem) while (at < rows.size && rows[at].isListItem && rows[at].depth > row.depth) at++
+        rows.addAll(at, made + last)
+        return Edit(doc.withRows(rows, next), Cursor(row.id, lines.last().length))
     }
 
     /** A heading is one line: line breaks (from a paste) become spaces. */
@@ -437,6 +493,36 @@ object EditorOps {
         if (replace) { rows.removeAt(index); rows.addAll(index, inserted) } else rows.addAll(index + 1, inserted)
         val last = inserted.last { it.kind != RowKind.Rule }
         return Edit(doc.withRows(rows, next), Cursor(last.id, last.text.length))
+    }
+
+    /**
+     * "Paste as Checklist" (an explicit action - a normal paste keeps the text as it is): [items] (see [ListImport.checklistItems])
+     * become task items below the row the caret is in and its nested items, or in place of that row if it is blank (an empty
+     * paragraph or an empty list item). Inside a bullet list they join that list at the same level; elsewhere they start a new list.
+     * Items with a done marker are checked. Null if there is nothing to insert. The caret ends at the end of the last item.
+     */
+    fun pasteChecklist(doc: EditorDocument, rowId: Long, items: List<ListImport.Item>): Edit? {
+        if (items.isEmpty()) return null
+        val index = doc.indexOf(rowId)
+        if (index < 0) return null
+        val current = doc.rows[index]
+        val currentList = current.kind as? RowKind.ListItem
+        val replace = current.text.isEmpty && (current.kind == RowKind.Paragraph || currentList != null)
+        var next = doc.nextId
+        val joins = currentList != null && !currentList.list.ordered
+        val info = if (joins) currentList!!.list else ListInfo(next++, ordered = false, start = 1, marker = '-')
+        val depth = if (currentList != null) current.depth else 0
+        val inserted = items.map { EditorRow(next++, RowKind.ListItem(info, it.checked ?: false), RichText(it.text), depth, touched = true) }
+        val rows = doc.rows.toMutableList()
+        if (replace) {
+            rows.removeAt(index)
+            rows.addAll(index, inserted)
+        } else {
+            var at = index + 1
+            if (currentList != null) while (at < rows.size && rows[at].isListItem && rows[at].depth > current.depth) at++
+            rows.addAll(at, inserted)
+        }
+        return Edit(doc.withRows(rows, next), Cursor(inserted.last().id, inserted.last().text.length))
     }
 
     /** Delete at the end of a row: the next row's text is appended to this one (kinds that are text only; never into code or raw). */

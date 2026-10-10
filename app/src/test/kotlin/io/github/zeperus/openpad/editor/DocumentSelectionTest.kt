@@ -26,13 +26,13 @@ class DocumentSelectionTest {
         val s = session("Alpha one\n\nBeta two")
         val forward = DocumentSelections.plainText(s.doc, s.sel(0, 6, 1, 4))
         val backward = DocumentSelections.plainText(s.doc, s.sel(1, 4, 0, 6))
-        assertEquals("one\n\nBeta", forward)
+        assertEquals("one\nBeta", forward)
         assertEquals(forward, backward)
     }
 
     @Test fun `selection select-all covers everything`() {
         val s = session("a\n\nb")
-        assertEquals("a\n\nb", DocumentSelections.plainText(s.doc, DocumentSelections.selectAll(s.doc)!!))
+        assertEquals("a\nb", DocumentSelections.plainText(s.doc, DocumentSelections.selectAll(s.doc)!!))
     }
 
     @Test fun `a collapsed selection copies nothing and deletes nothing`() {
@@ -60,18 +60,18 @@ class DocumentSelectionTest {
     @Test fun `copy of a heading and a list is readable text`() {
         val s = session("# Shopping\n\n- One\n- Two\n")
         val text = DocumentSelections.plainText(s.doc, DocumentSelections.selectAll(s.doc)!!)
-        assertEquals("Shopping\n\n• One\n• Two", text)
+        assertEquals("Shopping\n• One\n• Two", text)
     }
 
     @Test fun `copy shows task boxes and numbers`() {
         val s = session("1. one\n2. two\n\n- [ ] Milk\n- [x] Bread\n")
         val text = DocumentSelections.plainText(s.doc, DocumentSelections.selectAll(s.doc)!!)
-        assertEquals("1. one\n2. two\n\n☐ Milk\n☑ Bread", text)
+        assertEquals("1. one\n2. two\n☐ Milk\n☑ Bread", text)
     }
 
     @Test fun `copy from the middle of a list item to a paragraph`() {
         val s = session("- first item\n\nafter")
-        assertEquals("item\n\nafter", DocumentSelections.plainText(s.doc, s.sel(0, 6, 1, 5)))
+        assertEquals("item\nafter", DocumentSelections.plainText(s.doc, s.sel(0, 6, 1, 5)))
     }
 
     @Test fun `copy within one row is just the text`() {
@@ -81,7 +81,7 @@ class DocumentSelectionTest {
 
     @Test fun `copy across a heading into a paragraph`() {
         val s = session("# Title\n\nbody text")
-        assertEquals("tle\n\nbody", DocumentSelections.plainText(s.doc, s.sel(0, 2, 1, 4)))
+        assertEquals("tle\nbody", DocumentSelections.plainText(s.doc, s.sel(0, 2, 1, 4)))
     }
 
     // ---- Markdown copy -----------------------------------------------------------------------------------------

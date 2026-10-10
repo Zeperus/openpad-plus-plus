@@ -322,6 +322,81 @@ class NotesViewModelEditorTest {
         assertTrue(File(root, "notes").listFiles().isNullOrEmpty()) // no internal copy
     }
 
+    // ---- Several lines, lists and Paste as Checklist (Alpha 8) -------------------------------------------------
+
+    private fun NotesViewModel.shape() = ui.doc.rows.map { r ->
+        val k = r.kind
+        when {
+            k is RowKind.ListItem && k.checked == true -> "x ${r.text.text}"
+            k is RowKind.ListItem && k.checked == false -> "o ${r.text.text}"
+            k is RowKind.ListItem -> "- ${r.text.text}"
+            else -> r.text.text
+        }
+    }
+
+    @Test fun `Paste as Checklist on a blank page creates a smart checklist note with one undo step`() = runTest {
+        val vm = launch()
+        vm.pasteAsChecklist("[10.10., 12:42] Sybille: - Bier\n[10.10., 12:42] Sybille: Cola\n- [x] Brot\nNote: buy milk"); runCurrent()
+        assertEquals(listOf("o Bier", "o Cola", "o Note: buy milk", "x Brot"), vm.shape()) // smart: completed items below
+        settle()
+        val note = vm.current!!
+        assertTrue(note.smartChecklist)
+        assertEquals("- [ ] Bier\n- [ ] Cola\n- [ ] Note: buy milk\n- [x] Brot\n", vm.file(note.title).readText())
+        vm.undo() // back to the blank checklist page (one empty item) the paste started from
+        settle()
+        assertEquals(listOf("o "), vm.shape())
+        vm.redo()
+        assertEquals(4, vm.ui.doc.rows.size)
+    }
+
+    @Test fun `Paste as Checklist with nothing to import does nothing`() = runTest {
+        val vm = launch()
+        vm.pasteAsChecklist("\n  \n- \n"); runCurrent()
+        settle()
+        assertNull(vm.current)
+        assertTrue(mdFiles().isEmpty())
+        assertEquals(listOf(""), vm.shape())
+    }
+
+    @Test fun `Paste as Checklist in a normal note keeps Smart Checklist off and the cursor row`() = runTest {
+        val vm = launch()
+        vm.type(0, "Shopping")
+        vm.pasteAsChecklist("Milk\nBread"); runCurrent()
+        settle()
+        assertEquals(listOf("Shopping", "o Milk", "o Bread"), vm.shape())
+        assertFalse(vm.current!!.smartChecklist)
+        assertEquals(vm.ui.doc.rows.last().id, vm.ui.cursor!!.rowId)
+        assertEquals("Shopping\n\n- [ ] Milk\n- [ ] Bread\n", vm.file("Shopping").readText())
+    }
+
+    @Test fun `normal paste keeps the clipboard text and CRLF becomes one line break`() = runTest {
+        val vm = launch()
+        vm.onSelection(vm.ui.doc.rows[0].id, 0, 0)
+        vm.pasteText("- [x] a\r\n[12:30] S: b\r\n")
+        assertEquals("- [x] a\n[12:30] S: b\n", vm.ui.doc.rows[0].text.text)
+    }
+
+    @Test fun `pasting three lines into an empty checklist item gives three items in one undo step`() = runTest {
+        val vm = launch()
+        vm.newChecklist(); runCurrent()
+        val row = vm.ui.doc.rows[0]
+        vm.onSelection(row.id, 0, 0)
+        vm.pasteText("Milk\nBread\nWater")
+        assertEquals(listOf("o Milk", "o Bread", "o Water"), vm.shape())
+        vm.undo()
+        assertEquals(listOf("o "), vm.shape())
+    }
+
+    @Test fun `the list buttons convert every line of a row and of a selection`() = runTest {
+        val vm = launch()
+        vm.type(0, "Milk")
+        vm.onRowText(vm.ui.doc.rows[0].id, "Milk\nBread\nWater", 16)
+        vm.toggleTask()
+        assertEquals(listOf("o Milk", "o Bread", "o Water"), vm.shape())
+        vm.undo()
+        assertEquals(listOf("Milk\nBread\nWater"), vm.shape())
+    }
+
     // ---- Smart checklist -----------------------------------------------------------------------------------
 
     @Test fun `smart checklist is off by default and ticking keeps the order`() = runTest {

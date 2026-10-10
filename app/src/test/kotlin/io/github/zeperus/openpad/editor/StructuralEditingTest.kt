@@ -391,8 +391,8 @@ class SmartChecklistInvariantTest {
 
     @Test fun `pasting several lines into a checklist keeps it in order`() {
         val s = smart("- [ ] A\n- [x] B\n")
-        s.onText(s.doc.rows[0].id, "A\nmore", 6)
-        assertEquals(listOf("o A\nmore", "x B"), s.tasks())
+        s.onText(s.doc.rows[0].id, "A\nmore", 6) // since Alpha 8 every pasted line is an item of its own
+        assertEquals(listOf("o A", "o more", "x B"), s.tasks())
     }
 
     @Test fun `undo and redo return to consistent documents`() {

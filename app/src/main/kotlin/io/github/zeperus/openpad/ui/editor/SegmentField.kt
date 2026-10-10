@@ -468,6 +468,7 @@ internal fun SegmentField(
     val cutLabel = stringResource(R.string.selection_cut)
     val markdownLabel = stringResource(R.string.selection_copy_markdown)
     val pasteLabel = stringResource(R.string.selection_paste)
+    val pasteChecklistLabel = stringResource(R.string.action_paste_checklist)
     val selectAllLabel = stringResource(R.string.selection_all)
     val clipboard = rememberAppClipboard()
     val appName = stringResource(R.string.app_name)
@@ -550,6 +551,7 @@ internal fun SegmentField(
                         item(key = "op-copy-markdown", label = markdownLabel) { vm.selectedText(markdown = true)?.let { clipboard.copy("Markdown", it) }; close() }
                     }
                     if (!readOnly) item(key = "op-paste", label = pasteLabel) { clipboard.text()?.let { vm.pasteText(it) }; close() }
+                    if (!readOnly) item(key = "op-paste-checklist", label = pasteChecklistLabel) { clipboard.text()?.let { vm.pasteAsChecklist(it) }; close() }
                     item(key = "op-select-all", label = selectAllLabel) { state.edit { selectAll() }; close() }
                 }
                 // the system's cut/copy/paste/select-all go (ours replace them: they know about the invisible marker, the Markdown copy and

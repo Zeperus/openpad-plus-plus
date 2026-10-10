@@ -49,6 +49,7 @@ import io.github.zeperus.openpad.editor.Segment
 import io.github.zeperus.openpad.editor.SegmentEditing
 import io.github.zeperus.openpad.editor.SegmentOp
 import io.github.zeperus.openpad.editor.EditorSession
+import io.github.zeperus.openpad.editor.ListImport
 import io.github.zeperus.openpad.editor.RowKind
 import io.github.zeperus.openpad.editor.SpanKind
 import kotlinx.coroutines.CoroutineScope
@@ -426,6 +427,23 @@ class NotesViewModel(
         docSelection = null
     }
 
+    /**
+     * "Paste as Checklist": an explicit action. Every meaningful line of the clipboard text becomes a task item - list markers, task
+     * markers and chat headers (`[10.10., 12:42] Sybille: - Bier`) are cleaned off, blank lines dropped - below the caret, in place of a
+     * blank row or of the selection. In a blank note the note becomes a Smart Checklist (unchecked above completed). One undo step.
+     */
+    fun pasteAsChecklist(text: String) = act {
+        if (!ready || readOnly || ListImport.checklistItems(text).isEmpty()) return@act
+        val blank = rich.doc.rows.all { it.kind == RowKind.Paragraph && it.text.isEmpty }
+        if (blank && !rich.smartChecklist) {
+            if (editor.isDraft) switchTo(NoteEditor(repository, smartOnCreate = true)) // a blank page: the note will be created as a smart checklist
+            else if (editor.setSmartChecklist(true)) { rich.smartChecklist = true; afterEditorChanged() }
+        }
+        val selection = currentSelection()
+        edit { it.pasteAsChecklist(text, selection) }
+        docSelection = null
+    }
+
     private fun currentSelection(): DocumentSelection? {
         docSelection?.let { return it }
         val c = rich.cursor ?: return null
@@ -444,9 +462,9 @@ class NotesViewModel(
 
     fun setBlock(kind: RowKind) = edit { it.setKind(kind) }
 
-    fun toggleList(ordered: Boolean) = edit { it.toggleList(ordered) }
+    fun toggleList(ordered: Boolean) { val selection = docSelection; edit { it.toggleList(ordered, selection) } }
 
-    fun toggleTask() = edit { it.toggleTask() }
+    fun toggleTask() { val selection = docSelection; edit { it.toggleTask(selection) } }
 
     fun setChecked(rowId: Long, checked: Boolean) = edit { it.setChecked(rowId, checked) }
 

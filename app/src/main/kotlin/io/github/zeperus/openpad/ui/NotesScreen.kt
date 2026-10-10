@@ -250,6 +250,11 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                                 enabled = !vm.readOnly,
                                 onClick = { menuOpen = false; editPage = false; clipboard.text()?.let { vm.pasteMarkdown(it) } },
                             )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_paste_checklist)) },
+                                enabled = !vm.readOnly,
+                                onClick = { menuOpen = false; editPage = false; clipboard.text()?.let { vm.pasteAsChecklist(it) } },
+                            )
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.settings_back)) },
                                     onClick = { editPage = false },

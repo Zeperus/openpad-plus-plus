@@ -12,8 +12,8 @@ android {
         applicationId = "io.github.zeperus.openpad"
         minSdk = 28
         targetSdk = 37
-        versionCode = 7
-        versionName = "0.1.0-alpha.7"
+        versionCode = 8
+        versionName = "0.1.0-alpha.8"
         testInstrumentationRunner = "io.github.zeperus.openpad.OpenPadTestRunner"
         // Each instrumented test gets a fresh process and cleared app data, so "cold start" tests are real.
         testInstrumentationRunnerArguments["clearPackageData"] = "true"

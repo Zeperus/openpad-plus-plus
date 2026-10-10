@@ -83,6 +83,13 @@ internal class TestApp(val app: OpenPadApplication) {
         return text
     }
 
+    fun setClipboard(text: String) {
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val manager = app.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            manager.setPrimaryClip(android.content.ClipData.newPlainText("test", text))
+        }
+    }
+
     fun clearClipboard() {
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val manager = app.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager

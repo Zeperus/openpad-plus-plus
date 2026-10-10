@@ -139,9 +139,36 @@ class EditorSession(
 
     fun setKind(kind: RowKind): Boolean = cursor?.let { commit(EditorOps.setKind(doc, it.rowId, kind)) } ?: false
 
-    fun toggleList(ordered: Boolean): Boolean = cursor?.let { commit(EditorOps.toggleList(doc, it.rowId, ordered)) } ?: false
+    /**
+     * Bullet / numbered list button. Over a selection that reaches across rows, or on a row that holds several lines, *every logical
+     * line* becomes its own item (see [ListConversion]); on a single line it is the plain toggle. One undo step.
+     */
+    fun toggleList(ordered: Boolean, sel: DocumentSelection? = null): Boolean =
+        convertRows(sel, if (ordered) ListTarget.Numbered else ListTarget.Bullet) { EditorOps.toggleList(doc, it, ordered) }
 
-    fun toggleTask(): Boolean = cursor?.let { commit(EditorOps.toggleTask(doc, it.rowId)) } ?: false
+    /** Checklist button: like [toggleList], with task items. */
+    fun toggleTask(sel: DocumentSelection? = null): Boolean = convertRows(sel, ListTarget.Task) { EditorOps.toggleTask(doc, it) }
+
+    private fun convertRows(sel: DocumentSelection?, target: ListTarget, single: (Long) -> Edit): Boolean {
+        val range = rowRange(sel) ?: return false
+        if (range.first == range.last && ListConversion.isSimple(doc.rows[range.first])) return commit(single(doc.rows[range.first].id))
+        if (sel != null) DocumentSelections.ordered(doc, sel)?.first?.let { cursor = Cursor(it.rowId, it.offset) } // what Undo brings back
+        return ListConversion.convert(doc, range.first, range.last, target)?.let { commit(it) } ?: false
+    }
+
+    /** The rows a block operation applies to: those the selection touches (a last row of which nothing is selected is not one of them), else the caret's row. */
+    private fun rowRange(sel: DocumentSelection?): IntRange? {
+        if (sel != null) {
+            val (a, b) = DocumentSelections.ordered(doc, sel) ?: return null
+            val first = doc.indexOf(a.rowId)
+            var last = doc.indexOf(b.rowId)
+            if (last > first && b.offset == 0) last--
+            return first..last
+        }
+        val c = cursor ?: return null
+        val i = doc.indexOf(c.rowId)
+        return if (i < 0) null else i..i
+    }
 
     fun setChecked(rowId: Long, checked: Boolean): Boolean = commit(EditorOps.setChecked(doc, rowId, checked, smartChecklist), keepCursor = true)
 
@@ -202,6 +229,24 @@ class EditorSession(
         }
         val row = cursor?.rowId ?: return false
         return EditorOps.pasteMarkdown(doc, row, markdown)?.let { commit(it) } ?: false
+    }
+
+    /**
+     * Paste as Checklist: every meaningful line of [text] becomes an item (markers, messenger headers and blank lines are cleaned, see
+     * [ListImport]) - inserted below the caret row, in place of a blank row, or in place of [sel]. One undo step.
+     */
+    fun pasteAsChecklist(text: String, sel: DocumentSelection? = null): Boolean {
+        val items = ListImport.checklistItems(text)
+        if (items.isEmpty()) return false
+        var base = doc
+        var row = cursor?.rowId
+        if (sel != null) {
+            val start = DocumentSelections.ordered(doc, sel)?.first
+            DocumentSelections.delete(doc, sel)?.let { base = it.doc; row = it.cursor.rowId }
+            if (start != null) cursor = Cursor(start.rowId, start.offset) // what Undo brings back
+        }
+        val target = row?.takeIf { base.indexOf(it) >= 0 } ?: base.rows.lastOrNull { it.isTextual }?.id ?: return false
+        return EditorOps.pasteChecklist(base, target, items)?.let { commit(it) } ?: false
     }
 
     private inline fun withSelectionStart(sel: DocumentSelection, edit: () -> Edit?): Boolean {

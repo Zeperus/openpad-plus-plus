@@ -97,6 +97,7 @@
     <string name="selection_all">Alles auswählen</string>
     <string name="selection_done">Fertig</string>
     <string name="action_paste_markdown">Als Markdown einfügen</string>
+    <string name="action_paste_checklist">Als Checkliste einfügen</string>
     <string name="raw_edit_source">Quelltext bearbeiten</string>
     <string name="raw_done">Fertig</string>
     <string name="raw_html_source_label">HTML (als Quelltext angezeigt, nicht dargestellt)</string>
