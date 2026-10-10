@@ -38,7 +38,7 @@ object SegmentEditing {
         while (s < max - p && old[old.length - 1 - s] == new[new.length - 1 - s]) s++
         var a = p
         var b = old.length - s
-        val inserted = new.substring(p, new.length - s)
+        var inserted = new.substring(p, new.length - s)
         // a deletion of identical characters (an empty line between two line breaks) is the one next to the caret
         if (inserted.isEmpty() && b > a && beforeStart == beforeEnd) {
             val k = b - a
@@ -46,6 +46,16 @@ object SegmentEditing {
             when {
                 c - k >= 0 && old.regionMatches(c - k, old, a, k) -> { a = c - k; b = c }
                 c + k <= old.length && old.regionMatches(c, old, a, k) -> { a = c; b = c + k }
+            }
+        }
+        // A text pasted at the end of a row can look like text inserted at the start of the next row (when both read the same around the
+        // seam): the caret says where it was really inserted.
+        if (b == a && inserted.length >= 2 && beforeStart == beforeEnd && beforeStart != a) {
+            val c = beforeStart
+            val k = new.length - old.length
+            if (c in 0..old.length && c + k <= new.length && old.substring(0, c) + new.substring(c, c + k) + old.substring(c) == new) {
+                a = c; b = c
+                inserted = new.substring(c, c + k)
             }
         }
         val i = segment.rowIndexAt(a)

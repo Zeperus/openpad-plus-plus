@@ -27,6 +27,15 @@ class SegmentEditingTest {
         return SegmentEditing.apply(this, op)
     }
 
+    @Test fun `lines pasted at the end of a row go into that row even when the next row reads the same at the seam`() {
+        val s = session("- [ ] Milk\n- [x] Existing completed\n")
+        s.smartChecklist = true
+        // the diff alone would say: inserted "Water\nCheese\n" at the start of the second row; the caret says: at the end of the first
+        assertTrue(s.native(4, 4, "\nWater\nCheese", caretBefore = 4))
+        assertEquals(listOf("Milk", "Water", "Cheese", "Existing completed"), s.rows())
+        assertEquals(listOf(false, false, false, true), s.doc.rows.map { (it.kind as RowKind.ListItem).checked })
+    }
+
     // ---- The segment itself ------------------------------------------------------------------------------------
 
     @Test fun `the segment text is the rows joined by line breaks and positions map back`() {

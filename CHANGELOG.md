@@ -4,6 +4,22 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.1.0-alpha.8] - 2026-10-10 (pre-release / test build)
+
+### Fixed
+- **Copy / Cut keep the logical lines.** Rows are copied one per line (no blank line between paragraphs any more, an empty row is an empty
+  line, a paragraph that only wraps on the screen gets no line break). CRLF / CR from other apps are line breaks.
+- **Several lines are several list items.** Converting a row of several lines (or a selection over several rows) to a checklist, bullet or
+  numbered list makes one item per line - never one item with continuation lines; leading markers (`- * + • – —`, `[ ]`, `[x]`, `☐`, `☑`)
+  are cleaned and a done marker keeps the task done. Pasting several lines into a list or checklist item makes sibling items (the text behind
+  the caret stays behind the last line); one undo step. A blank line between items separates two lists instead of making an empty item.
+
+### Added
+- **Paste as Checklist** (text menu and overflow menu, "Als Checkliste einfügen"): the clipboard becomes one checklist item per meaningful
+  line; list/task markers and WhatsApp/messenger headers (`[10.10., 12:42] Sybille: - Bier`, `[12:42] Sybille: Bier`, the WhatsApp export form)
+  are removed, ordinary text such as `Note: buy milk` is never touched. In a blank note the note becomes a Smart Checklist. Normal Paste stays
+  lossless.
+
 ## [0.1.0-alpha.7] - 2026-10-07 (pre-release / test build)
 
 ### Added

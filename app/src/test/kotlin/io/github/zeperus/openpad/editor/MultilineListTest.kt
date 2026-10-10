@@ -428,6 +428,16 @@ class MultilineListTest {
         assertEquals(listOf("o A", "o B"), blank.shape())
     }
 
+    @Test fun `Paste as Checklist in place of a blank row keeps that row's id for the caret`() {
+        val s = session("Intro\n")
+        s.onText(s.doc.rows[0].id, "", 0)
+        val id = s.doc.rows[0].id
+        s.at(0)
+        s.pasteAsChecklist("A\nB")
+        assertEquals(id, s.doc.rows.last().id)
+        assertEquals(id, s.cursor!!.rowId)
+    }
+
     @Test fun `Paste as Checklist inside a checklist joins it`() {
         val s = session("- [ ] Milk\n  - [ ] 2 l\n- [ ] Eggs\n")
         s.at(0)

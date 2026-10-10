@@ -5,7 +5,9 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.longClick
@@ -94,12 +96,39 @@ class Alpha8Test {
         return device.wait(Until.findObject(By.text(label)), 3_000)
     }
 
-    /** Select everything with the system toolbar and copy it (the plain Copy). */
-    private fun selectAllAndCopy(word: String) {
+    private fun bounds() = rule.field().fetchSemanticsNode().boundsInWindow
+
+    /** The screen position just right of the last character of the text, in the middle of its line. */
+    private fun pastTheEnd(): Offset {
+        val l = layout()
+        val box = l.getBoundingBox(l.layoutInput.text.length - 1)
+        val b = bounds()
+        return Offset(b.left + box.right + 12f * density, b.top + box.center.y)
+    }
+
+    /** Grabs the end handle of the selection (drawn by the system) and drags it to [target]; a few grip points are tried until the selection moves. */
+    private fun dragEndHandleTo(target: Offset) {
+        val before = rule.selectionRange()
+        val b = bounds()
+        val edge = rule.selectionRange()!!.max
+        val rect = layout().getCursorRect((edge + 1).coerceIn(0, layout().layoutInput.text.length))
+        for ((dx, dy) in listOf(12f to 12f, 8f to 18f, 16f to 8f, 12f to 20f)) {
+            val x = b.left + rect.left + dx * density
+            val y = b.top + rect.bottom + dy * density
+            device.swipe(x.toInt(), y.toInt(), (target.x + dx).toInt(), (target.y + dy * density).toInt(), 60)
+            rule.waitForIdle()
+            Thread.sleep(300)
+            if (rule.selectionRange() != before) return
+        }
+    }
+
+    /** Long press the first word, drag the end handle past the end of the text and copy with the system toolbar (the plain Copy). */
+    private fun selectToTheEndAndCopy(firstWord: String) {
         t.clearClipboard()
-        longPressWord(word)
-        (toolbar("Select all") ?: throw AssertionError("no Select all in the toolbar")).click()
-        rule.waitFor("everything selected", { "${rule.selectionRange()}" }) { rule.selectionRange()?.let { it.max - it.min >= text().length - 1 } == true }
+        longPressWord(firstWord)
+        dragEndHandleTo(pastTheEnd())
+        val range = rule.selectionRange()!!
+        assertTrue("the selection reaches the end of the text ($range of ${text().length})", range.max >= text().length - 1)
         (toolbar("Copy") ?: throw AssertionError("no Copy in the toolbar")).click()
         rule.waitFor("the clipboard", { "${t.clipboardText()}" }) { !t.clipboardText().isNullOrEmpty() }
     }
@@ -163,7 +192,7 @@ class Alpha8Test {
 
     @Test fun copyingTwoLinesGivesTwoLinesOnTheClipboardAndPasteKeepsThem() {
         launchWith("Hello\n\nWorld\n", listOf("Hello", "World"))
-        selectAllAndCopy("Hello")
+        selectToTheEndAndCopy("Hello")
         assertEquals("Hello\nWorld", t.clipboardText())
         // pasted into another, blank note: two logical lines again
         val copied = t.clipboardText()!!
@@ -183,7 +212,7 @@ class Alpha8Test {
         rule.field().performTextInput("\n")
         rule.field().performTextInput("Line three")
         rule.waitForRowTexts(listOf("Line one", "", "Line three"))
-        selectAllAndCopy("Line")
+        selectToTheEndAndCopy("Line")
         assertEquals("Line one\n\nLine three", t.clipboardText())
     }
 
@@ -192,14 +221,14 @@ class Alpha8Test {
             "also a wide one, and also at a small text size, because it is long enough for every screen we test on."
         launchWith("$long\n", listOf(long), size = 20)
         assertTrue("the paragraph wraps on the screen", layout().lineCount > 1)
-        selectAllAndCopy("sentence")
+        selectToTheEndAndCopy("This")
         assertEquals(long, t.clipboardText())
         assertFalse('\n' in t.clipboardText()!!)
     }
 
     @Test fun aChecklistIsCopiedAsOneItemPerLine() {
         launchWith("- [ ] Milk\n- [x] Bread\n- [ ] Water\n", listOf("Milk", "Bread", "Water"))
-        selectAllAndCopy("Milk")
+        selectToTheEndAndCopy("Milk")
         assertEquals("☐ Milk\n☑ Bread\n☐ Water", t.clipboardText())
     }
 
@@ -241,9 +270,12 @@ class Alpha8Test {
     // ---- G: several lines pasted into an empty checklist item --------------------------------------------------------
 
     @Test fun threeLinesPastedIntoAnEmptyChecklistItemAreThreeItems() {
-        launchWith("- [ ] \n", listOf(""))
+        launchBlank()
+        rule.onNodeWithContentDescription("Open navigation").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("+ New Checklist").performClick()
         waitForCheckboxes(1)
-        focusField()
+        rule.waitForRowTexts(listOf(""))
         rule.field().performTextInput("Milk\nBread\nWater")
         waitForCheckboxes(3)
         assertEquals(listOf("Milk", "Bread", "Water"), rule.rowTexts())
@@ -364,7 +396,7 @@ class Alpha8Test {
         assertEquals(4, rule.tagCount("checkbox"))
         tapRightOfLastLineAndType(size)
         // the checkbox target works: ticking the first item moves it below the others (smart checklist)
-        rule.onAllNodesWithTag("checkbox")[0].performClick()
+        rule.onAllNodesWithTag("checkbox")[0].performScrollTo().performClick()
         rule.waitFor("Hackfleisch moved down at $size sp", { rule.rowTexts().toString() }) { rule.rowTexts().last() == "Hackfleisch 2x" }
         assertEquals(listOf(false, false, false, true), checkboxStates())
     }

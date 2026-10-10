@@ -95,6 +95,15 @@ Operations change rows in place (kind, text, depth) and the focused row survives
 [editor.md](editor.md#identity-and-focus-why-the-keyboard-used-to-flicker)). The smart checklist flag is note metadata
 (`NoteInfo.smartChecklist`, `index.json`), handed to the `EditorSession`; the ordering rules live in `editor/Checklist.kt`.
 
+## Alpha 8 additions
+
+- **Lines and lists** (pure Kotlin, `editor/`): `ListImport` (line endings, list/task markers, messenger headers, the items of a Paste as
+  Checklist), `ListConversion` (bullet / numbered / checklist for several rows or lines), `EditorOps.pasteLines` (several lines pasted into
+  a list item or heading) and `EditorOps.pasteChecklist`; `DocumentSelections.plainText` copies one line per row. `EditorSession` routes the
+  list buttons (`toggleList` / `toggleTask` take the selection) and `pasteAsChecklist`; `NotesViewModel.pasteAsChecklist` also makes a blank
+  note a Smart Checklist. The UI only adds the menu items (`SegmentField` text menu, overflow menu in `NotesScreen`). Everything is one
+  `commit` -> one undo step, and the smart checklist order is re-established by `settled` as for every edit. Details: [editor.md](editor.md#clipboard-and-lines-alpha-8).
+
 ## Alpha 4 additions
 
 - **Unified text field per run of rows** (`editor/Segments.kt`, `SegmentEditing.kt`, `Numbering.kt`, `ui/editor/SegmentField.kt`): the pure

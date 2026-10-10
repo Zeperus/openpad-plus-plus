@@ -42,6 +42,45 @@ notes while testing.** Settings shows the installed version at the bottom.
 - [ ] Tapping a checkbox does not close the keyboard or move the text cursor
 - [ ] A normal Markdown checklist (mode off) does not auto-sort
 
+## Alpha 8
+
+### Font size (unchanged from Alpha 7 - quick re-check)
+- [ ] Change the font size in Settings; the editor updates immediately; restart: the size remains
+- [ ] Test 12 sp and 28 sp: nothing clips; tapping right of text still puts the caret at the end of the row
+
+### Copy / Paste
+- [ ] Write 3 lines (Enter between them), select all, Copy, paste into another app: all real line breaks remain (no blank lines added)
+- [ ] Copy text containing an empty line: the blank line remains
+- [ ] Copy a visually wrapped long paragraph: it does NOT gain fake line breaks
+- [ ] Paste a Windows (CRLF) text: lines stay lines
+
+### Multiline -> list / checklist
+- [ ] Paste "Milk / Bread / Water" (3 lines) into a normal note, tap Checklist: exactly 3 checkboxes appear
+- [ ] Repeat with the Bullet button and the Numbered button
+- [ ] Paste "- Milk / - Bread" and tap Checklist: no "- " is left in the items
+- [ ] Select 3 separate lines and tap Checklist: all three become items
+- [ ] Paste 3 lines directly into an empty checklist item: they become 3 checklist items (also for an empty bullet / numbered item)
+- [ ] Paste "AAA / BBB" in the middle of "Milk": `MiAAA` and `BBBlk`
+- [ ] Undo once after a paste/convert: the previous state returns in one step; Redo brings it back
+
+### WhatsApp / Paste as Checklist
+- [ ] Copy the supplied WhatsApp shopping list; in a blank note: overflow menu -> "Select, copy, paste…" -> "Paste as Checklist" (or long-press -> "Paste as Checklist")
+- [ ] Exactly one checkbox per product (34), in the original order
+- [ ] Timestamps, sender names (also "❤ Mäuschen ❤"), and the leading "- " markers are gone
+- [ ] Reis / Hühnerbrühe / Nürnberger / Bacon / Toastbrot are separate items
+- [ ] A blank note became a Smart Checklist (tick an item: it moves to the bottom)
+- [ ] Copy `[12:30] Sybille: Bier` and use Paste as Checklist: the item is `Bier` (with and without "- " after the sender)
+- [ ] Copy `Note: buy milk` and use Paste as Checklist: the item is `Note: buy milk`
+- [ ] Normal Paste of the same text keeps everything (timestamps included)
+
+### Smart Checklist
+- [ ] In a Smart Checklist with a completed item, paste new lines: they appear above the completed items
+- [ ] Check imported items: they move to the bottom; uncheck: they return to the open group
+- [ ] The keyboard never flickers; the caret ends sensibly after a paste
+
+### Undo
+- [ ] Paste the WhatsApp list as checklist, Undo once: the note is as before; Redo: the 34 items return
+
 ## Alpha 7
 
 ### Font size

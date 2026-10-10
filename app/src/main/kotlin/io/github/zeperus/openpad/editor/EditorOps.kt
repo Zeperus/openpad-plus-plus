@@ -512,7 +512,11 @@ object EditorOps {
         val joins = currentList != null && !currentList.list.ordered
         val info = if (joins) currentList!!.list else ListInfo(next++, ordered = false, start = 1, marker = '-')
         val depth = if (currentList != null) current.depth else 0
-        val inserted = items.map { EditorRow(next++, RowKind.ListItem(info, it.checked ?: false), RichText(it.text), depth, touched = true) }
+        // in place of a blank row the last item keeps that row's id: the text field the user is in is not replaced (see "Identity and focus")
+        val inserted = items.mapIndexed { n, it ->
+            val id = if (replace && n == items.lastIndex) current.id else next++
+            EditorRow(id, RowKind.ListItem(info, it.checked ?: false), RichText(it.text), depth, touched = true)
+        }
         val rows = doc.rows.toMutableList()
         if (replace) {
             rows.removeAt(index)

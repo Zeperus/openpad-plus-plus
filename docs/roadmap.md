@@ -16,6 +16,7 @@
 | 7d | Alpha 5: compact editor spacing, caret after Enter in lists, title rename from the top bar | done (`0.1.0-alpha.5`) |
 | 7e | Alpha 6: caret hit testing in the whole row | done (`0.1.0-alpha.6`) |
 | 7f | Alpha 7: editor text size setting | done (`0.1.0-alpha.7`) |
+| 7g | Alpha 8: logical-line clipboard, several lines -> list items, Paste as Checklist (messenger cleanup) | done (`0.1.0-alpha.8`) |
 | 8 | Checklist polish (global default, drag reorder), table cell editing | planned |
 | 9 | Trash and safety polish | planned |
 | 10 | Polish (themes, accessibility, tablet layout, tables/images) | planned |

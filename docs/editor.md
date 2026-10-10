@@ -310,18 +310,109 @@ cannot cross a rule, table, image or HTML block (they are separate items); it en
 - **Toolbar**: the official text context menu API (`appendTextContextMenuComponents` / `filterTextContextMenuComponents`) replaces the
   system's Cut / Copy / Paste / Select all with ours - they know the invisible marker, the structure and the undo step - and adds
   **Copy as Markdown**. Everything else the system offers stays.
-- **Copy** = readable plain text: list items get their bullet / number / box (•, `1.`, ☐ / ☑), blocks are separated by a
-  blank line, items of one list by a line break; a part of one row is just that text. **Copy as Markdown** keeps the structure
+- **Copy** = readable plain text, **one line per row** (Alpha 8, see "Clipboard and lines"): list items get their bullet / number /
+  box (•, `1.`, ☐ / ☑); a part of one row is just that text. **Copy as Markdown** keeps the structure
   (`# Heading`, `- [ ] task`, `1.`, `>`) and cuts partial first/last rows into plain text pieces; it is also in the overflow menu (the
   selection, or the whole note if nothing is selected).
 - **Cut** = Copy + delete as **one** undo step. Deleting joins the first and last row when both are ordinary text rows (the first row's
   kind and id are kept; if the selection started at the very start of the first row, the last row gives the kind); whole rows that were
   covered simply disappear; code/raw rows at the edges are never merged with text; the document keeps a paragraph to type into.
   Typing or pasting over a selection replaces it the same way (one step).
-- **Paste** is plain text everywhere (Markdown in it is *not* interpreted); with a selection it replaces it. "Paste as Markdown"
+- **Paste** is plain text everywhere (Markdown in it is *not* interpreted; several lines pasted into a list become list items, see
+  "Clipboard and lines"); with a selection it replaces it. "Paste as Markdown"
   (overflow menu) is the explicit alternative: the clipboard is parsed and its blocks inserted at the caret row (or over the
   selection), as one undo step.
 - Android drops a range selection when a field loses focus, so a remembered range comes back as a caret.
+
+## Clipboard and lines (Alpha 8)
+
+**A line is a logical line, never a line of the screen.** The editor shows every row on its own line without blank lines between
+(Alpha 5), so the clipboard follows what is on the screen: *one row = one line*. A line break inside a row (a soft break, a code
+block's lines) stays; a paragraph that merely **wraps** on a narrow screen has no line break in it, and none is invented - wrapping is
+layout (`TextLayoutResult`), the clipboard is built from the document model (`DocumentSelections.plainText`), they never meet.
+
+| document | Copy (plain) | Copy as Markdown |
+|---|---|---|
+| rows `Hello`, `World`, `Test` | `Hello\nWorld\nTest` | `Hello\n\nWorld\n\nTest` |
+| `• Milk` `• Bread` | `• Milk\n• Bread` | `- Milk\n- Bread` |
+| `☐ Milk` `☑ Bread` | `☐ Milk\n☑ Bread` | `- [ ] Milk\n- [x] Bread` |
+| heading `Shopping` + the checklist | `Shopping\n☐ Milk\n☑ Bread` | `# Shopping\n\n- [ ] Milk\n- [x] Bread` |
+| `Line one`, an empty row, `Line three` | `Line one\n\nLine three` | (an empty row is no Markdown block) |
+
+Before Alpha 8 two paragraphs were copied with a blank line between them (`Markdown` spelling); that was changed on purpose: it did not match
+what the user sees. **Cut** is the same text plus one undo step. Line endings: CRLF and a lone CR are line breaks like LF - the
+text of a note only ever contains `\n` (`ListImport.normalizeNewlines`, applied to every inserted text), so a paste from Windows or a
+messenger gives the same rows. A trailing line break is kept (it gives a final empty line, like in any text editor). Unicode, emoji and
+umlauts are not touched.
+
+**Normal Paste is lossless.** It never cleans anything: list markers, `[x]`, timestamps and sender names that are in the clipboard are in
+the note. Only the *structure* follows the row you paste into:
+
+- in a **paragraph, quote or code row**: as before (lines stay lines of that row; blank lines in a paragraph start new paragraphs);
+- in a **list or checklist item** (empty or not, caret anywhere): the first line goes in at the caret, **every further line is a new item
+  of the same list**, and the text that was behind the caret stays behind the last line - exactly what typing the lines with Enter would
+  give: `☐ Mi|lk` + `AAA`/`BBB` -> `☐ MiAAA`, `☐ BBBlk`. A done item stays done, the new items are open; nested items stay under their
+  parent. A blank line *between* two lines ends the list (an empty paragraph between two lists, no empty item); a final line break leaves
+  the caret in a new empty item. In a Smart Checklist the open items end up above the completed ones, like every new item;
+- in a **heading**: the first line is the heading's, the others are paragraphs below it (a heading cannot hold a line break).
+
+One paste is **one undo step**.
+
+## Lists from several lines (Alpha 8)
+
+`ListConversion` (the bullet / numbered / checklist buttons) works on **logical lines**: a selection over several rows converts every
+selected row (a last row of which nothing is selected is left out), a row that holds several lines (a soft break) becomes one item per
+line, and a single line is the plain toggle as before. Never one item with continuation lines.
+
+- **Source markers are cleaned**: a leading `- * + • – —` followed by a blank, a Markdown task marker `[ ] [x] [X]` or a box glyph `☐ ☑`
+  is removed from the text (`- Milk` -> `Milk`; `-5 degrees` and `*bold*` are not markers). A done marker keeps the item done when the
+  target is a checklist; for bullets/numbers it is dropped. Nothing of it stays in the visible text.
+- **Blank lines are no items.** Between two items a blank line (an empty row, or an empty line inside a row) becomes a *separator*: an
+  empty paragraph between two lists (the file keeps them apart by alternating the bullet character). At the ends of the converted text
+  blank lines are dropped. This is the one documented representation.
+- Rows that already are list items keep their nesting; rules and code/source rows inside a selection are left alone and end the list.
+- The result joins the list directly above if it has the same kind; in a Smart Checklist unchecked items end up above completed ones.
+- One undo step. A wrapped paragraph is one item (only line *breaks* split).
+
+## Paste as Checklist (Alpha 8)
+
+An **explicit** action ("Paste as Checklist" / "Als Checkliste einfügen"): in the text menu next to Paste (long press) and in the overflow
+menu -> "Select, copy, paste…". Normal Paste is never changed by it. `ListImport.checklistItems` turns the clipboard into items:
+
+1. line endings normalised (CRLF/CR);
+2. a **messenger header** is removed if the line *starts with a timestamp* (below);
+3. a leading list marker (`- * + • – —`), a task marker (`[ ] [x] [X]`) or a box glyph (`☐ ☑`) is removed;
+4. surrounding blanks (and invisible direction marks that chat exports add) are trimmed;
+5. if text is left, it is **one task item** (blank lines and lines with nothing left give nothing). Order is the clipboard's order exactly:
+   no grouping by sender, no sorting, no sender names. Lines without a marker count too (`Toastbrot` after `- Bacon`).
+
+`[x]` / `[X]` / `☑` items are created done (and a Smart Checklist puts them below the open ones); everything else is open. Items are plain text
+(no inline formatting).
+
+**Messenger headers - conservative on purpose.** A line is a header only if it starts with a timestamp, then a sender, then `:` and a blank (or
+the end of the line); anything else is ordinary content. Recognised:
+
+| form | example |
+|---|---|
+| `[time] sender: text` | `[12:42] Sybille: Bier` |
+| `[date, time] sender: text` | `[10.10., 12:42] ❤ Mäuschen ❤: - Reis` |
+| with seconds / AM-PM / other dates | `[10.10.25, 12:42:07]`, `[10/10/2025, 12:42 PM]`, `[2025-10-10, 12:42]` |
+| WhatsApp text export | `10.10.25, 12:42 - Sybille: Bier` |
+
+A bullet after the sender is optional (`Sybille: Bier` and `Sybille: - Bier` both give `Bier`). The sender has at most 60 characters, no `:`
+and no brackets. **There is no rule "remove everything before a colon"**: `Note: buy milk`, `Server: production`, `URL: https://example.com`,
+`Important: - remember this`, `12:42 Sybille: Bier` (no brackets), `[12:42] Bier` (no sender) and `[12:42]Sybille: Bier` (no blank) stay as they are.
+False negatives are chosen over false positives.
+
+**Where the items go**: below the caret row (and its nested items); in place of the row if it is blank (an empty paragraph / list item); in
+place of the selection. Inside a bullet list they join it at the same level, elsewhere they start a new list. **A blank note** (nothing but an
+empty paragraph) becomes a **Smart Checklist** note at the same time (the user explicitly asked for a checklist; unchecked above completed;
+this is a note setting, not part of the undo step). One undo step: Undo restores the text that was there (also the selection that was
+replaced), Redo recreates the list. The caret ends at the end of the last inserted item; with a selection it collapses behind the inserted
+list. The same real shopping list (34 items) is a fixture in `ListImportTest`, `MultilineListTest` and `Alpha8Test`.
+
+Limitations: numbered markers (`1.`) are not removed (`10. Oktober` is a date, not a list marker); imported items are flat (indentation is
+ignored); a chat export in a language whose headers differ from the forms above is pasted as it is.
 
 ## Tables, images, HTML (Alpha 3)
 
