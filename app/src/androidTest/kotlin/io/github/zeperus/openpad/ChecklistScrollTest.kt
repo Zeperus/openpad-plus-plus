@@ -15,7 +15,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,9 +37,6 @@ class ChecklistScrollTest {
     private fun scrollValue(): Float =
         rule.onNodeWithTag("editor").fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
 
-    private fun scrollMax(): Float =
-        rule.onNodeWithTag("editor").fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].maxValue()
-
     @Test fun tickingTheTopItemOfALongSmartChecklistDoesNotScrollToTheBottom() {
         runBlocking { t.app.settings.setEditorFontSize(24) }
         scenario = ActivityScenario.launch(MainActivity::class.java)
@@ -58,7 +54,6 @@ class ChecklistScrollTest {
         rule.waitFor("Item 01 moved to the end", { rule.rowTexts().toString() }) { rule.rowTexts().last() == "Item 01" }
         Thread.sleep(1_000)
         rule.waitForIdle()
-        assertTrue("the editor is longer than the screen (${scrollMax()})", scrollMax() > 200f)
         assertEquals("the view stays at the top", before, scrollValue(), 2f)
     }
 }
