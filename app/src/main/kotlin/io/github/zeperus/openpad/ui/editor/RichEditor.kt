@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -17,6 +18,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -37,6 +45,35 @@ import io.github.zeperus.openpad.ui.NotesViewModel
  * [SegmentField]); a rule, a table, an image or simple HTML is a block of its own between two fields. Everything the user does
  * is turned into a document operation; the Markdown is written from the document, never read back from the screen.
  */
+/**
+ * Keeps the view where it is while the text changes under it. Ticking a task in a Smart Checklist moves the item to the bottom of the
+ * list - a change of the text, which makes the text field scroll its caret into view (the caret is wherever the user left it, often at
+ * the end), and the user, who is looking at the top of the list, is thrown to the bottom. [hold] remembers the scroll position and puts
+ * it back whenever something else moves it during the next moments.
+ */
+internal class ScrollHold(private val state: LazyListState, private val scope: CoroutineScope) {
+    private var job: Job? = null
+
+    fun hold() {
+        val index = state.firstVisibleItemIndex
+        val offset = state.firstVisibleItemScrollOffset
+        job?.cancel()
+        job = scope.launch {
+            withTimeoutOrNull(HOLD_MILLIS) {
+                snapshotFlow { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset }.collect { (i, o) ->
+                    if (i != index || o != offset) state.scrollToItem(index, offset)
+                }
+            }
+        }
+    }
+
+    private companion object {
+        const val HOLD_MILLIS = 800L
+    }
+}
+
+internal val LocalScrollHold = staticCompositionLocalOf<ScrollHold?> { null }
+
 @Composable
 fun RichEditor(vm: NotesViewModel, modifier: Modifier = Modifier) {
     val typography = androidx.compose.runtime.remember(vm.editorFontSize) { io.github.zeperus.openpad.editor.EditorTypography(vm.editorFontSize.toFloat()) }
@@ -89,6 +126,9 @@ private fun RichEditorContent(vm: NotesViewModel, modifier: Modifier = Modifier)
         }
         LaunchedEffect(currentMatch) { currentMatch?.let { reveal(it.rowId, it.start) } }
 
+        val scrollScope = rememberCoroutineScope()
+        val hold = remember(listState) { ScrollHold(listState, scrollScope) }
+        androidx.compose.runtime.CompositionLocalProvider(LocalScrollHold provides hold) {
         LazyColumn(state = listState, modifier = modifier.fillMaxSize().testTag("editor")) {
             items(items.size, key = { itemKeys[it] }) { index ->
                 when (val item = items[index]) {
@@ -125,6 +165,7 @@ private fun RichEditorContent(vm: NotesViewModel, modifier: Modifier = Modifier)
                     ) { vm.focusEnd() },
                 )
             }
+        }
         }
     }
 }

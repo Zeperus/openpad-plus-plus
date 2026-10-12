@@ -417,6 +417,7 @@ internal fun SegmentField(
         SpanColors(link = colors.primary, codeBackground = colors.surfaceVariant, muted = colors.onSurfaceVariant, highlight = colors.tertiaryContainer, match = colors.secondaryContainer)
     }
     val typography = LocalEditorTypography.current
+    val scrollHold = LocalScrollHold.current
     val styles = remember(colors, density, typography.base) { RowStyles(colors, density, spanColors, typography) }
 
     // the model's text and decorations go into the field before the next frame is drawn
@@ -646,7 +647,7 @@ internal fun SegmentField(
                             value = task.checked == true,
                             enabled = !readOnly,
                             role = androidx.compose.ui.semantics.Role.Checkbox,
-                            onValueChange = { vm.setChecked(row.id, it) },
+                            onValueChange = { scrollHold?.hold(); vm.setChecked(row.id, it) },
                         )
                         .semantics { contentDescription = label }
                         .testTag("checkbox"),
