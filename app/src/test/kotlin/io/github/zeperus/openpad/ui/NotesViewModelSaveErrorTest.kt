@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -68,6 +69,7 @@ class NotesViewModelSaveErrorTest {
         advanceTimeBy(1_000); runCurrent()
 
         assertEquals(UserMessage.SaveFailed, h.vm.message)
+        assertTrue(h.vm.saveFailed)
         assertEquals("first version, edited", h.vm.text)
         assertEquals("first version", h.disk.openNote(id).text) // the old text is still what is on disk
     }
@@ -82,11 +84,13 @@ class NotesViewModelSaveErrorTest {
         h.vm.onTextChange("draft two")
         advanceTimeBy(1_000); runCurrent()
         assertEquals(UserMessage.SaveFailed, h.vm.message)
+        assertTrue(h.vm.saveFailed)
 
         h.flaky.failSaves = false
         h.vm.onTextChange("draft two, latest")
         advanceTimeBy(1_000); runCurrent()
 
+        assertFalse(h.vm.saveFailed)
         assertEquals("draft two, latest", h.disk.openNote(id).text)
         assertEquals("draft two, latest", h.vm.text)
     }
@@ -101,10 +105,12 @@ class NotesViewModelSaveErrorTest {
         h.vm.onTextChange("kept and more")
         advanceTimeBy(1_000); runCurrent()
         assertEquals(UserMessage.SaveFailed, h.vm.message)
+        assertTrue(h.vm.saveFailed)
 
         h.flaky.failSaves = false
         h.vm.flush(); runCurrent()
 
+        assertFalse(h.vm.saveFailed)
         assertEquals("kept and more", h.disk.openNote(id).text)
     }
 
@@ -116,6 +122,7 @@ class NotesViewModelSaveErrorTest {
         advanceTimeBy(1_000); runCurrent()
 
         assertEquals(UserMessage.SaveFailed, h.vm.message)
+        assertTrue(h.vm.saveFailed)
         assertEquals(text, h.vm.text)
         assertNull(h.vm.current) // still a draft: nothing was created
         assertTrue(h.disk.listNotes().isEmpty())
@@ -123,6 +130,7 @@ class NotesViewModelSaveErrorTest {
         h.flaky.failSaves = false
         h.vm.flush(); runCurrent()
 
+        assertFalse(h.vm.saveFailed)
         val created = h.vm.current
         assertTrue("the draft is created on retry", created != null)
         assertEquals(text, h.disk.openNote(created!!.id).text)
@@ -139,6 +147,7 @@ class NotesViewModelSaveErrorTest {
         h.vm.messageShown()
 
         assertNull(h.vm.message)
+        assertTrue("the not-saved state lasts until a save succeeds", h.vm.saveFailed)
         assertEquals("unsaved words", h.vm.text)
     }
 

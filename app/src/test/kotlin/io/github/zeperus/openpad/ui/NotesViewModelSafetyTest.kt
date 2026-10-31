@@ -10,6 +10,7 @@ import io.github.zeperus.openpad.domain.NoteRepository
 import io.github.zeperus.openpad.domain.NoteStorageException
 import io.github.zeperus.openpad.domain.SettingsStore
 import io.github.zeperus.openpad.domain.StartupMode
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -77,18 +78,22 @@ class NotesViewModelSafetyTest {
     @Test fun `a document changed by another app is not overwritten and the user is asked`() = runTest {
         val vm = conflictedViewModel()
         assertEquals("Plan", vm.externalConflict)
+        assertTrue(vm.conflictDialogVisible)
         assertEquals("changed elsewhere", provider.text(uri))
         assertFalse(vm.saveFailed)
     }
 
-    @Test fun `reload shows the other app's version and keeps the own text in the recovery copy`() = runTest {
+    @Test fun `reload shows the other app's version and keeps the own text as a note`() = runTest {
         val vm = conflictedViewModel()
-        vm.reloadExternal(); runCurrent()
+        vm.reloadExternal("Plan (my version)"); runCurrent()
         assertEquals("changed elsewhere", vm.text)
         assertNull(vm.externalConflict)
+        assertFalse(vm.conflictDialogVisible)
         assertFalse(vm.saveFailed)
-        val backups = File(root, "external-backups").listFiles() ?: emptyArray()
-        assertTrue("own text kept in external-backups", backups.any { it.readText() == "my edit" })
+        val copy = vm.notes.single { it.title == "Plan (my version)" }
+        assertFalse(copy.isExternal)
+        assertEquals("my edit", disk().openNote(copy.id).text)
+        assertEquals("changed elsewhere", provider.text(uri))
     }
 
     @Test fun `keep mine overwrites the document with the editor text`() = runTest {
@@ -97,24 +102,35 @@ class NotesViewModelSafetyTest {
         assertEquals("my edit", provider.text(uri))
         assertEquals("my edit", vm.text)
         assertNull(vm.externalConflict)
+        assertFalse(vm.conflictDialogVisible)
         assertFalse(vm.saveFailed)
     }
 
-    @Test fun `dismissing the question keeps the document and asks again on the next save`() = runTest {
+    @Test fun `dismissing the question keeps the conflict and asks again on the next save`() = runTest {
         val vm = conflictedViewModel()
         vm.dismissExternalConflict()
-        assertNull(vm.externalConflict)
+        assertEquals("Plan", vm.externalConflict) // the conflict stays, only the dialog is hidden
+        assertFalse(vm.conflictDialogVisible)
         vm.onTextChange("my edit, again")
         advanceTimeBy(1_000); runCurrent()
         assertEquals("Plan", vm.externalConflict)
+        assertTrue(vm.conflictDialogVisible)
         assertEquals("changed elsewhere", provider.text(uri))
     }
 
-    @Test fun `switching tabs during a conflict asks instead of failing silently`() = runTest {
+    @Test fun `a dismissed conflict can be shown again`() = runTest {
+        val vm = conflictedViewModel()
+        vm.dismissExternalConflict()
+        vm.showConflictDialog()
+        assertTrue(vm.conflictDialogVisible)
+    }
+
+    @Test fun `switching tabs during a conflict asks again instead of failing silently`() = runTest {
         val vm = conflictedViewModel()
         vm.dismissExternalConflict()
         vm.newNote(); runCurrent()
         assertEquals("Plan", vm.externalConflict)
+        assertTrue(vm.conflictDialogVisible)
         assertEquals("my edit", vm.text) // the tab did not change, the text is still here
         assertEquals("Plan", vm.current?.title)
     }
@@ -139,6 +155,19 @@ class NotesViewModelSafetyTest {
         vm.onTextChange("typing") // no time passes: not autosaved yet
         vm.onAppResumed(); runCurrent()
         assertEquals("typing", vm.text)
+        assertEquals("changed elsewhere", provider.text(uri))
+    }
+
+    @Test fun `text typed while the document is read on coming back is kept and the conflict is asked`() = runTest {
+        provider.put(uri, "original", name = "Plan.md")
+        val vm = launch()
+        vm.openExternal(uri, persistent = true)
+        provider.put(uri, "changed elsewhere")
+        provider.onRead = { vm.onTextChange("typed meanwhile") }
+        vm.onAppResumed(); runCurrent()
+        provider.onRead = null
+        assertEquals("typed meanwhile", vm.text)
+        assertEquals("Plan", vm.externalConflict)
         assertEquals("changed elsewhere", provider.text(uri))
     }
 
@@ -174,6 +203,19 @@ class NotesViewModelSafetyTest {
         assertEquals("first, edited and saved", disk().openNote(vm.current!!.id).text)
     }
 
+    @Test fun `a failed save before an action is reported as a save failure`() = runTest {
+        val flaky = FlakyRepository(disk())
+        val vm = launch(repository = flaky)
+        vm.onTextChange("first"); advanceTimeBy(1_000); runCurrent()
+
+        flaky.failSaves = true
+        vm.onTextChange("first, edited") // no time passes: the action below saves it first, and that save fails
+        vm.newNote(); runCurrent()
+
+        assertEquals(UserMessage.SaveFailed, vm.message)
+        assertTrue(vm.saveFailed)
+    }
+
     @Test fun `retrySave writes the pending text again and clears the not-saved state`() = runTest {
         val flaky = FlakyRepository(disk())
         val vm = launch(repository = flaky)
@@ -198,6 +240,15 @@ class NotesViewModelSafetyTest {
         override suspend fun write(folderUri: String, fileName: String, text: String) {
             if (fileName == failFor) throw IOException("disk full")
             written += fileName to text
+        }
+    }
+
+    /** Records the file names written, but every write waits until [gate] is completed, so an export can be seen running. */
+    private class GatedTarget(private val gate: CompletableDeferred<Unit>) : ExportTarget {
+        val written = ArrayList<String>()
+        override suspend fun write(folderUri: String, fileName: String, text: String) {
+            gate.await()
+            written += fileName
         }
     }
 
@@ -236,5 +287,43 @@ class NotesViewModelSafetyTest {
         assertEquals(1, result.written)
         assertEquals(listOf("Shopping"), result.failed)
         assertFalse(vm.exporting)
+    }
+
+    @Test fun `export all still writes the internal notes while an external document has a conflict`() = runTest {
+        val target = CollectingTarget()
+        provider.put(uri, "original", name = "Plan.md")
+        val vm = launch(exportTarget = target)
+        vm.onTextChange("# Shopping\n- milk"); advanceTimeBy(1_000); runCurrent()
+        vm.openExternal(uri, persistent = true)
+        provider.put(uri, "changed elsewhere")
+        vm.onTextChange("my edit"); advanceTimeBy(1_000); runCurrent()
+        assertEquals("Plan", vm.externalConflict)
+
+        vm.exportAll("content://tree/export"); runCurrent()
+
+        assertEquals(listOf("Shopping.md" to "# Shopping\n- milk"), target.written)
+        val result = vm.exportResult!!
+        assertEquals(1, result.written)
+        assertEquals(1, result.skippedExternal)
+        assertFalse(vm.exporting)
+        assertEquals("changed elsewhere", provider.text(uri))
+    }
+
+    @Test fun `a second export while one is running does nothing`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val target = GatedTarget(gate)
+        val vm = launch(exportTarget = target)
+        vm.onTextChange("# Shopping\n- milk")
+        vm.newNote()
+        vm.onTextChange("# Ideas\nsome idea")
+
+        vm.exportAll("content://tree/export"); runCurrent()
+        assertTrue(vm.exporting)
+        vm.exportAll("content://tree/export"); runCurrent()
+
+        gate.complete(Unit); runCurrent()
+        assertFalse(vm.exporting)
+        assertEquals(listOf("Ideas.md", "Shopping.md"), target.written) // each note once
+        assertEquals(2, vm.exportResult!!.written)
     }
 }

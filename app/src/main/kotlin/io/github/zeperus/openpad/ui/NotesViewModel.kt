@@ -22,6 +22,7 @@ import io.github.zeperus.openpad.domain.NoteChangedExternallyException
 import io.github.zeperus.openpad.domain.NoteContent
 import io.github.zeperus.openpad.domain.NoteEditor
 import io.github.zeperus.openpad.domain.NoteExport
+import io.github.zeperus.openpad.domain.NoteFileName
 import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteInfo
 import io.github.zeperus.openpad.domain.NoteLists
@@ -217,6 +218,13 @@ class NotesViewModel(
     var externalConflict by mutableStateOf<String?>(null)
         private set
 
+    /** The note the conflict belongs to: an answer given while another note is open does not apply to it. */
+    private var conflictNoteId: NoteId? = null
+
+    /** Whether the conflict question is shown as a dialog. Dismissing it keeps the conflict (the UI shows a bar until it is answered). */
+    var conflictDialogVisible by mutableStateOf(false)
+        private set
+
     /** True while "Export all notes" runs. */
     var exporting by mutableStateOf(false)
         private set
@@ -268,13 +276,13 @@ class NotesViewModel(
         scope,
         onError = { e ->
             if (e is NoteChangedExternallyException) {
-                externalConflict = e.title
+                raiseConflict(e.title)
             } else {
                 message = UserMessage.SaveFailed
                 saveFailed = true
             }
         },
-    ) { actions.withLock { saveNow(); saveFailed = false } }
+    ) { actions.withLock { saveNow() } }
 
     init {
         act { startup() }
@@ -647,78 +655,113 @@ class NotesViewModel(
     fun retrySave() = flush()
 
     /**
-     * Conflict answer "use the other app's version": the open external document shows what the file holds now. The editor's own
-     * text is still in the repository's recovery copy (external-backups), written before the conflict check.
+     * Conflict answer "use the other app's version": the open external document shows what the file holds now. The text the user
+     * had is not lost: if it differs from the file, it is kept as a new internal note titled [copyTitle] (it shows in FILES).
      */
-    fun reloadExternal() = act {
+    fun reloadExternal(copyTitle: String) = act {
         val id = editor.info?.id ?: return@act
+        if (conflictNoteId != null && conflictNoteId != id) { clearConflict(); return@act }
+        val mine = editor.text
         val content = repository.openNote(id)
+        if (mine.isNotBlank() && mine != content.text) {
+            val copy = repository.createNote(mine)
+            val wanted = NoteFileName.sanitizeOrNull(copyTitle)
+            if (wanted != null) {
+                try {
+                    repository.renameNote(copy.id, NoteFileName.uniqueTitle(wanted, notes.map { it.title }))
+                } catch (e: NoteStorageException) {
+                    // the copy keeps its automatic title
+                }
+            }
+        }
         sessions.remove(id)
         switchTo(NoteEditor(repository, NoteContent(content.info, content.text, content.readOnly, content.readOnlyReason)))
-        externalConflict = null
+        clearConflict()
         saveFailed = false
+        refreshLists()
     }
 
     /** Conflict answer "keep mine": the editor's text overwrites the document, which is allowed once for the current on-disk version. */
     fun keepMineExternal() = act {
         val id = editor.info?.id ?: return@act
+        if (conflictNoteId != null && conflictNoteId != id) { clearConflict(); return@act }
         repository.overrideExternalChange(id)
         saveNow()
-        externalConflict = null
+        clearConflict()
         saveFailed = false
     }
 
-    /** Closes the conflict question without choosing; the next save asks again. */
+    /** Closes the conflict dialog without choosing. The conflict stays (the UI offers it again) until it is answered. */
     fun dismissExternalConflict() {
-        externalConflict = null
+        conflictDialogVisible = false
+    }
+
+    /** Shows the conflict question again (after it was dismissed). */
+    fun showConflictDialog() {
+        if (externalConflict != null) conflictDialogVisible = true
     }
 
     /**
      * The app is shown again (ON_START). An external document that another app changed meanwhile is reloaded, but only if
-     * the editor holds nothing unsaved; otherwise the text the user is typing is left alone.
+     * the editor holds nothing unsaved. If text is typed while the document is being read, that text is kept and the
+     * conflict is asked instead.
      */
     fun onAppResumed() = act {
         if (!ready) return@act
-        val info = editor.info ?: return@act
-        if (!info.isExternal || editor.hasUnsavedChanges) return@act
-        val content = try {
-            repository.openNote(info.id)
+        val before = editor
+        val info = before.info ?: return@act
+        if (!info.isExternal || before.hasUnsavedChanges) return@act
+        val textBefore = before.text
+        val changed = try {
+            repository.checkExternal(info.id)
         } catch (e: NoteSourceUnavailableException) {
             return@act
+        } catch (e: NoteUnreadableException) {
+            return@act
         }
-        if (content.text != editor.text) {
-            sessions.remove(info.id)
-            switchTo(NoteEditor(repository, NoteContent(content.info, content.text, content.readOnly, content.readOnlyReason)))
-        }
+        if (changed == null) return@act // not changed outside: nothing to do
+        if (editor !== before) return@act
+        if (before.hasUnsavedChanges || before.text != textBefore) { raiseConflict(info.title); return@act }
+        val content = repository.openNote(info.id)
+        if (editor !== before || before.hasUnsavedChanges) { raiseConflict(info.title); return@act }
+        sessions.remove(info.id)
+        switchTo(NoteEditor(repository, NoteContent(content.info, content.text, content.readOnly, content.readOnlyReason)))
     }
 
     /**
      * "Export all notes": writes every active internal note as a `.md` file into the folder [folderUri] (picked by the user).
      * External documents are not copied - they already are files the user owns. The outcome goes to [exportResult].
      */
-    fun exportAll(folderUri: String) = act {
-        val target = exportTarget ?: return@act
-        saveNow()
+    fun exportAll(folderUri: String) {
+        val target = exportTarget ?: return
+        if (exporting) return // a second tap does nothing
         exporting = true
-        try {
-            val all = repository.listNotes()
-            val plan = NoteExport.plan(all)
-            val titles = all.associate { it.id to it.title }
-            var written = 0
-            val failed = ArrayList<String>()
-            for (item in plan) {
-                try {
-                    target.write(folderUri, item.fileName, repository.openNote(item.id).text)
-                    written++
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    failed += titles[item.id] ?: item.fileName
+        scope.launch {
+            try {
+                // under the lock only the quick part: save the open note (if that fails, the version on disk is exported) and read the texts
+                val (files, skipped) = actions.withLock {
+                    try { saveNow() } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+                    val all = repository.listNotes()
+                    val titles = all.associate { it.id to it.title }
+                    val planned = NoteExport.plan(all).map { item ->
+                        val text = try { repository.openNote(item.id).text } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+                        Triple(item.fileName, titles[item.id] ?: item.fileName, text)
+                    }
+                    planned to all.count { it.isExternal }
                 }
+                // writing into the chosen folder happens outside the lock: typing and autosave go on meanwhile
+                var written = 0
+                val failed = ArrayList<String>()
+                for ((fileName, title, text) in files) {
+                    if (text == null) { failed += title; continue }
+                    try { target.write(folderUri, fileName, text); written++ } catch (e: CancellationException) { throw e } catch (_: Exception) { failed += title }
+                }
+                exportResult = ExportResult(written, failed, skipped)
+            } catch (e: NoteStorageException) {
+                message = UserMessage.ActionFailed // the notes could not be listed: nothing was exported
+            } finally {
+                exporting = false
             }
-            exportResult = ExportResult(written, failed, all.count { it.isExternal })
-        } finally {
-            exporting = false
         }
     }
 
@@ -1067,8 +1110,16 @@ class NotesViewModel(
     private suspend fun saveNow() {
         val saved = editor
         val wasDraft = saved.isDraft
-        val wrote = saved.save()
-        saveFailed = false // whatever was pending is on disk now (a failure throws before this line)
+        val wrote = try {
+            saved.save()
+        } catch (e: NoteChangedExternallyException) {
+            throw e // asked, not failed: the conflict question covers it
+        } catch (e: NoteStorageException) {
+            saveFailed = true
+            message = UserMessage.SaveFailed
+            throw e
+        }
+        saveFailed = false // whatever was pending is on disk now
         if (wrote) {
             if (saved === editor) {
                 current = saved.info
@@ -1173,12 +1224,25 @@ class NotesViewModel(
                 try {
                     block()
                 } catch (e: NoteChangedExternallyException) {
-                    externalConflict = e.title // asked, not failed: the user decides what happens to the document
+                    raiseConflict(e.title) // asked, not failed: the user decides what happens to the document
                 } catch (e: NoteStorageException) {
-                    message = UserMessage.ActionFailed
+                    if (message != UserMessage.SaveFailed) message = UserMessage.ActionFailed // a failed save already says so
                 }
             }
         }
+    }
+
+    /** Asks the user about a document that another app changed. The question belongs to the open note. */
+    private fun raiseConflict(title: String) {
+        externalConflict = title
+        conflictNoteId = editor.info?.id
+        conflictDialogVisible = true
+    }
+
+    private fun clearConflict() {
+        externalConflict = null
+        conflictNoteId = null
+        conflictDialogVisible = false
     }
 }
 
