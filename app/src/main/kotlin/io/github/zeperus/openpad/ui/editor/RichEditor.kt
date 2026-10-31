@@ -91,6 +91,16 @@ private fun RichEditorContent(vm: NotesViewModel, modifier: Modifier = Modifier)
         val keys = remember { SegmentKeys() }
         val items = remember(ui.doc, source) { Segments.split(ui.doc) { Segments.isBlock(it, source) } }
         val segmentKeys = remember(items) { keys.assign(items.filterIsInstance<DocItem.Text>().map { it.segment.ids }) }
+        // how many text segments come before each item: the index of its key in segmentKeys, computed once per list
+        val textIndexBefore = remember(items) {
+            IntArray(items.size).also { before ->
+                var count = 0
+                items.forEachIndexed { i, entry ->
+                    before[i] = count
+                    if (entry is DocItem.Text) count++
+                }
+            }
+        }
         val layouts = remember { HashMap<Int, () -> TextLayoutResult?>() }
         val find = vm.find
         val findByRow: Map<Long, List<IntRange>> = remember(find?.matches) {
@@ -111,7 +121,7 @@ private fun RichEditorContent(vm: NotesViewModel, modifier: Modifier = Modifier)
             if (index < 0) return
             listState.scrollToItem(index)
             val item = items[index] as? DocItem.Text ?: return
-            val key = segmentKeys.getOrNull(items.take(index).count { it is DocItem.Text }) ?: return
+            val key = segmentKeys.getOrNull(textIndexBefore[index]) ?: return
             val layout = layouts[key]?.invoke() ?: return
             val at = item.segment.absolute(io.github.zeperus.openpad.editor.DocumentPosition(rowId, offset)) ?: return
             if (at + 1 <= layout.layoutInput.text.length) listState.scrollToItem(index, scrollOffset = layout.getLineTop(layout.getLineForOffset(at + 1)).toInt())
@@ -134,7 +144,7 @@ private fun RichEditorContent(vm: NotesViewModel, modifier: Modifier = Modifier)
                 when (val item = items[index]) {
                     is DocItem.Text -> {
                         val segment = item.segment
-                        val key = segmentKeys[items.take(index).count { it is DocItem.Text }]
+                        val key = segmentKeys[textIndexBefore[index]]
                         SegmentField(
                             vm = vm,
                             segment = segment,

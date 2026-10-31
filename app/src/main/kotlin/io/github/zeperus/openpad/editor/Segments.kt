@@ -52,7 +52,13 @@ class Segment(val rows: List<EditorRow>) {
         return lo
     }
 
-    fun indexOf(rowId: Long): Int = rows.indexOfFirst { it.id == rowId }
+    /** Row id -> index, built on first use (a segment does not change). The first row with an id wins, as with `indexOfFirst`. */
+    private val indexById: Map<Long, Int> by lazy {
+        HashMap<Long, Int>(ids.size).also { m -> for ((i, id) in ids.withIndex()) if (id !in m) m[id] = i }
+    }
+
+    /** The index of the row with [rowId], or -1 if the segment has no such row. Constant time after the first call. */
+    fun indexOf(rowId: Long): Int = indexById[rowId] ?: -1
 
     fun position(absolute: Int): DocumentPosition {
         val i = rowIndexAt(absolute.coerceIn(0, text.length))
