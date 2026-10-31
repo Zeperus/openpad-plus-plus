@@ -85,7 +85,7 @@ class FileNoteRepository internal constructor(
     private val trashDir = File(root, "trash")
     private val indexFile = File(root, "index.json")
     private val backupsDir = File(root, "external-backups")
-    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true; encodeDefaults = true; explicitNulls = false }
+    private val json = Json { ignoreUnknownKeys = true; prettyPrint = false; encodeDefaults = true; explicitNulls = false }
 
     private val mutex = Mutex()
     private var entries: MutableMap<String, Entry>? = null
@@ -454,9 +454,15 @@ class FileNoteRepository internal constructor(
     private fun activeTitles(notes: Map<String, Entry>): Set<String> =
         notes.values.filter { it.trashedAt == null }.mapTo(HashSet()) { it.title }
 
-    /** True if [title] is [base] or [base] plus a collision suffix (`Shopping 2`). */
+    /**
+     * True if [title] is [base] or [base] plus a collision suffix (`Shopping 2`).
+     * Plain checks instead of a Regex built on every save; the digits are ASCII 0-9, as `\d` matches by default.
+     */
     private fun isSameTitleFamily(title: String, base: String): Boolean =
-        title == base || Regex(Regex.escape(base) + """ \d+""").matches(title)
+        title == base || (
+            title.length > base.length + 1 && title.startsWith(base) && title[base.length] == ' ' &&
+                title.substring(base.length + 1).all { it in '0'..'9' }
+        )
 
     private suspend fun <T> locked(block: suspend (MutableMap<String, Entry>) -> T): T = withContext(dispatcher) {
         mutex.withLock {

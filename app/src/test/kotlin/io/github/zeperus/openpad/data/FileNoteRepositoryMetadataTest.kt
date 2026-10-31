@@ -5,6 +5,11 @@ import io.github.zeperus.openpad.domain.NoteLists
 import io.github.zeperus.openpad.domain.NoteNotFoundException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -29,6 +34,8 @@ class FileNoteRepositoryMetadataTest {
     )
 
     private fun id(n: Long) = UUID(0, n).toString()
+    private fun indexJson() = Json.parseToJsonElement(File(root, "index.json").readText()).jsonObject
+    private fun indexVersion() = indexJson().getValue("version").jsonPrimitive.content.toInt()
 
     // ---- Favorite --------------------------------------------------------------------------------------------
 
@@ -144,7 +151,7 @@ class FileNoteRepositoryMetadataTest {
     @Test fun `an index from an older version loads without folders`() = runBlocking {
         val r = repo()
         r.createNote("Old note")
-        File(root, "index.json").writeText(File(root, "index.json").readText().replace(Regex("\"folders\"[^]]*]"), "").replace(",\n  \n", "\n"))
+        File(root, "index.json").writeText(JsonObject(indexJson() - "folders").toString())
         val loaded = repo()
         assertEquals(1, loaded.listNotes().size)
         assertTrue(loaded.listFolders().isEmpty())
@@ -155,8 +162,7 @@ class FileNoteRepositoryMetadataTest {
         val folder = r.createFolder("Work")
         val a = r.createNote("Alpha")
         r.moveNote(a.id, folder.id)
-        val text = File(root, "index.json").readText().replace(Regex("\"folders\": \\[.*?\\]", RegexOption.DOT_MATCHES_ALL), "\"folders\": []")
-        File(root, "index.json").writeText(text)
+        File(root, "index.json").writeText(JsonObject(indexJson() + ("folders" to JsonArray(emptyList()))).toString())
         assertNull(repo().listNotes().single().folderId)
     }
 
@@ -274,7 +280,7 @@ class FileNoteRepositoryMetadataTest {
         assertEquals(listOf(50L, 60L), notes.map { it.lastOpenedAt })
         assertEquals(listOf("Beta", "Alpha"), NoteLists.recent(notes).map { it.title })
         // rewritten with the current version, so the seeding happens exactly once
-        assertTrue(File(root, "index.json").readText().contains("\"version\": 5"))
+        assertEquals(5, indexVersion())
     }
 
     @Test fun `seeding happens once - a later restart keeps explicitly stored timestamps`() = runBlocking {
@@ -335,6 +341,6 @@ class FileNoteRepositoryMetadataTest {
         )
         val note = repo().listNotes().single()
         assertNull(note.lastOpenedAt) // not invented by the upgrade
-        assertTrue(File(root, "index.json").readText().contains("\"version\": 5"))
+        assertEquals(5, indexVersion())
     }
 }

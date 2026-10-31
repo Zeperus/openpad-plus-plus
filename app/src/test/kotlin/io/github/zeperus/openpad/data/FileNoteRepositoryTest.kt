@@ -10,6 +10,13 @@ import io.github.zeperus.openpad.domain.NoteStorageException
 import io.github.zeperus.openpad.domain.NoteUnreadableException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -47,6 +54,8 @@ class FileNoteRepositoryTest {
     private fun noteFile(info: NoteInfo) = noteFile(info.id)
     private fun trashFile(info: NoteInfo) = File(root, "trash/${info.id.value}.md")
     private fun nextId(n: Long) = UUID(0, n).toString()
+    private fun indexVersion() =
+        Json.parseToJsonElement(File(root, "index.json").readText()).jsonObject.getValue("version").jsonPrimitive.content.toInt()
 
     private suspend fun failingIndexWrites(block: suspend () -> Unit) {
         indexWriteFails = true
@@ -206,9 +215,11 @@ class FileNoteRepositoryTest {
         val outside = File(tmp.root, "secret.md").apply { writeText("do not touch") }
         repo().createNote("Real")
         val index = File(root, "index.json")
-        index.writeText(
-            index.readText().replace(Regex("\"id\": \"[^\"]+\""), "\"id\": \"../../secret\""),
-        )
+        val parsed = Json.parseToJsonElement(index.readText()).jsonObject
+        val tampered = parsed.getValue("notes").jsonArray.map { note ->
+            JsonObject(note.jsonObject + ("id" to JsonPrimitive("../../secret")))
+        }
+        index.writeText(JsonObject(parsed + ("notes" to JsonArray(tampered))).toString())
         val r = repo()
         // the entry is dropped and the real file is adopted again under its own (valid) id
         assertEquals(listOf("Real"), r.listNotes().map { it.title })
@@ -503,7 +514,7 @@ class FileNoteRepositoryTest {
         assertFalse(File(root, "notes/Shopping.md").exists())
         assertTrue(File(root, "trash/$trashedId.md").exists())
         assertFalse("index is rewritten without legacy names", File(root, "index.json").readText().contains("fileName"))
-        assertTrue(File(root, "index.json").readText().contains("\"version\": 5"))
+        assertEquals(5, indexVersion())
     }
 
     @Test fun `a minimal version 1 index without optional fields still loads`() = runBlocking {
