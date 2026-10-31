@@ -1,4 +1,4 @@
-# Alpha test checklist (0.1.0-alpha.7)
+# Alpha test checklist (0.1.0-alpha.9)
 
 Short on purpose. Tick what works, note what does not (what you did, what you expected). **Keep backups of important
 notes while testing.** Settings shows the installed version at the bottom.
@@ -41,6 +41,37 @@ notes while testing.** Settings shows the installed version at the bottom.
 - [ ] Undo restores checkbox and previous order in one action
 - [ ] Tapping a checkbox does not close the keyboard or move the text cursor
 - [ ] A normal Markdown checklist (mode off) does not auto-sort
+
+## Alpha 9 (audit follow-up) - please check these on the phone
+
+### Data safety
+- [ ] Settings -> Backup -> *Export all notes…*: pick a folder; every note is there as a `.md` file; the result dialog counts them
+- [ ] Open an external `.md` (file picker), switch to another app (e.g. a file editor), change the file there, come back: openPad++ shows the new text
+- [ ] Same, but type something in openPad++ first and then change the file in the other app before coming back / typing again:
+      the question "Changed in another app" appears; *Reload* shows the other version and your text is a new note "<name> (my version)";
+      *Keep mine* writes your text into the file
+- [ ] Dismiss that question (tap outside): a red "Not saved" bar stays until you choose (*Decide…*)
+- [ ] *Move to Trash…* shows "Moved to Trash" with *Undo*; Undo brings the note back open; the message disappears by itself
+- [ ] *Clear note…* (red confirm) and then Undo in the formatting bar: the text is back
+
+### Formatting bar and editor
+- [ ] The bar is one row; bullets / numbers / checklist come right after B and I; a soft fade shows that it can scroll
+- [ ] Long-press a bar button: its name appears as a tooltip and nothing is applied; the keyboard stays open
+- [ ] Typing in a long checklist (50+ items) and in a long note feels smooth; Settings (bottom) shows "Measured: keystroke … ms" - please send the numbers
+- [ ] Rotate the phone with the rename dialog open and a half-typed name: dialog and text stay
+
+### Drawer, tabs, menus
+- [ ] *New folder…* is in the drawer even before the first folder exists
+- [ ] FILES: the sort button switches A–Z / Newest; every note shows when it was changed ("5 min. ago")
+- [ ] Tabs are easier to hit; *Close others / Close all* are also in the ⋮ menu
+- [ ] ⋮ -> *Markdown clipboard…* opens the sub-page; after an action the menu opens on the main page again
+- [ ] Favorites: "Added to Favorites" / "Removed from Favorites" appears
+- [ ] Search: old results vanish while typing, "Searching…" shows, the X clears the field
+- [ ] Wording: *Move to Trash…*, *New note* (no "+"); German: *In den Papierkorb…*, *Notiz leeren…*
+
+### TalkBack (if you can)
+- [ ] Bullets are not read as separate "•" items; numbers are read; checkbox labels end with "…" at a word
+- [ ] The empty area below the last line is "Continue writing at the end"
 
 ## Alpha 8
 

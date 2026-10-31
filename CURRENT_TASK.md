@@ -1,22 +1,29 @@
 # Current task
 
-**Alpha 8 (`0.1.0-alpha.8`): logical-line clipboard, several lines -> list items, Paste as Checklist (WhatsApp/messenger cleanup) - done and published (Alpha 7: editor text size; Alpha 6: caret hit testing; Alpha 5: compact spacing, title rename; Alpha 4: native cross-block selection, writable external files, language).**
+**Alpha 9 (`0.1.0-alpha.9`): audit follow-up (2026-10-31) - data safety (external changes by other apps, export, lasting save errors,
+permanent delete, hung providers), faster editing in long notes, UX quick wins (formatting bar, drawer, tabs, dialogs, undo for Clear and
+Trash, sort/dates in FILES), view model/screen split (SettingsModel, NoteSearchController, EditorStatePersistence, screen files),
+accessibility, feature-grouped UI tests.** The owner's phone check (docs/alpha-test-checklist.md "Alpha 9") comes next.
 Next (do not start without being asked): Milestone 8 (global checklist default, drag reorder, table cell editing).
 
 ## Status
-- Unit tests: 920, 0 failing (`./gradlew test`); lint clean; `assembleDebug` and `assembleDebugAndroidTest` build.
-- Instrumented tests on GitHub (API 36 emulator, Test Orchestrator): **148/148 green** (Alpha3 14, Alpha4External 6, Alpha4Language 2, Alpha8 22,
-  CaretHitTest 13, ColdStart 1, EditorDensity 6, ExternalFlow 9, FontSize 12, NotesFlow 8, RichEditor 13, Selection 8, SessionFlow 16,
-  StructuralEditing 15, Title 3), run 38049734725; regular CI green.
-- Signing: Alpha 1-8 share one certificate (SHA-256 7c2afa95...13bf9f0); keystore in `~/.openpad-signing/`, not in the repository.
+- Unit tests: 1028, 0 failing (`./gradlew test`; random/property tests run a fifth locally, the full count with
+  `-Popenpad.fullProperties=true` as CI does); lint clean (0 errors); `assembleDebug` and `compileDebugAndroidTestKotlin` build.
+- Instrumented tests on GitHub (API 36 emulator): 149, grouped by feature (ChecklistUiTest, ChecklistPasteUiTest, ListConversionUiTest,
+  ClipboardUiTest, RawBlocksUiTest, SearchUiTest, FoldersUiTest, GermanUiTest, LanguageUiTest, LayoutUiTest, ExternalFileUiTest, MiscUiTest,
+  CaretHitTest, ChecklistScroll, ColdStart, EditorDensity, ExternalFlow, FontSize, NotesFlow, RichEditor, Selection, SessionFlow,
+  StructuralEditing, Title).
+- Signing: Alpha 1-9 share one certificate (SHA-256 7c2afa95...13bf9f0); keystore in `~/.openpad-signing/`, not in the repository.
+- Audit material (not in the repository): `/root/openPad-audit/` (report, committee phases, review rounds 1 and 2).
 
-## What Alpha 8 changed (details in docs/editor.md "Clipboard and lines", "Lists from several lines", "Paste as Checklist")
-- Plain Copy/Cut = one line per row (no blank line between paragraphs; wrapping is never a line break); CRLF/CR normalised on every insert.
-- Several lines pasted into a list/checklist item (or a heading) = sibling rows (`EditorOps.pasteLines`); the list buttons convert every line of
-  a row / every selected row (`ListConversion`, markers cleaned, blank lines = separator). `SegmentEditing.interpret` uses the caret to place a
-  paste that is ambiguous at a row seam.
-- "Paste as Checklist" (`ListImport`, `EditorOps.pasteChecklist`, `NotesViewModel.pasteAsChecklist`): text menu + overflow menu; messenger
-  headers only with a real timestamp; a blank note becomes a Smart Checklist.
+## What Alpha 9 changed (details in CHANGELOG.md, docs/storage.md "External documents"/"Export", docs/architecture.md "Alpha 9 additions")
+- External documents: SHA-256 comparison state; a document changed by another app is not overwritten (question: Reload keeps the own text
+  as a note "<title> (my version)", Keep mine); re-read on ON_START; one provider call per document, abandoned after 15 s.
+- Export all notes (Settings -> Backup), lasting "Not saved" bar, Delete permanently checks the delete, undo for Clear and Move to Trash.
+- Editor: unchanged blocks are not converted per keystroke (8000-word note: 586 ms -> 46 ms per 300 keystrokes on the test machine);
+  debug Settings show measured keystroke/open times for the phone check.
+- Known limits: "Open with" while the open document has an unanswered conflict is dropped; the ON_STOP save is started, not awaited
+  (docs/storage.md); a list of 500 items is still regenerated as one block per keystroke (~6 ms/keystroke on the test machine).
 
 ## Regression boundary
 The Alpha 2 keyboard/focus behaviour (held Backspace across lists, no keyboard flicker, ticking a checkbox keeps the keyboard) was confirmed

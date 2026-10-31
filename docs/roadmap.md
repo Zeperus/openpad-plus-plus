@@ -17,7 +17,7 @@
 | 7e | Alpha 6: caret hit testing in the whole row | done (`0.1.0-alpha.6`) |
 | 7f | Alpha 7: editor text size setting | done (`0.1.0-alpha.7`) |
 | 7g | Alpha 8: logical-line clipboard, several lines -> list items, Paste as Checklist (messenger cleanup) | done (`0.1.0-alpha.8`) |
-| 7h | Audit follow-up (2026-10-31): data safety (external conflicts, export, save errors, permanent delete), faster/targeted tests, editor performance, UX quick wins, view model/screen split, accessibility | in progress |
+| 7h | Audit follow-up (2026-10-31): data safety (external conflicts, export, save errors, permanent delete), faster/targeted tests, editor performance, UX quick wins, view model/screen split, accessibility | done (`0.1.0-alpha.9`) |
 | 8 | Checklist polish (global default, drag reorder), table cell editing | planned |
 | 9 | Trash and safety polish | planned |
 | 10 | Polish (themes, accessibility, tablet layout, tables/images) | planned |

@@ -95,6 +95,28 @@ Operations change rows in place (kind, text, depth) and the focused row survives
 [editor.md](editor.md#identity-and-focus-why-the-keyboard-used-to-flicker)). The smart checklist flag is note metadata
 (`NoteInfo.smartChecklist`, `index.json`), handed to the `EditorSession`; the ordering rules live in `editor/Checklist.kt`.
 
+## Alpha 9 additions (audit follow-up)
+
+The 2026-10-31 audit asked for changes that stay local. The view model and the screen were cut along ownership, without a framework:
+
+- **`ui/SettingsModel`** owns the preferences (startup mode, language, editor text size, FILES sort); `NotesViewModel.preferences`.
+  Preference writes never touch notes, so they do not take the `actions` lock; a failed write cannot crash the app.
+- **`ui/NoteSearchController`** owns the notes search (`NotesViewModel.noteSearch`): side-effect-free reads (`NoteRepository.peekText`),
+  hits computed on `Dispatchers.Default`, a generation counter so only the latest query publishes, old results cleared at once.
+- **`ui/EditorStatePersistence`** owns `editor-state.json`: idle debounce (the `Autosaver` loop), a cheap immutable snapshot on the main
+  thread (`EditorStateCodec.snapshot`) and the expensive encoding on `Dispatchers.Default`; writes strictly in order.
+- **Screen files:** `NotesScreen` (routing, top bar, menu, shared snackbar host), `NotesDrawer`, `NoteDialogs`, `TabStrip`, `SettingsScreen`.
+- **External documents** (`FileNoteRepository`): a SHA-256 comparison state per document (`NoteChangedExternallyException`,
+  `checkExternal`/`adoptExternal`/`overrideExternalChange`), one provider call per document on a small pool (`busyDocuments`), provider
+  exceptions mapped to "unavailable". The view model turns a conflict into a question (`externalConflict`, `reloadExternal(copyTitle)`
+  keeps the user's text as a note, `keepMineExternal`) and re-reads an unchanged external document on `ON_START` (`onAppResumed`).
+- **Export** (`domain/NoteExport` plan + `data/TreeExporter` as `ExportTarget`): texts are read under the `actions` lock, the folder is
+  written outside it.
+- **Editor input path:** `EditorDocument.toBlocks` builds a block only if its group changed; `Segments.splitFor` caches the split per
+  document; `Segment.indexOf` is a lazy map. Debug builds show measured edit/open times in Settings (`EditorDiagnostics.timing`).
+- **Tests:** random/property tests run a fifth locally and the full count on CI (`PropertyBudget`, `-Popenpad.fullProperties=true`);
+  instrumented tests are grouped by feature.
+
 ## Alpha 8 additions
 
 - **Lines and lists** (pure Kotlin, `editor/`): `ListImport` (line endings, list/task markers, messenger headers, the items of a Paste as
@@ -122,9 +144,9 @@ Operations change rows in place (kind, text, depth) and the focused row survives
 - **Rendered raw blocks**: `editor/RawBlocks.kt` classifies a raw row (table / image / simple HTML / other); `ui/editor/RawViews.kt` draws it.
   The model is unchanged: they are still raw rows written back verbatim.
 - **Remembered state**: `editor/PersistedState.kt` (fingerprint, bounded steps) with `FileEditorStateStore` (`editor-state.json`); the view
-  model loads it at startup, restores a session only for the exact text, saves dirty sessions ~1 s after a change and on `flush()`.
+  model loads it at startup, restores a session only for the exact text, saves dirty sessions 0.8 s after the last change (at the latest after 5 s) and on `flush()` (since Alpha 9 in `EditorStatePersistence`).
 - **Search / Find**: `domain/NoteSearch.kt` and `editor/FindInNote.kt` are pure; the view model runs the search off the actions lock.
-- **Folders**: metadata in the index (`NoteInfo.folderId`, `FolderInfo`), drawer grouping and dialogs in `NotesScreen`.
+- **Folders**: metadata in the index (`NoteInfo.folderId`, `FolderInfo`), drawer grouping in `NotesDrawer`, dialogs in `NoteDialogs`.
 - **Adaptive layout**: `BoxWithConstraints` + `WindowSizeClass`: Expanded width -> `PermanentNavigationDrawer` ("sidebar"), otherwise the modal drawer.
 - **Smart checklist** is enforced in `EditorSession.settled` after every edit; **New checklist** creates the draft with `smartOnCreate`.
 
