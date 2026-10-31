@@ -2,6 +2,7 @@ package io.github.zeperus.openpad.ui
 
 import io.github.zeperus.openpad.data.FakeExternalDocuments
 import io.github.zeperus.openpad.data.FileNoteRepository
+import io.github.zeperus.openpad.domain.NoteChangedExternallyException
 import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteInfo
 import io.github.zeperus.openpad.domain.NoteRepository
@@ -16,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -27,6 +29,7 @@ class NoteSearchControllerTest {
     @get:Rule val tmp = TemporaryFolder()
 
     private var tick = 1_000L
+    private val provider = FakeExternalDocuments()
     private lateinit var repository: NoteRepository
     private lateinit var controller: NoteSearchController
     private var listed: List<NoteInfo> = emptyList() // what the view model's list would show
@@ -34,7 +37,7 @@ class NoteSearchControllerTest {
 
     private fun TestScope.setUp() {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
-        repository = FileNoteRepository(File(tmp.root, "store"), clock = { tick++ }, dispatcher = dispatcher, external = FakeExternalDocuments())
+        repository = FileNoteRepository(File(tmp.root, "store"), clock = { tick++ }, dispatcher = dispatcher, external = provider)
         controller = NoteSearchController(
             repository,
             CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()),
@@ -130,5 +133,25 @@ class NoteSearchControllerTest {
         val hit = controller.results.single()
         assertEquals("Draft", hit.note.title)
         assertEquals("fresh text", hit.snippet)
+    }
+
+    @Test fun `searching an external document does not change what a later save compares against`() = runTest {
+        setUp()
+        provider.put("content://docs/doc/plan", "original", name = "Plan.md")
+        val id = repository.openExternal("content://docs/doc/plan", persistent = true).id
+        repository.openNote(id) // the app has read the document: this is the baseline
+        listed = repository.listNotes()
+        provider.put("content://docs/doc/plan", "changed elsewhere")
+
+        controller.search("changed"); advanceTimeBy(150); runCurrent()
+        assertEquals(listOf("Plan"), controller.results.map { it.note.title })
+
+        try {
+            repository.saveNote(id, "my edit")
+            fail("the search moved the baseline: the other app's change would be overwritten")
+        } catch (_: NoteChangedExternallyException) {
+            // expected: the change is still a conflict
+        }
+        assertEquals("changed elsewhere", provider.text("content://docs/doc/plan"))
     }
 }

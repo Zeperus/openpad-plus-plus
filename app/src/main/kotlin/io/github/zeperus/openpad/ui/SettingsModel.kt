@@ -55,8 +55,10 @@ class SettingsModel(
     /** The user's choice: remembered and applied (the screens switch language without a phone-wide change). */
     fun chooseLanguage(choice: AppLanguage) {
         scope.launch {
+            val previous = language
             language = choice
-            write { languageManager?.choose(choice) ?: store.setLanguage(choice) }
+            // If the choice could not be stored (and so not applied), the screen must not keep showing it.
+            if (!write { languageManager?.choose(choice) ?: store.setLanguage(choice) }) language = previous
         }
     }
 
@@ -79,15 +81,15 @@ class SettingsModel(
     fun decreaseEditorFontSize() = chooseEditorFontSize(EditorFontSize.decreased(editorFontSize))
 
     /**
-     * Stores a preference. A failed write (e.g. storage full) must not crash the app: the choice then holds for this run only.
-     * Returns false if it could not be stored.
+     * Stores a preference. A failed write (e.g. storage full, or any other exception from the store) must never crash the app:
+     * the choice then holds for this run only. Cancellation is rethrown. Returns false if it could not be stored.
      */
     private suspend fun write(block: suspend () -> Unit): Boolean = try {
         block()
         true
     } catch (e: CancellationException) {
         throw e
-    } catch (_: java.io.IOException) {
+    } catch (_: Exception) {
         false
     }
 

@@ -44,6 +44,12 @@ class SettingsModelTest {
         override suspend fun filesSort(): FilesSort = throw IOException("unreadable")
     }
 
+    /** Reads work, but every write fails with an exception that is not an IOException. */
+    private class BrokenWriteSettings(private val base: FakeSettings) : SettingsStore by base {
+        override suspend fun setStartupMode(mode: StartupMode) { throw IllegalStateException("broken store") }
+        override suspend fun setLanguage(language: AppLanguage) { throw IllegalStateException("broken store") }
+    }
+
     private class FakeApplier : LocaleApplier {
         val applied = ArrayList<AppLanguage>()
         override fun apply(language: AppLanguage) { applied += language }
@@ -144,6 +150,16 @@ class SettingsModelTest {
         val restarted = SettingsModel(settings, null, this)
         assertEquals(StartupMode.ResumeSession, restarted.load())
         assertEquals(24, restarted.editorFontSize)
+    }
+
+    @Test fun `a store that throws on write does not crash, and the language falls back to the previous one`() = runTest {
+        val model = SettingsModel(BrokenWriteSettings(FakeSettings()), null, this)
+        model.load()
+        model.chooseLanguage(AppLanguage.German)
+        model.chooseStartupMode(StartupMode.BlankNote)
+        advanceUntilIdle()
+        assertEquals(AppLanguage.System, model.language) // German was not stored, so it is not shown
+        assertEquals(StartupMode.ResumeAndBlank, model.startupMode)
     }
 
     @Test fun `the language is applied through the language manager`() = runTest {

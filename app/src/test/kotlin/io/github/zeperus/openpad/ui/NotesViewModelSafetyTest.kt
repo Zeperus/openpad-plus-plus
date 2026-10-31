@@ -95,6 +95,16 @@ class NotesViewModelSafetyTest {
         assertEquals("changed elsewhere", provider.text(uri))
     }
 
+    @Test fun `a second reload tap does nothing`() = runTest {
+        val vm = conflictedViewModel()
+        vm.reloadExternal("Plan (my version)")
+        vm.reloadExternal("Plan (my version)") // the double tap
+        runCurrent()
+        assertEquals(1, vm.notes.count { it.title == "Plan (my version)" })
+        assertEquals("changed elsewhere", vm.text)
+        assertNull(vm.externalConflict)
+    }
+
     @Test fun `keep mine overwrites the document with the editor text`() = runTest {
         val vm = conflictedViewModel()
         vm.keepMineExternal(); runCurrent()
@@ -170,11 +180,42 @@ class NotesViewModelSafetyTest {
         assertEquals("changed elsewhere", provider.text(uri))
     }
 
+    @Test fun `text typed during the read on coming back still meets the conflict in the next autosave`() = runTest {
+        provider.put(uri, "original", name = "Plan.md")
+        val vm = launch()
+        vm.openExternal(uri, persistent = true)
+        provider.put(uri, "changed elsewhere")
+        provider.onRead = { vm.onTextChange("typed meanwhile") }
+        vm.onAppResumed(); runCurrent()
+        provider.onRead = null
+
+        advanceTimeBy(1_000); runCurrent() // the pending autosave runs
+        assertEquals("Plan", vm.externalConflict)
+        assertEquals("typed meanwhile", vm.text)
+        assertEquals("changed elsewhere", provider.text(uri)) // the other app's version is not overwritten
+    }
+
+    @Test fun `after coming back and taking the other version, the next edit is saved without a conflict`() = runTest {
+        provider.put(uri, "original", name = "Plan.md")
+        val vm = launch()
+        vm.openExternal(uri, persistent = true)
+        provider.put(uri, "changed elsewhere")
+        vm.onAppResumed(); runCurrent()
+        assertEquals("changed elsewhere", vm.text)
+
+        vm.onTextChange("changed elsewhere, and my line")
+        advanceTimeBy(1_000); runCurrent()
+        assertNull(vm.externalConflict)
+        assertFalse(vm.saveFailed)
+        assertEquals("changed elsewhere, and my line", provider.text(uri))
+    }
+
     // ---- The "not saved" state -----------------------------------------------------------------------------------
 
     /** Passes everything through to [real] except the calls that write note text, which can be made to fail. */
     private class FlakyRepository(private val real: NoteRepository) : NoteRepository by real {
         var failSaves = false
+        var failTrash = false
         override suspend fun saveNote(id: NoteId, text: String): NoteInfo {
             if (failSaves) throw NoteStorageException("disk full")
             return real.saveNote(id, text)
@@ -183,6 +224,26 @@ class NotesViewModelSafetyTest {
             if (failSaves) throw NoteStorageException("disk full")
             return real.createNote(text)
         }
+        override suspend fun moveToTrash(id: NoteId): NoteInfo {
+            if (failTrash) throw NoteStorageException("trash broken")
+            return real.moveToTrash(id)
+        }
+    }
+
+    @Test fun `an action that fails for another reason is not reported as a save failure`() = runTest {
+        val flaky = FlakyRepository(disk())
+        val vm = launch(repository = flaky)
+        vm.onTextChange("first"); advanceTimeBy(1_000); runCurrent()
+
+        flaky.failSaves = true
+        vm.onTextChange("first, edited"); advanceTimeBy(1_000); runCurrent()
+        assertEquals(UserMessage.SaveFailed, vm.message) // the autosave failed earlier
+
+        flaky.failSaves = false
+        flaky.failTrash = true
+        vm.deleteCurrent(); runCurrent() // the save before the trash works; the trash itself fails
+
+        assertEquals(UserMessage.ActionFailed, vm.message)
     }
 
     @Test fun `a failed autosave sets the not-saved state until a later save succeeds`() = runTest {

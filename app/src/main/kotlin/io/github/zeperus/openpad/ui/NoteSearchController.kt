@@ -90,8 +90,9 @@ class NoteSearchController(
             note to text
         }
 
+    /** Side-effect-free read: searching never moves the baseline a later save compares against, and never opens a note. */
     private suspend fun readText(note: NoteInfo): String? = try {
-        withTimeoutOrNull(if (note.isExternal) EXTERNAL_READ_MILLIS else INTERNAL_READ_MILLIS) { repository.openNote(note.id).text }
+        withTimeoutOrNull(if (note.isExternal) EXTERNAL_READ_MILLIS else INTERNAL_READ_MILLIS) { repository.peekText(note.id) }
     } catch (e: CancellationException) {
         throw e
     } catch (_: Exception) {

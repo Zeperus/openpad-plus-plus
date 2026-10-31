@@ -212,6 +212,9 @@ class NotesViewModel(
     var saveFailed by mutableStateOf(false)
         private set
 
+    /** Set by [saveNow] when its write failed; [act] reads it so an action that failed because of the save says "not saved". Reset at the start of each act. */
+    private var saveFailedNow = false
+
     /** Title of the active external document that another app changed since openPad++ read it; the UI asks reload / keep mine. */
     var externalConflict by mutableStateOf<String?>(null)
         private set
@@ -601,11 +604,12 @@ class NotesViewModel(
      * had is not lost: if it differs from the file, it is kept as a new internal note titled [copyTitle] (it shows in FILES).
      */
     fun reloadExternal(copyTitle: String) = act {
+        if (externalConflict == null) return@act // a second tap: the first answer already resolved the conflict
         val id = editor.info?.id ?: return@act
         if (conflictNoteId != null && conflictNoteId != id) { clearConflict(); return@act }
         val mine = editor.text
-        val content = repository.openNote(id)
-        if (mine.isNotBlank() && mine != content.text) {
+        // The copy comes first: if it cannot be made, the conflict and the baseline stay as they are.
+        if (mine.isNotBlank()) {
             val copy = repository.createNote(mine)
             val wanted = NoteFileName.sanitizeOrNull(copyTitle)
             if (wanted != null) {
@@ -616,6 +620,7 @@ class NotesViewModel(
                 }
             }
         }
+        val content = repository.openNote(id)
         sessions.remove(id)
         switchTo(NoteEditor(repository, NoteContent(content.info, content.text, content.readOnly, content.readOnlyReason)))
         clearConflict()
@@ -625,6 +630,7 @@ class NotesViewModel(
 
     /** Conflict answer "keep mine": the editor's text overwrites the document, which is allowed once for the current on-disk version. */
     fun keepMineExternal() = act {
+        if (externalConflict == null) return@act // a second tap: nothing is pending any more
         val id = editor.info?.id ?: return@act
         if (conflictNoteId != null && conflictNoteId != id) { clearConflict(); return@act }
         repository.overrideExternalChange(id)
@@ -654,20 +660,19 @@ class NotesViewModel(
         val info = before.info ?: return@act
         if (!info.isExternal || before.hasUnsavedChanges) return@act
         val textBefore = before.text
-        val changed = try {
+        // One read. It does not move the baseline, so if the user types meanwhile the saves still see the other app's version.
+        val version = try {
             repository.checkExternal(info.id)
         } catch (e: NoteSourceUnavailableException) {
-            return@act
+            null
         } catch (e: NoteUnreadableException) {
-            return@act
-        }
-        if (changed == null) return@act // not changed outside: nothing to do
-        if (editor !== before) return@act
-        if (before.hasUnsavedChanges || before.text != textBefore) { raiseConflict(info.title); return@act }
-        val content = repository.openNote(info.id)
-        if (editor !== before || before.hasUnsavedChanges) { raiseConflict(info.title); return@act }
+            null
+        } ?: return@act // not changed outside, nothing to compare, or the document cannot be read right now
+        if (editor !== before || before.hasUnsavedChanges || before.text != textBefore) { raiseConflict(info.title); return@act }
         sessions.remove(info.id)
-        switchTo(NoteEditor(repository, NoteContent(content.info, content.text, content.readOnly, content.readOnlyReason)))
+        switchTo(NoteEditor(repository, NoteContent(info, version.text, before.readOnly, before.readOnlyReason)))
+        // Only now, with the editor showing the other version, the baseline moves. The autosave waits for [actions], so no save runs before this.
+        repository.adoptExternal(info.id, version)
     }
 
     /**
@@ -1054,6 +1059,7 @@ class NotesViewModel(
             throw e // asked, not failed: the conflict question covers it
         } catch (e: NoteStorageException) {
             saveFailed = true
+            saveFailedNow = true
             message = UserMessage.SaveFailed
             throw e
         }
@@ -1159,15 +1165,23 @@ class NotesViewModel(
     private fun act(block: suspend () -> Unit) {
         scope.launch {
             actions.withLock {
+                saveFailedNow = false
                 try {
                     block()
                 } catch (e: NoteChangedExternallyException) {
                     raiseConflict(e.title) // asked, not failed: the user decides what happens to the document
                 } catch (e: NoteStorageException) {
-                    if (message != UserMessage.SaveFailed) message = UserMessage.ActionFailed // a failed save already says so
+                    // a failed save already says so; anything else is a failed action
+                    message = if (saveFailedNow) UserMessage.SaveFailed else UserMessage.ActionFailed
+                    saveFailedNow = false
                 }
             }
         }
+    }
+
+    /** The UI could not hand a note to the share sheet: says so like any other failed action. */
+    fun reportShareFailed() {
+        message = UserMessage.ActionFailed
     }
 
     /** Asks the user about a document that another app changed. The question belongs to the open note. */
