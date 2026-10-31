@@ -74,10 +74,13 @@
     <string name="message_source_unavailable">That file is not available (moved, deleted or access was withdrawn). Open it again from your files.</string>
     <string name="message_action_failed">That did not work. Your notes were not changed.</string>
 
-    <string name="save_failed_banner">Not saved. Your changes are still here and will be saved as soon as possible.</string>
+    <string name="save_failed_banner">Not saved. Your changes are still here.</string>
     <string name="save_retry">Try again</string>
     <string name="external_conflict_title">Changed in another app</string>
-    <string name="external_conflict_message">“%1$s” was changed in another app after openPad++ opened it. Reload shows that version (your text is kept as a recovery copy). Keep mine overwrites the file with your text.</string>
+    <string name="external_conflict_message">The file “%1$s” was changed in another app. Reload shows that version; your text is kept as the separate note “%2$s”. Keep mine overwrites the file with your text.</string>
+    <string name="external_conflict_copy_title">%1$s (my version)</string>
+    <string name="external_conflict_banner">Not saved: “%1$s” was changed in another app.</string>
+    <string name="external_conflict_decide">Decide…</string>
     <string name="external_conflict_reload">Reload</string>
     <string name="external_conflict_keep_mine">Keep mine</string>
 
@@ -182,11 +185,12 @@
     <string name="font_preview_task">Checklist item</string>
 
     <string name="settings_backup">Backup</string>
-    <string name="export_explanation">Saves a copy of every note as a .md file into a folder you choose. External files are skipped – they already are files.</string>
+    <string name="export_explanation">Saves a copy of every note as a .md file into a folder you choose. External files are skipped – they are already files.</string>
     <string name="export_all">Export all notes…</string>
     <string name="export_running">Exporting…</string>
     <string name="export_done_title">Export finished</string>
     <string name="export_done_written">Exported notes: %1$d</string>
     <string name="export_done_skipped">External files skipped: %1$d</string>
     <string name="export_done_failed">Not exported: %1$s</string>
+    <string name="export_done_more">and %1$d more</string>
 </resources>

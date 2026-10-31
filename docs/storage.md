@@ -71,8 +71,9 @@ app's storage.
 - **Reading:** strict UTF-8 (anything else is reported, never opened for editing), size limit 8 MB, a UTF-8 byte order
   mark is stripped for editing and written back if the file had one, line endings are untouched. Every provider call has a
   15-second timeout. Provider calls are blocking I/O that a coroutine timeout cannot interrupt, so each call runs in its own
-  coroutine: after the timeout the repository is released (the document counts as unavailable) even if the provider is still
-  stuck. Writes to providers stay strictly in order, so a write that was abandoned after a timeout is never overtaken by a newer one.
+  coroutine on a small pool (at most 4 threads): after the timeout the repository is released (the document counts as unavailable)
+  even if the provider is still stuck. A document never has two provider calls at once: while an abandoned call still runs, the next
+  call for that document fails at once (no queue, so no old write can land later); other documents and internal notes keep working.
 - **Writing:** providers cannot replace a file atomically, so (1) the new text is first written atomically to a private
   recovery copy `external-backups/<id>.md`, (2) the document is overwritten, (3) its content is **read back and compared**.
   If the provider fails or writes only part, the save fails visibly (the editor keeps the text and retries) and the original
@@ -80,8 +81,12 @@ app's storage.
 - **Changed by another app (audit follow-up):** the repository remembers (in memory) a SHA-256 of what it last read from or wrote
   to each external document. Before overwriting, it reads the document again; if it differs from that state (and is not already
   exactly the new text) the save is refused with `NoteChangedExternallyException` and the user is asked: *Reload* shows the other
-  app's version (the editor's text stays in the recovery copy), *Keep mine* overwrites it. When the app comes back to the
-  foreground, an external document without unsaved edits is re-read and shown anew if it changed. Remaining gap: providers offer
+  app's version and keeps the editor's text as a separate internal note "<title> (my version)", *Keep mine* overwrites it. Dismissing
+  the question leaves a "Not saved" bar until it is answered. If one of our own writes fails half-way, what the document holds afterwards
+  becomes the comparison state (if it cannot be read, none), so a retry is not mistaken for a change by another app. A version another
+  app wrote that is not valid UTF-8 is reported and never becomes the comparison state. When the app comes back to the
+  foreground, an external document without unsaved edits is re-read and shown anew if it changed; if the user types while it is
+  being read, the question is asked instead. Remaining gap: providers offer
   no compare-and-swap, so a change made in the instant between this check and the write is not detected; without a read in the
   running process (nothing opened yet) there is nothing to compare with.
 - **Read-only:** detected when the document is opened (see "Write access" below); it is shown as `Name · Read only` with a banner that says
@@ -215,7 +220,8 @@ reported as deleted while the file is still there). Trashed notes can be read bu
 
 Settings -> Backup -> *Export all notes...* asks for a folder (`ACTION_OPEN_DOCUMENT_TREE`, no permission) and writes a copy of every
 active internal note as `<Title>.md` (names made safe and unique like titles, `NoteExport.plan`). Existing files are never overwritten:
-the provider gives a duplicate name a suffix. External documents are skipped (they already are files the user owns), Trash is not
+every file is created new (most providers add a suffix to a duplicate name; some, such as cloud drives, allow two files with the
+same name). The folder is written outside the app's action lock, so typing and saving go on during an export. External documents are skipped (they already are files the user owns), Trash is not
 exported. The result shows how many notes were written, skipped, and which failed. It is a one-shot copy, not a sync.
 
 ## Session and settings (Milestone 4)

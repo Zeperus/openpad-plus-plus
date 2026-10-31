@@ -8,8 +8,8 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 - **Export all notes** (Settings -> Backup): copies every note as a `.md` file into a folder you choose; external files are skipped,
   nothing is overwritten, the result lists what was exported and what failed.
 - **"Changed in another app"**: an external document that another app changed after openPad++ read it is no longer overwritten.
-  You are asked: *Reload* (your text is kept as a recovery copy) or *Keep mine*. Coming back to the app shows the new version of an
-  unchanged external document.
+  You are asked: *Reload* (your text is kept as a separate note "<title> (my version)") or *Keep mine*; until you decide, a bar says
+  that the file is not saved. Coming back to the app shows the new version of an unchanged external document.
 - **Lasting "Not saved" bar** with *Try again* after a failed save, until the next save succeeds (before: a 4-second message).
 
 ### Changed
@@ -26,7 +26,9 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 - *Delete permanently* checks that the file is really gone; if not, the note stays in Trash and an error is shown (before, it could
   reappear in Trash after a restart).
 - A document provider that hangs (e.g. a cloud folder without network) no longer blocks saving all other notes: its call is
-  abandoned after 15 s; provider writes stay in order.
+  abandoned after 15 s, the document reports "not available" until the provider answers, and an abandoned write never runs late.
+- A save that fails while switching notes now shows "Could not save" and the Not saved bar (before: "That did not work. Your notes
+  were not changed.").
 
 ### Changed (development)
 - `docs/roadmap.md` restored (it was emptied by accident in the Alpha 8 status commit) and updated.

@@ -93,7 +93,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -394,6 +396,21 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                             }
                         }
                     }
+                    // the dialog was dismissed: the conflict stays until the user decides
+                    val conflict = vm.externalConflict
+                    if (conflict != null && !vm.conflictDialogVisible) {
+                        NoticeBar(MaterialTheme.colorScheme.errorContainer, "external-conflict-banner") {
+                            Text(
+                                text = stringResource(R.string.external_conflict_banner, conflict),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.weight(1f).padding(vertical = 6.dp),
+                            )
+                            TextButton(onClick = { vm.showConflictDialog() }, modifier = Modifier.testTag("external-conflict-decide")) {
+                                Text(stringResource(R.string.external_conflict_decide))
+                            }
+                        }
+                    }
                     RichEditor(vm, Modifier.fillMaxWidth().weight(1f))
                     if (!vm.readOnly) FormattingBar(vm)
                 }
@@ -472,12 +489,14 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
         )
     }
     // another app changed the open external document: the user chooses which version survives
-    vm.externalConflict?.let { title ->
+    val conflict = vm.externalConflict
+    if (conflict != null && vm.conflictDialogVisible) {
+        val copyTitle = stringResource(R.string.external_conflict_copy_title, conflict)
         AlertDialog(
             onDismissRequest = { vm.dismissExternalConflict() },
             title = { Text(stringResource(R.string.external_conflict_title)) },
-            text = { Text(stringResource(R.string.external_conflict_message, title)) },
-            confirmButton = { TextButton(onClick = { vm.reloadExternal() }) { Text(stringResource(R.string.external_conflict_reload)) } },
+            text = { Text(stringResource(R.string.external_conflict_message, conflict, copyTitle)) },
+            confirmButton = { TextButton(onClick = { vm.reloadExternal(copyTitle) }) { Text(stringResource(R.string.external_conflict_reload)) } },
             dismissButton = { TextButton(onClick = { vm.keepMineExternal() }) { Text(stringResource(R.string.external_conflict_keep_mine)) } },
             modifier = Modifier.testTag("external-conflict"),
         )
@@ -608,7 +627,7 @@ private fun EmptyHint(text: String) {
     )
 }
 
-/** A full-width bar above the editor (read-only notice, save error); [content] is laid out in a row. */
+/** A full-width bar above the editor (read-only notice, save error); [content] is laid out in a row. Polite live region: TalkBack announces it. */
 @Composable
 private fun NoticeBar(containerColor: Color, tag: String, content: @Composable RowScope.() -> Unit) {
     Row(
@@ -616,6 +635,7 @@ private fun NoticeBar(containerColor: Color, tag: String, content: @Composable R
             .fillMaxWidth()
             .background(containerColor)
             .padding(start = 16.dp, end = 8.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite }
             .testTag(tag),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
@@ -1031,7 +1051,7 @@ private fun ExportAllSetting(vm: NotesViewModel) {
             Text(
                 text = stringResource(R.string.export_running),
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 8.dp),
+                modifier = Modifier.padding(top = 8.dp).semantics { liveRegion = LiveRegionMode.Polite },
             )
         }
     }
@@ -1040,14 +1060,24 @@ private fun ExportAllSetting(vm: NotesViewModel) {
             onDismissRequest = { vm.exportResultShown() },
             title = { Text(stringResource(R.string.export_done_title)) },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text(stringResource(R.string.export_done_written, result.written))
                     if (result.skippedExternal > 0) Text(stringResource(R.string.export_done_skipped, result.skippedExternal))
-                    if (result.failed.isNotEmpty()) Text(stringResource(R.string.export_done_failed, result.failed.joinToString(", ")))
+                    if (result.failed.isNotEmpty()) Text(stringResource(R.string.export_done_failed, failedTitlesForDialog(result.failed)))
                 }
             },
             confirmButton = { TextButton(onClick = { vm.exportResultShown() }) { Text(stringResource(R.string.action_close)) } },
             modifier = Modifier.testTag("export-result"),
         )
     }
+}
+
+private const val MAX_LISTED_EXPORT_FAILURES = 10
+
+/** The first failed titles, then "and N more" when the list is longer than the dialog should show. */
+@Composable
+private fun failedTitlesForDialog(failed: List<String>): String {
+    val shown = failed.take(MAX_LISTED_EXPORT_FAILURES).joinToString(", ")
+    val rest = failed.size - MAX_LISTED_EXPORT_FAILURES
+    return if (rest > 0) shown + ", " + stringResource(R.string.export_done_more, rest) else shown
 }
