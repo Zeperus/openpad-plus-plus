@@ -2,18 +2,31 @@ package io.github.zeperus.openpad.ui
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.layout.width
@@ -21,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +47,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.zeperus.openpad.R
+import io.github.zeperus.openpad.domain.NoteFileName
 import kotlinx.coroutines.launch
 
 /** A full-width bar above the editor (read-only notice, save error); [content] is laid out in a row. Polite live region: TalkBack announces it. */
@@ -50,6 +65,7 @@ internal fun NoticeBar(containerColor: Color, tag: String, content: @Composable 
     )
 }
 
+/** [destructive] colors the confirm button as an error (delete, clear, remove), so it does not look like a harmless "OK". */
 @Composable
 internal fun ConfirmDialog(
     title: String,
@@ -57,12 +73,22 @@ internal fun ConfirmDialog(
     confirmLabel: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    destructive: Boolean = false,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { Text(message) },
-        confirmButton = { TextButton(onClick = onConfirm) { Text(confirmLabel) } },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = if (destructive) {
+                    ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                } else {
+                    ButtonDefaults.textButtonColors()
+                },
+            ) { Text(confirmLabel) }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) } },
     )
 }
@@ -79,9 +105,14 @@ internal fun RenameDialog(
     takenMessage = stringResource(R.string.rename_taken),
     onSubmit = onRename,
     onDismiss = onDismiss,
+    fileNameHint = true, // a note name becomes a file name, so show how it will be saved
 )
 
-/** A one-line name dialog (rename a note, create or rename a folder) with the usual error messages. */
+/**
+ * A one-line name dialog (rename a note, create or rename a folder) with the usual error messages.
+ * The text is selected and focused on open. Confirm is disabled while the name is blank or a submission runs.
+ * [fileNameHint] (note names only) shows the saved file name when sanitizing changes what was typed.
+ */
 @Composable
 internal fun NameDialog(
     title: String,
@@ -90,10 +121,29 @@ internal fun NameDialog(
     takenMessage: String,
     onSubmit: suspend (String) -> RenameResult,
     onDismiss: () -> Unit,
+    fileNameHint: Boolean = false,
 ) {
-    var name by remember { mutableStateOf(initial) }
+    var name by remember { mutableStateOf(TextFieldValue(initial, selection = TextRange(0, initial.length))) }
     var error by remember { mutableStateOf<RenameResult?>(null) }
+    var submitting by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    // the file name it will be saved as, when that differs from the typed name (e.g. "a/b" -> "a b")
+    val savedAs = if (fileNameHint) NoteFileName.sanitizeOrNull(name.text)?.takeIf { it != name.text.trim() } else null
+    fun submit() {
+        if (submitting || name.text.isBlank()) return // also blocks a second IME "done" while the first is still running
+        submitting = true
+        scope.launch {
+            val result = onSubmit(name.text)
+            if (result == RenameResult.Ok) {
+                onDismiss()
+            } else {
+                error = result
+                submitting = false // the user corrects the name and confirms again
+            }
+        }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -104,24 +154,26 @@ internal fun NameDialog(
                 label = { Text(stringResource(R.string.dialog_rename_label)) },
                 singleLine = true,
                 isError = error != null,
-                modifier = Modifier.testTag("name-field"),
+                modifier = Modifier.focusRequester(focusRequester).testTag("name-field"),
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { submit() }),
                 supportingText = {
-                    when (error) {
-                        RenameResult.InvalidName -> Text(stringResource(R.string.rename_invalid))
-                        RenameResult.NameTaken -> Text(takenMessage)
-                        RenameResult.Failed -> Text(stringResource(R.string.rename_failed))
-                        else -> Unit
+                    val errorText = when (error) {
+                        RenameResult.InvalidName -> stringResource(R.string.rename_invalid)
+                        RenameResult.NameTaken -> takenMessage
+                        RenameResult.Failed -> stringResource(R.string.rename_failed)
+                        else -> null
                     }
+                    val supporting = errorText ?: savedAs?.let { stringResource(R.string.name_sanitized_hint, it) }
+                    if (supporting != null) Text(supporting)
                 },
             )
         },
         confirmButton = {
-            TextButton(onClick = {
-                scope.launch {
-                    val result = onSubmit(name)
-                    if (result == RenameResult.Ok) onDismiss() else error = result
-                }
-            }) { Text(confirmLabel) }
+            TextButton(
+                onClick = { submit() },
+                enabled = name.text.isNotBlank() && !submitting,
+            ) { Text(confirmLabel) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) } },
     )
@@ -139,15 +191,23 @@ internal fun MoveToFolderDialog(vm: NotesViewModel, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.dialog_move_title)) },
         text = {
-            Column(Modifier.selectableGroup()) {
-                val options = listOf<Pair<String?, String>>(null to stringResource(R.string.folder_none)) + vm.folders.map { it.id to it.name }
-                for ((id, label) in options) {
-                    Row(
-                        Modifier.fillMaxWidth().selectable(selected = currentFolder == id, role = Role.RadioButton, onClick = { vm.moveCurrentToFolder(id); onDismiss() }).padding(vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = currentFolder == id, onClick = null)
-                        Text(label, modifier = Modifier.padding(start = 12.dp))
+            // the folder list scrolls above a fixed "New folder" entry, so many folders cannot push it out of reach
+            Column {
+                Column(
+                    Modifier
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState())
+                        .selectableGroup(),
+                ) {
+                    val options = listOf<Pair<String?, String>>(null to stringResource(R.string.folder_none)) + vm.folders.map { it.id to it.name }
+                    for ((id, label) in options) {
+                        Row(
+                            Modifier.fillMaxWidth().selectable(selected = currentFolder == id, role = Role.RadioButton, onClick = { vm.moveCurrentToFolder(id); onDismiss() }).padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = currentFolder == id, onClick = null)
+                            Text(label, modifier = Modifier.padding(start = 12.dp))
+                        }
                     }
                 }
                 if (creating) {
