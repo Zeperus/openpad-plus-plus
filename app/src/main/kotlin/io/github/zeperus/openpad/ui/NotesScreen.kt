@@ -6,6 +6,7 @@ import androidx.compose.ui.platform.LocalContext
 import io.github.zeperus.openpad.ShareHelper
 import io.github.zeperus.openpad.data.ExternalAccess
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -135,12 +137,20 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
         UserMessage.ActionFailed -> stringResource(R.string.message_action_failed)
         UserMessage.SourceUnavailable -> stringResource(R.string.message_source_unavailable)
         UserMessage.FolderNotEmpty -> stringResource(R.string.message_folder_not_empty)
+        UserMessage.MovedToTrash -> stringResource(R.string.message_moved_to_trash)
+        UserMessage.SmartChecklistOn -> stringResource(R.string.message_smart_checklist_on)
         null -> null
     }
+    val undoLabel = stringResource(R.string.action_undo)
     LaunchedEffect(message) {
         if (messageText != null) {
-            snackbar.showSnackbar(messageText)
+            // only a note that was just moved to Trash offers undo
+            val result = snackbar.showSnackbar(
+                message = messageText,
+                actionLabel = undoLabel.takeIf { message == UserMessage.MovedToTrash },
+            )
             vm.messageShown()
+            if (result == SnackbarResult.ActionPerformed) vm.undoTrash()
         }
     }
 
@@ -170,20 +180,32 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                         // An automatic title (the first line, or "Untitled") is renamed by a tap; a title the user chose only by a
                         // long press, so that it is not changed by accident. External documents keep their file name.
                         val canRename = vm.canRename
+                        // A title the user chose has no tap action: no ripple and no "rename" tap label, only the long press.
+                        val titleInteraction = remember { MutableInteractionSource() }
+                        val titleClicks = if (vm.hasExplicitTitle) {
+                            Modifier.combinedClickable(
+                                interactionSource = titleInteraction,
+                                indication = null,
+                                enabled = canRename,
+                                onLongClickLabel = renameLabel,
+                                onClick = {},
+                                onLongClick = { dialog = Dialog.Rename },
+                            )
+                        } else {
+                            Modifier.combinedClickable(
+                                enabled = canRename,
+                                onClickLabel = renameLabel,
+                                onLongClickLabel = renameLabel,
+                                onClick = { dialog = Dialog.Rename },
+                                onLongClick = { dialog = Dialog.Rename },
+                            )
+                        }
                         Text(
                             text = (vm.current?.title ?: stringResource(R.string.untitled)) +
                                 if (vm.readOnly) " \u00B7 " + stringResource(R.string.read_only_short) else "",
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .combinedClickable(
-                                    enabled = canRename,
-                                    onClickLabel = renameLabel.takeIf { !vm.hasExplicitTitle },
-                                    onLongClickLabel = renameLabel,
-                                    onClick = { if (!vm.hasExplicitTitle) dialog = Dialog.Rename },
-                                    onLongClick = { dialog = Dialog.Rename },
-                                )
-                                .testTag("title"),
+                            modifier = titleClicks.testTag("title"),
                         )
                     },
                     navigationIcon = {
@@ -206,6 +228,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                                 text = { Text(stringResource(R.string.selection_copy_markdown)) },
                                 onClick = {
                                     menuOpen = false
+                                    editPage = false
                                     // the selection, or - without one - the whole note
                                     vm.markdownToCopy()?.let { clipboard.copy("Markdown", it) }
                                 },
@@ -220,10 +243,10 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                                 enabled = !vm.readOnly,
                                 onClick = { menuOpen = false; editPage = false; clipboard.text()?.let { vm.pasteAsChecklist(it) } },
                             )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.settings_back)) },
-                                    onClick = { editPage = false },
-                                )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.menu_back)) },
+                                onClick = { editPage = false },
+                            )
                             } else {
                             DropdownMenuItem(
                                 text = {
@@ -267,6 +290,17 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_close)) },
                                 onClick = { menuOpen = false; vm.closeCurrent() },
+                            )
+                            // the same actions as the long-press menu of a tab (TabStrip)
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_close_others)) },
+                                enabled = vm.tabs.size > 1,
+                                onClick = { menuOpen = false; vm.closeOthers(vm.session.active) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_close_all)) },
+                                enabled = vm.tabs.size > 1,
+                                onClick = { menuOpen = false; vm.closeAll() },
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_find)) },
@@ -417,6 +451,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
             title = stringResource(R.string.dialog_delete_folder_title),
             message = stringResource(R.string.dialog_delete_folder_message, d.folder.name),
             confirmLabel = stringResource(R.string.dialog_delete_folder_confirm),
+            destructive = true,
             onConfirm = { vm.deleteFolder(d.folder.id); dialog = null },
             onDismiss = { dialog = null },
         )
@@ -424,6 +459,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
             title = stringResource(R.string.dialog_clear_title),
             message = stringResource(R.string.dialog_clear_message),
             confirmLabel = stringResource(R.string.dialog_clear_confirm),
+            destructive = true,
             onConfirm = { vm.clear(); dialog = null },
             onDismiss = { dialog = null },
         )
@@ -434,6 +470,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                 vm.current?.title ?: stringResource(R.string.untitled),
             ),
             confirmLabel = stringResource(if (vm.current?.isExternal == true) R.string.dialog_remove_confirm else R.string.dialog_delete_confirm),
+            destructive = true,
             onConfirm = { vm.deleteCurrent(); dialog = null },
             onDismiss = { dialog = null },
         )
@@ -441,6 +478,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
             title = stringResource(R.string.dialog_purge_title),
             message = stringResource(R.string.dialog_purge_message, d.note.title),
             confirmLabel = stringResource(R.string.action_delete_permanently),
+            destructive = true,
             onConfirm = { vm.deletePermanently(d.note.id); dialog = null },
             onDismiss = { dialog = null },
         )

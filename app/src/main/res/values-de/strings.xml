@@ -14,6 +14,7 @@
     <string name="editor_hint">Hier tippen …</string>
     <string name="open_drawer">Navigation öffnen</string>
     <string name="more_options">Weitere Optionen</string>
+    <string name="menu_back">Zurück</string>
     <string name="action_favorite">Zu Favoriten hinzufügen</string>
     <string name="action_unfavorite">Aus Favoriten entfernen</string>
     <string name="action_close">Schließen</string>
@@ -32,6 +33,7 @@
     <string name="action_clear">Inhalt löschen …</string>
     <string name="action_delete">Notiz löschen …</string>
     <string name="action_restore">Wiederherstellen</string>
+    <string name="action_undo">Rückgängig</string>
     <string name="action_delete_permanently">Endgültig löschen</string>
     <string name="settings_title">Einstellungen</string>
     <string name="settings_back">Zurück</string>
@@ -48,6 +50,7 @@
     <string name="rename_invalid">Bitte einen Namen eingeben.</string>
     <string name="rename_taken">Eine Notiz mit diesem Namen gibt es schon.</string>
     <string name="rename_failed">Die Notiz konnte nicht umbenannt werden.</string>
+    <string name="name_sanitized_hint">Wird gespeichert als „%1$s“</string>
     <string name="dialog_clear_title">Diese Notiz leeren?</string>
     <string name="dialog_clear_message">Der gesamte Text wird entfernt. Die Notiz selbst bleibt erhalten.</string>
     <string name="dialog_clear_confirm">Inhalt löschen</string>
@@ -63,6 +66,8 @@
     <string name="message_note_unreadable">Diese Datei ist kein gültiger UTF-8-Text und wurde nicht geöffnet.</string>
     <string name="message_source_unavailable">Diese Datei ist nicht verfügbar (verschoben, gelöscht oder Zugriff entzogen). Öffne sie erneut über deine Dateien.</string>
     <string name="message_action_failed">Das hat nicht geklappt. Deine Notizen wurden nicht verändert.</string>
+    <string name="message_moved_to_trash">In den Papierkorb verschoben</string>
+    <string name="message_smart_checklist_on">Smarte Checkliste an: offene Einträge stehen über den erledigten.</string>
     <string name="save_failed_banner">Nicht gespeichert. Deine Änderungen sind noch da.</string>
     <string name="save_retry">Erneut versuchen</string>
     <string name="external_conflict_title">In einer anderen App geändert</string>
@@ -145,7 +150,7 @@
         <item quantity="one">%d Treffer</item>
         <item quantity="other">%d Treffer</item>
     </plurals>
-    <string name="action_edit_menu">Auswählen, Kopieren, Einfügen …</string>
+    <string name="action_edit_menu">Markdown-Zwischenablage…</string>
 
     <string name="read_only_short">Schreibgeschützt</string>
     <string name="read_only_reason_no_grant">Schreibgeschützt: Die App, die diese Datei geöffnet hat, hat keinen Schreibzugriff erlaubt.</string>

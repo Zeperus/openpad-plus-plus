@@ -18,6 +18,14 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
   segment lookup no longer counts items again for every visible row.
 - **Share** prepares the file in the background and keeps copies that another app may still be reading (older than an hour are removed).
 - `index.json` is written compactly (older, pretty-printed files are read as before); the title check on every save needs no regex.
+- **Easier to find and to undo:** *New folder* is always in the drawer (also before the first folder exists); the formatting bar shows
+  lists and checklists right after bold/italic, fades at the edge when it can scroll, has 48 dp buttons and shows a button's name on long
+  press; tabs are 48 dp high and *Close others / Close all* are also in the menu; *Clear note* can be undone; *Move to Trash* offers *Undo*;
+  destructive confirmations are red; turning on the Smart Checklist says what it does.
+- **Dialogs:** the name field is focused and selected, *Done* on the keyboard confirms, a name that will be saved differently says so, the
+  confirm button cannot be pressed twice; the folder list scrolls with *New folder* always visible.
+- The menu's sub-page is called *Markdown clipboard…* and always opens on the main page again; a named note's title no longer reacts
+  to a tap (long press renames).
 - Debug/test builds show measured editing and opening times at the bottom of Settings (for measuring on a phone).
 - The view model ends its background loop when it is discarded.
 

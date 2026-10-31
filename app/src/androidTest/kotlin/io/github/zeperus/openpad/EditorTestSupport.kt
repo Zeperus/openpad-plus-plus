@@ -120,7 +120,7 @@ internal fun ComposeTestRule.overflow(item: String) {
 /** An item of the overflow menu's second page (select / copy / paste). */
 internal fun ComposeTestRule.overflowEdit(item: String) {
     onNodeWithContentDescription("More options").performClick()
-    onNodeWithText("Select, copy, paste…").performScrollTo().performClick()
+    onNodeWithText("Markdown clipboard…").performScrollTo().performClick()
     onNodeWithText(item).performScrollTo().performClick()
 }
 
