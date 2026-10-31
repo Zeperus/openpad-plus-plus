@@ -16,6 +16,10 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 - **Faster editing in long lists:** list markers and checkboxes find their row in constant time (was a linear search per row, i.e.
   quadratic per layout); *Find in note* is only recomputed when the text or the search changes, not on every caret move; the editor's
   segment lookup no longer counts items again for every visible row.
+- **Typing in long notes is much faster:** unchanged paragraphs are no longer converted again on every keystroke (300 keystrokes in an
+  8000-word note: 586 ms -> 46 ms on the test machine), and the editor's segment layout is computed once per change.
+- **Search** clears old results as soon as you type, shows *Searching…*, works in the background, has a clear button and does not
+  autocorrect the search words.
 - **Share** prepares the file in the background and keeps copies that another app may still be reading (older than an hour are removed).
 - `index.json` is written compactly (older, pretty-printed files are read as before); the title check on every save needs no regex.
 - **Easier to find and to undo:** *New folder* is always in the drawer (also before the first folder exists); the formatting bar shows

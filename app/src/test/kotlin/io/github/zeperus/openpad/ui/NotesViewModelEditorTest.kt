@@ -49,6 +49,7 @@ class NotesViewModelEditorTest {
             settings,
             CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()),
             io.github.zeperus.openpad.data.FileEditorStateStore(File(root, "editor-state.json"), dispatcher),
+            searchDispatcher = dispatcher,
         )
     }
 
@@ -604,20 +605,20 @@ class NotesViewModelEditorTest {
         vm.newNote(); runCurrent()
         vm.type(0, "Einkauf\nMilch und Brot")
         settle()
-        vm.search("äpfel"); advanceTimeBy(300); runCurrent()
-        assertEquals(listOf("Gartenarbeit"), vm.searchResults.map { it.note.title })
-        vm.search("einkauf"); advanceTimeBy(300); runCurrent()
-        assertTrue(vm.searchResults.single().titleMatch)
-        vm.search("nirgends"); advanceTimeBy(300); runCurrent()
-        assertTrue(vm.searchResults.isEmpty())
+        vm.noteSearch.search("äpfel"); advanceTimeBy(300); runCurrent()
+        assertEquals(listOf("Gartenarbeit"), vm.noteSearch.results.map { it.note.title })
+        vm.noteSearch.search("einkauf"); advanceTimeBy(300); runCurrent()
+        assertTrue(vm.noteSearch.results.single().titleMatch)
+        vm.noteSearch.search("nirgends"); advanceTimeBy(300); runCurrent()
+        assertTrue(vm.noteSearch.results.isEmpty())
 
-        vm.search("pflücken"); advanceTimeBy(300); runCurrent()
-        val hit = vm.searchResults.single()
+        vm.noteSearch.search("pflücken"); advanceTimeBy(300); runCurrent()
+        val hit = vm.noteSearch.results.single()
         vm.openFromSearch(hit.note.id, "pflücken"); runCurrent()
         assertEquals("Gartenarbeit", vm.current?.title)
         assertEquals(1, vm.find?.matches?.size)
-        vm.clearSearch()
-        assertTrue(vm.searchResults.isEmpty())
+        vm.noteSearch.clear()
+        assertTrue(vm.noteSearch.results.isEmpty())
     }
 
     @Test fun `find in note counts, steps and follows edits`() = runTest {

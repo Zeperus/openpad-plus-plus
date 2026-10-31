@@ -126,12 +126,12 @@ fun NotesScreen(vm: NotesViewModel) {
     } else if (showSearch) {
         SearchScreen(
             vm,
-            onBack = { showSearch = false; vm.clearSearch() },
+            onBack = { showSearch = false; vm.noteSearch.clear() },
             onOpen = { hit ->
-                val query = vm.searchQuery
+                val query = vm.noteSearch.query
                 showSearch = false
                 vm.openFromSearch(hit.note.id, query)
-                vm.clearSearch()
+                vm.noteSearch.clear()
             },
         )
     } else {

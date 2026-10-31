@@ -31,13 +31,11 @@ import io.github.zeperus.openpad.domain.NoteNotFoundException
 import io.github.zeperus.openpad.domain.NoteNotInTrashException
 import io.github.zeperus.openpad.domain.NoteSourceUnavailableException
 import io.github.zeperus.openpad.domain.NoteRepository
-import io.github.zeperus.openpad.domain.NoteSearch
-import io.github.zeperus.openpad.domain.SearchHit
 import io.github.zeperus.openpad.editor.FindInNote
 import io.github.zeperus.openpad.editor.FindMatch
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.withTimeoutOrNull
 import io.github.zeperus.openpad.domain.NoteStorageException
 import io.github.zeperus.openpad.domain.NoteUnreadableException
 import io.github.zeperus.openpad.domain.OpenDocuments
@@ -101,6 +99,8 @@ class NotesViewModel(
     private val editorStates: EditorStateStore = EditorStateStore.None,
     private val languageManager: io.github.zeperus.openpad.domain.LanguageManager? = null,
     private val exportTarget: ExportTarget? = null,
+    /** Where the global search computes its hits (tests pass a test dispatcher). */
+    private val searchDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
     private val actions = Mutex() // user actions and autosave run one at a time, in order
     private var editor = NoteEditor(repository)
@@ -138,12 +138,14 @@ class NotesViewModel(
     /** The document [find]'s matches were computed for: they are only searched again when the document or the query changes. */
     private var findDoc: Any? = null
 
-    /** Global note search: what was typed and what it found. */
-    var searchQuery by mutableStateOf("")
-        private set
-    var searchResults by mutableStateOf<List<SearchHit>>(emptyList())
-        private set
-    private var searchJob: Job? = null
+    /** Global note search over the titles and texts of all notes (the search screen reads its state). */
+    val noteSearch = NoteSearchController(
+        repository = repository,
+        scope = scope,
+        notes = { notes },
+        openText = { current?.id?.let { it to editor.text } }, // the open note is searched with what is on screen
+        computeDispatcher = searchDispatcher,
+    )
 
     /**
      * Counts the times the *model* moved the caret (an operation, Undo, a focus request, a new document). A text field that sees a
@@ -374,37 +376,7 @@ class NotesViewModel(
         return FindState(query, matches, current.coerceIn(0, maxOf(0, matches.lastIndex)))
     }
 
-    /** Searches the titles and the text of all notes (the open note with what is on screen). Results appear in [searchResults]. */
-    fun search(query: String) {
-        searchQuery = query
-        searchJob?.cancel()
-        if (query.isBlank()) {
-            searchResults = emptyList()
-            return
-        }
-        searchJob = scope.launch {
-            delay(150) // typing on: only the last query is searched
-            val texts = notes.map { n ->
-                val text: String? = if (n.id == current?.id) editor.text else try {
-                    withTimeoutOrNull(if (n.isExternal) 1_500L else 10_000L) { repository.openNote(n.id).text }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    null // a file that cannot be read is simply not searched
-                }
-                n to text
-            }
-            searchResults = NoteSearch.search(query, texts)
-        }
-    }
-
-    fun clearSearch() {
-        searchJob?.cancel()
-        searchQuery = ""
-        searchResults = emptyList()
-    }
-
-    /** Opens a search result and shows where the text is (Find in note, prefilled with the query). */
+    /** Opens a search result from [noteSearch] and shows where the text is (Find in note, prefilled with the query). */
     fun openFromSearch(id: NoteId, query: String) = act {
         openNoteInternal(id)
         if (!readOnlyOrBlank()) find = computeFind(query, 0)
@@ -1058,7 +1030,7 @@ class NotesViewModel(
     }
 
     override fun onCleared() {
-        searchJob?.cancel()
+        noteSearch.cancel()
         scope.launch {
             autosaver.flush()
             persistStates()

@@ -138,6 +138,8 @@
     <string name="action_find">Find in note</string>
     <string name="search_hint">Search notes</string>
     <string name="search_no_results">No notes found</string>
+    <string name="search_clear">Clear search</string>
+    <string name="search_running">Searching…</string>
     <plurals name="search_matches">
         <item quantity="one">%d match</item>
         <item quantity="other">%d matches</item>

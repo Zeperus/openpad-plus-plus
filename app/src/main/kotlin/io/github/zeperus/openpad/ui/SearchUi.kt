@@ -8,13 +8,17 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -32,12 +36,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -49,17 +55,28 @@ import io.github.zeperus.openpad.domain.SearchHit
 @Composable
 fun SearchScreen(vm: NotesViewModel, onBack: () -> Unit, onOpen: (SearchHit) -> Unit) {
     BackHandler(onBack = onBack)
+    val noteSearch = vm.noteSearch
     val focus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
     LaunchedEffect(Unit) { focus.requestFocus() }
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     TextField(
-                        value = vm.searchQuery,
-                        onValueChange = vm::search,
+                        value = noteSearch.query,
+                        onValueChange = noteSearch::search,
                         singleLine = true,
                         placeholder = { Text(stringResource(R.string.search_hint)) },
+                        trailingIcon = {
+                            if (noteSearch.query.isNotEmpty()) {
+                                IconButton(onClick = noteSearch::clear) {
+                                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.search_clear))
+                                }
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search, autoCorrectEnabled = false),
+                        keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
                         modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag("search-field"),
                     )
                 },
@@ -69,9 +86,18 @@ fun SearchScreen(vm: NotesViewModel, onBack: () -> Unit, onOpen: (SearchHit) -> 
             )
         },
     ) { padding ->
-        val results = vm.searchResults
+        val results = noteSearch.results
         Column(Modifier.fillMaxSize().padding(padding)) {
-            if (vm.searchQuery.isNotBlank() && results.isEmpty()) {
+            if (noteSearch.searching && results.isEmpty()) {
+                Row(
+                    Modifier.padding(horizontal = 24.dp, vertical = 16.dp).testTag("search-running"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text(stringResource(R.string.search_running), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else if (noteSearch.query.isNotBlank() && results.isEmpty()) {
                 Text(stringResource(R.string.search_no_results), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(24.dp))
             }
             LazyColumn(Modifier.fillMaxSize()) {
