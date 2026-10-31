@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.background
@@ -36,6 +37,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -356,14 +358,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                             io.github.zeperus.openpad.domain.ReadOnlyReason.Unavailable -> R.string.read_only_reason_unknown
                             null -> R.string.read_only_banner
                         }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.secondaryContainer)
-                                .padding(start = 16.dp, end = 8.dp)
-                                .testTag("read-only-banner"),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+                        NoticeBar(MaterialTheme.colorScheme.secondaryContainer, "read-only-banner") {
                             Text(
                                 text = stringResource(reason),
                                 style = MaterialTheme.typography.labelMedium,
@@ -374,6 +369,20 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                                 TextButton(onClick = { openWritable.launch(arrayOf("*/*")) }, modifier = Modifier.testTag("open-writable")) {
                                     Text(stringResource(R.string.action_open_writable))
                                 }
+                            }
+                        }
+                    }
+                    // a save that failed stays visible until a retry succeeds; the text is kept
+                    if (vm.saveFailed) {
+                        NoticeBar(MaterialTheme.colorScheme.errorContainer, "save-failed-banner") {
+                            Text(
+                                text = stringResource(R.string.save_failed_banner),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.weight(1f).padding(vertical = 6.dp),
+                            )
+                            TextButton(onClick = { vm.retrySave() }, modifier = Modifier.testTag("save-retry")) {
+                                Text(stringResource(R.string.save_retry))
                             }
                         }
                     }
@@ -452,6 +461,17 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
             confirmLabel = stringResource(R.string.action_delete_permanently),
             onConfirm = { vm.deletePermanently(d.note.id); dialog = null },
             onDismiss = { dialog = null },
+        )
+    }
+    // another app changed the open external document: the user chooses which version survives
+    vm.externalConflict?.let { title ->
+        AlertDialog(
+            onDismissRequest = { vm.dismissExternalConflict() },
+            title = { Text(stringResource(R.string.external_conflict_title)) },
+            text = { Text(stringResource(R.string.external_conflict_message, title)) },
+            confirmButton = { TextButton(onClick = { vm.reloadExternal() }) { Text(stringResource(R.string.external_conflict_reload)) } },
+            dismissButton = { TextButton(onClick = { vm.keepMineExternal() }) { Text(stringResource(R.string.external_conflict_keep_mine)) } },
+            modifier = Modifier.testTag("external-conflict"),
         )
     }
 }
@@ -577,6 +597,20 @@ private fun EmptyHint(text: String) {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 28.dp, vertical = 8.dp),
+    )
+}
+
+/** A full-width bar above the editor (read-only notice, save error); [content] is laid out in a row. */
+@Composable
+private fun NoticeBar(containerColor: Color, tag: String, content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(containerColor)
+            .padding(start = 16.dp, end = 8.dp)
+            .testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
     )
 }
 
@@ -882,6 +916,8 @@ private fun SettingsScreen(vm: NotesViewModel, onBack: () -> Unit) {
             }
             SectionHeader(stringResource(R.string.settings_editor))
             EditorTextSizeSetting(vm)
+            SectionHeader(stringResource(R.string.settings_backup))
+            ExportAllSetting(vm)
             val context = LocalContext.current
             val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull().orEmpty() }
             Text(
@@ -948,5 +984,50 @@ private fun EditorTextSizeSetting(vm: NotesViewModel) {
                 }
             }
         }
+    }
+}
+
+/** Settings > Backup: writes a copy of every note as .md into a folder the user picks, then shows what was written. */
+@Composable
+private fun ExportAllSetting(vm: NotesViewModel) {
+    // null means the folder picker was cancelled: nothing to export
+    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) vm.exportAll(uri.toString())
+    }
+    Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+        Text(
+            text = stringResource(R.string.export_explanation),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedButton(
+            onClick = { pickFolder.launch(null) },
+            enabled = !vm.exporting,
+            modifier = Modifier.padding(top = 8.dp).testTag("export-all"),
+        ) {
+            Text(stringResource(R.string.export_all))
+        }
+        if (vm.exporting) {
+            Text(
+                text = stringResource(R.string.export_running),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
+    vm.exportResult?.let { result ->
+        AlertDialog(
+            onDismissRequest = { vm.exportResultShown() },
+            title = { Text(stringResource(R.string.export_done_title)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.export_done_written, result.written))
+                    if (result.skippedExternal > 0) Text(stringResource(R.string.export_done_skipped, result.skippedExternal))
+                    if (result.failed.isNotEmpty()) Text(stringResource(R.string.export_done_failed, result.failed.joinToString(", ")))
+                }
+            },
+            confirmButton = { TextButton(onClick = { vm.exportResultShown() }) { Text(stringResource(R.string.action_close)) } },
+            modifier = Modifier.testTag("export-result"),
+        )
     }
 }

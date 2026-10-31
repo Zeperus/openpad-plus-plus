@@ -62,6 +62,12 @@
     <string name="message_note_unreadable">Diese Datei ist kein gültiger UTF-8-Text und wurde nicht geöffnet.</string>
     <string name="message_source_unavailable">Diese Datei ist nicht verfügbar (verschoben, gelöscht oder Zugriff entzogen). Öffne sie erneut über deine Dateien.</string>
     <string name="message_action_failed">Das hat nicht geklappt. Deine Notizen wurden nicht verändert.</string>
+    <string name="save_failed_banner">Nicht gespeichert. Deine Änderungen sind noch da und werden gespeichert, sobald es geht.</string>
+    <string name="save_retry">Erneut versuchen</string>
+    <string name="external_conflict_title">In einer anderen App geändert</string>
+    <string name="external_conflict_message">„%1$s“ wurde in einer anderen App geändert, nachdem openPad++ sie geöffnet hat. „Neu laden“ zeigt diese Fassung (dein Text bleibt als Wiederherstellungskopie erhalten). „Meine behalten“ überschreibt die Datei mit deinem Text.</string>
+    <string name="external_conflict_reload">Neu laden</string>
+    <string name="external_conflict_keep_mine">Meine behalten</string>
     <string name="format_paragraph_style">Absatzformat</string>
     <string name="format_text">Text</string>
     <string name="format_heading_1">Überschrift 1</string>
@@ -155,4 +161,13 @@
     <string name="font_preview_text">Normaler Text</string>
     <string name="font_preview_heading">Überschrift</string>
     <string name="font_preview_task">Checklisteneintrag</string>
+
+    <string name="settings_backup">Sicherung</string>
+    <string name="export_explanation">Speichert eine Kopie jeder Notiz als .md-Datei in einen Ordner deiner Wahl. Externe Dateien werden übersprungen – sie sind schon Dateien.</string>
+    <string name="export_all">Alle Notizen exportieren…</string>
+    <string name="export_running">Wird exportiert…</string>
+    <string name="export_done_title">Export abgeschlossen</string>
+    <string name="export_done_written">Exportierte Notizen: %1$d</string>
+    <string name="export_done_skipped">Übersprungene externe Dateien: %1$d</string>
+    <string name="export_done_failed">Nicht exportiert: %1$s</string>
 </resources>

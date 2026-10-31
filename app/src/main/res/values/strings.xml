@@ -73,6 +73,13 @@
     <string name="message_source_unavailable">That file is not available (moved, deleted or access was withdrawn). Open it again from your files.</string>
     <string name="message_action_failed">That did not work. Your notes were not changed.</string>
 
+    <string name="save_failed_banner">Not saved. Your changes are still here and will be saved as soon as possible.</string>
+    <string name="save_retry">Try again</string>
+    <string name="external_conflict_title">Changed in another app</string>
+    <string name="external_conflict_message">“%1$s” was changed in another app after openPad++ opened it. Reload shows that version (your text is kept as a recovery copy). Keep mine overwrites the file with your text.</string>
+    <string name="external_conflict_reload">Reload</string>
+    <string name="external_conflict_keep_mine">Keep mine</string>
+
     <string name="format_paragraph_style">Paragraph style</string>
     <string name="format_text">Text</string>
     <string name="format_heading_1">Heading 1</string>
@@ -172,4 +179,13 @@
     <string name="font_preview_text">Normal text</string>
     <string name="font_preview_heading">Heading</string>
     <string name="font_preview_task">Checklist item</string>
+
+    <string name="settings_backup">Backup</string>
+    <string name="export_explanation">Saves a copy of every note as a .md file into a folder you choose. External files are skipped – they already are files.</string>
+    <string name="export_all">Export all notes…</string>
+    <string name="export_running">Exporting…</string>
+    <string name="export_done_title">Export finished</string>
+    <string name="export_done_written">Exported notes: %1$d</string>
+    <string name="export_done_skipped">External files skipped: %1$d</string>
+    <string name="export_done_failed">Not exported: %1$s</string>
 </resources>
