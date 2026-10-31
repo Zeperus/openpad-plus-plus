@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: instrumented-${{ github.ref }}
+  group: instrumented-${{ github.ref }}-${{ github.event_name }}-${{ inputs.testClass }}
   cancel-in-progress: true
 
 jobs:
