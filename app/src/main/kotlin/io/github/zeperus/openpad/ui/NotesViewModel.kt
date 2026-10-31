@@ -194,7 +194,7 @@ class NotesViewModel(
         private set
 
     /** The editor's body text size in sp (Settings -> Editor -> Text size). A global preference: no effect on any note's content, undo or saving. */
-    var editorFontSize by mutableStateOf(io.github.zeperus.openpad.domain.EditorFontSize.DEFAULT)
+    var editorFontSize by mutableIntStateOf(io.github.zeperus.openpad.domain.EditorFontSize.DEFAULT)
         private set
 
     var message by mutableStateOf<UserMessage?>(null)

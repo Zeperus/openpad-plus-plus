@@ -4,6 +4,19 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+- Ticking the top item of a long Smart Checklist keeps the scroll position (after Alpha 8).
+
+### Changed (development)
+- `docs/roadmap.md` restored (it was emptied by accident in the Alpha 8 status commit) and updated.
+- Random/property unit tests run a fifth of their cases locally and the full count on CI (`-Popenpad.fullProperties=true`); the local
+  unit test run is about half as long, CI keeps the same protection.
+- Four test classes that were hidden in files of other classes have their own files (`NumberingTest`, `WhitespacePreservationTest`,
+  `SmartChecklistInvariantTest`, `RawRowsInDocumentTest`).
+- Instrumented tests: a run for one test class no longer cancels the full run of a push (separate CI concurrency groups).
+- CONTRIBUTING: targeted test loops per package and per UI test class.
+- Lint: unused strings and the unused `ui-tooling-preview` dependency removed, `mutableIntStateOf` for the text size.
+
 ## [0.1.0-alpha.8] - 2026-10-10 (pre-release / test build)
 
 ### Fixed

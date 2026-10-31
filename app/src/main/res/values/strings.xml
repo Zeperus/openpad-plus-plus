@@ -73,8 +73,6 @@
     <string name="message_source_unavailable">That file is not available (moved, deleted or access was withdrawn). Open it again from your files.</string>
     <string name="message_action_failed">That did not work. Your notes were not changed.</string>
 
-    <string name="raw_block_label">Markdown kept as written</string>
-
     <string name="format_paragraph_style">Paragraph style</string>
     <string name="format_text">Text</string>
     <string name="format_heading_1">Heading 1</string>
@@ -107,15 +105,12 @@
     <string name="selection_cut">Cut</string>
     <string name="selection_copy_markdown">Copy as Markdown</string>
     <string name="selection_paste">Paste</string>
-    <string name="selection_delete">Delete</string>
     <string name="selection_all">Select all</string>
-    <string name="selection_done">Done</string>
     <string name="action_paste_markdown">Paste as Markdown</string>
     <string name="action_paste_checklist">Paste as Checklist</string>
 
     <string name="raw_edit_source">Edit source</string>
     <string name="raw_done">Done</string>
-    <string name="raw_html_source_label">HTML (shown as source, not rendered)</string>
     <string name="html_label">HTML</string>
     <string name="table_description">Table, %1$d columns, %2$d rows</string>
     <string name="image_generic">Image</string>
