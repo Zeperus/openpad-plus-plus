@@ -409,7 +409,7 @@ place of the selection. Inside a bullet list they join it at the same level, els
 empty paragraph) becomes a **Smart Checklist** note at the same time (the user explicitly asked for a checklist; unchecked above completed;
 this is a note setting, not part of the undo step). One undo step: Undo restores the text that was there (also the selection that was
 replaced), Redo recreates the list. The caret ends at the end of the last inserted item; with a selection it collapses behind the inserted
-list. The same real shopping list (34 items) is a fixture in `ListImportTest`, `MultilineListTest` and `Alpha8Test`.
+list. The same real shopping list (34 items) is a fixture in `ListImportTest`, `MultilineListTest` and `ChecklistPasteUiTest`.
 
 Limitations: numbered markers (`1.`) are not removed (`10. Oktober` is a date, not a list marker); imported items are flat (indentation is
 ignored); a chat export in a language whose headers differ from the forms above is pasted as it is.
@@ -494,6 +494,6 @@ text might not stay separate from its neighbour without a blank line); CRLF file
 
 `editor/EditorOpsTest`, `EditorDocumentTest`, `StructuralEditingTest` (row identity, Enter/Backspace on lists, smart checklist), `EditorPropertyTest` (random operation sequences on adversarial documents: after
 every operation the model written and read back must mean exactly what the editor holds; undoing everything restores the
-original file byte for byte; 1500 sessions per run, 6000 checked during development) and `NotesViewModelEditorTest`; on a
-device `SelectionTest` (real touch: long press and a native handle dragged across paragraphs, into a list, backwards, copy as Markdown, cut + undo, the toolbar), `Alpha3Test` (new checklist, tables, images, remembered caret/undo, search, folders, German, wide screens), `StructuralEditingTest` (focus and field identity, ghost rows, smart checklist) and `RichEditorTest` (formatting shown, typing persists, formatting bar, lists, checkboxes, tab switching with undo,
+original file byte for byte; 1500 sessions per CI run (a fifth locally), 6000 checked during development) and `NotesViewModelEditorTest`; on a
+device `SelectionTest` (real touch: long press and a native handle dragged across paragraphs, into a list, backwards, copy as Markdown, cut + undo, the toolbar), the feature UI tests (`ChecklistUiTest`, `ChecklistPasteUiTest`, `ListConversionUiTest`, `ClipboardUiTest`, `RawBlocksUiTest`, `SearchUiTest`, `FoldersUiTest`, `GermanUiTest`, `LanguageUiTest`, `LayoutUiTest`, `ExternalFileUiTest`, `MiscUiTest` for the remembered caret/undo), `StructuralEditingTest` (focus and field identity, ghost rows, smart checklist) and `RichEditorTest` (formatting shown, typing persists, formatting bar, lists, checkboxes, tab switching with undo,
 blank page, external Markdown).

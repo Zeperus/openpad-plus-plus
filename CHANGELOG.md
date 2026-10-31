@@ -22,7 +22,7 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
   lists and checklists right after bold/italic, fades at the edge when it can scroll, has 48 dp buttons and shows a button's name on long
   press; tabs are 48 dp high and *Close others / Close all* are also in the menu; *Clear note* can be undone; *Move to Trash* offers *Undo*;
   destructive confirmations are red; turning on the Smart Checklist says what it does.
-- **Dialogs:** the name field is focused and selected, *Done* on the keyboard confirms, a name that will be saved differently says so, the
+- **Dialogs survive rotating the phone** (with the typed name). The name field is focused and selected, *Done* on the keyboard confirms, a name that will be saved differently says so, the
   confirm button cannot be pressed twice; the folder list scrolls with *New folder* always visible.
 - The menu's sub-page is called *Markdown clipboard…* and always opens on the main page again; a named note's title no longer reacts
   to a tap (long press renames).
@@ -46,6 +46,9 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
   `SmartChecklistInvariantTest`, `RawRowsInDocumentTest`).
 - Instrumented tests: a run for one test class no longer cancels the full run of a push (separate CI concurrency groups).
 - CONTRIBUTING: targeted test loops per package and per UI test class.
+- UI tests are grouped by feature (`ChecklistUiTest`, `ClipboardUiTest`, `ExternalFileUiTest`, `SearchUiTest`, ...) instead of by release.
+- `NotesScreen` is split into drawer, dialogs, tab strip and settings files; the app preferences live in their own `SettingsModel`
+  (a failed preference write no longer crashes the app).
 - Lint: unused strings and the unused `ui-tooling-preview` dependency removed, `mutableIntStateOf` for the text size.
 
 ## [0.1.0-alpha.8] - 2026-10-10 (pre-release / test build)

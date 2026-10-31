@@ -18,11 +18,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * External documents from a Storage Access Framework provider, opened the way another app's "Open with" does it: with a write grant
- * or with a read grant only. (The picker itself is the system's; what openPad++ asks it for is checked on the intent.)
+ * External documents from a Storage Access Framework provider, opened the way another app's "Open with" does it: with
+ * a write grant or with a read grant only. (The picker itself is the system's; what openPad++ asks it for is checked
+ * on the intent.)
  */
 @RunWith(AndroidJUnit4::class)
-class Alpha4ExternalTest {
+class ExternalFileUiTest {
     private val context = InstrumentationRegistry.getInstrumentation().context // the test package: it owns the provider and hands out grants
     private val app = ApplicationProvider.getApplicationContext<OpenPadApplication>()
 
@@ -49,8 +50,6 @@ class Alpha4ExternalTest {
 
     private fun banner() = rule.tagCount("read-only-banner")
 
-    // ---- E. writable ------------------------------------------------------------------------------------------
-
     @Test fun aDocumentOpenedWithWriteAccessIsEditedInPlace() {
         open("writable.md", write = true)
         rule.waitFor("the document", { "rows=${rule.rowTexts()}" }) { rule.rowTexts().firstOrNull() == "Original" }
@@ -67,8 +66,6 @@ class Alpha4ExternalTest {
         rule.typeInLastRow("!")
         rule.waitFor("the file", { content("noflags.md") }) { content("noflags.md").startsWith("text!") }
     }
-
-    // ---- F. read-only -----------------------------------------------------------------------------------------
 
     @Test fun aDocumentOpenedWithReadAccessOnlyIsReadOnlyAndSaysWhy() {
         open("writable.md", write = false)
@@ -102,8 +99,6 @@ class Alpha4ExternalTest {
         rule.waitFor("the save failure is reported", { "" }) { rule.onAllNodesWithText("Could not save", substring = true).fetchSemanticsNodes().isNotEmpty() }
         assertEquals("x\n", content("liar.md"))
     }
-
-    // ---- what the picker is asked for -------------------------------------------------------------------------
 
     @Test fun theDocumentPickerAsksForWriteAndPersistableAccess() {
         val intent = OpenWritableDocument().createIntent(app, arrayOf("*/*"))

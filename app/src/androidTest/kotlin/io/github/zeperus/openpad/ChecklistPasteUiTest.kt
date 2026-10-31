@@ -35,13 +35,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Alpha 8 on a real runtime: the clipboard keeps the logical lines, several lines become several list items (typed in one go, which
- * is what a paste is for the field), "Paste as Checklist" cleans messenger lists, and all of it at several text sizes.
- * Pasting here means: the clipboard is set and the menu item is used, or the text is committed to the field in one edit (exactly what
- * the system's Paste does; the CI emulator has no keyboard).
+ * Checklists from pasted text: several lines pasted into checklist items, Paste as Checklist (messenger lists
+ * cleaned, also at several text sizes), and undo of a paste.
  */
 @RunWith(AndroidJUnit4::class)
-class Alpha8Test {
+class ChecklistPasteUiTest {
     private val t = TestApp(ApplicationProvider.getApplicationContext())
     private val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
     private val density get() = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
@@ -70,11 +68,6 @@ class Alpha8Test {
         rule.waitForRowTexts(rows)
     }
 
-    private fun focusField() {
-        rule.field().performTouchInput { click(Offset(width / 2f, 4f * density)) }
-        rule.waitForIdle()
-    }
-
     private fun layout(): TextLayoutResult {
         val results = mutableListOf<TextLayoutResult>()
         rule.field().fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!.invoke(results)
@@ -94,43 +87,6 @@ class Alpha8Test {
         device.wait(Until.findObject(By.text(label)), 5_000)?.let { return it }
         device.findObject(By.clazz("android.widget.ImageButton").desc("More options"))?.click()
         return device.wait(Until.findObject(By.text(label)), 3_000)
-    }
-
-    private fun bounds() = rule.field().fetchSemanticsNode().boundsInWindow
-
-    /** The screen position just right of the last character of the text, in the middle of its line. */
-    private fun pastTheEnd(): Offset {
-        val l = layout()
-        val box = l.getBoundingBox(l.layoutInput.text.length - 1)
-        val b = bounds()
-        return Offset(b.left + box.right + 12f * density, b.top + box.center.y)
-    }
-
-    /** Grabs the end handle of the selection (drawn by the system) and drags it to [target]; a few grip points are tried until the selection moves. */
-    private fun dragEndHandleTo(target: Offset) {
-        val before = rule.selectionRange()
-        val b = bounds()
-        val edge = rule.selectionRange()!!.max
-        val rect = layout().getCursorRect((edge + 1).coerceIn(0, layout().layoutInput.text.length))
-        for ((dx, dy) in listOf(12f to 12f, 8f to 18f, 16f to 8f, 12f to 20f)) {
-            val x = b.left + rect.left + dx * density
-            val y = b.top + rect.bottom + dy * density
-            device.swipe(x.toInt(), y.toInt(), (target.x + dx).toInt(), (target.y + dy * density).toInt(), 60)
-            rule.waitForIdle()
-            Thread.sleep(300)
-            if (rule.selectionRange() != before) return
-        }
-    }
-
-    /** Long press the first word, drag the end handle past the end of the text and copy with the system toolbar (the plain Copy). */
-    private fun selectToTheEndAndCopy(firstWord: String) {
-        t.clearClipboard()
-        longPressWord(firstWord)
-        dragEndHandleTo(pastTheEnd())
-        val range = rule.selectionRange()!!
-        assertTrue("the selection reaches the end of the text ($range of ${text().length})", range.max >= text().length - 1)
-        (toolbar("Copy") ?: throw AssertionError("no Copy in the toolbar")).click()
-        rule.waitFor("the clipboard", { "${t.clipboardText()}" }) { !t.clipboardText().isNullOrEmpty() }
     }
 
     private fun checkboxStates(): List<Boolean> = rule.onAllNodesWithTag("checkbox").fetchSemanticsNodes().map {
@@ -188,86 +144,32 @@ class Alpha8Test {
         "Dosentomaten", "Blätterteig", "Eier", "Ciabatta-Brot", "Brot", "Burger-Brötchen", "Pommes", "Reis", "Hühnerbrühe", "Nürnberger", "Bacon", "Toastbrot",
     )
 
-    // ---- C / D / E: the clipboard keeps the logical lines ------------------------------------------------------------
-
-    @Test fun copyingTwoLinesGivesTwoLinesOnTheClipboardAndPasteKeepsThem() {
-        launchWith("Hello\n\nWorld\n", listOf("Hello", "World"))
-        selectToTheEndAndCopy("Hello")
-        assertEquals("Hello\nWorld", t.clipboardText())
-        // pasted into another, blank note: two logical lines again
-        val copied = t.clipboardText()!!
-        rule.onNodeWithContentDescription("Open navigation").performClick()
+    private fun tapRightOfLastLineAndType(size: Int) {
+        // right of the text of the last row
+        val lines = rule.rowTexts()
+        val offset = 1 + text().length - lines.last().length // the start of the last row in the field
+        val l = layout()
+        val y = l.getLineForOffset(offset).let { (l.getLineTop(it) + l.getLineBottom(it)) / 2f }
+        rule.field().performTouchInput { click(Offset(width - 6f * density, y)) }
         rule.waitForIdle()
-        rule.onNodeWithText("+ New Note").performClick()
-        rule.waitForRowTexts(listOf(""))
-        rule.field().performTextInput(copied)
-        rule.waitForRowTexts(listOf("Hello", "World"))
+        rule.field().performTextInput("X")
+        rule.waitFor("X at the end of the last item at ${size} sp", { rule.rowTexts().toString() }) { rule.rowTexts().last().endsWith("X") }
     }
 
-    @Test fun anIntentionalBlankLineSurvivesTheCopy() {
-        launchBlank()
-        focusField()
-        rule.field().performTextInput("Line one")
-        rule.field().performTextInput("\n")
-        rule.field().performTextInput("\n")
-        rule.field().performTextInput("Line three")
-        rule.waitForRowTexts(listOf("Line one", "", "Line three"))
-        selectToTheEndAndCopy("Line")
-        assertEquals("Line one\n\nLine three", t.clipboardText())
+    private fun listAtSize(size: Int) {
+        val long = "Frisches Bauernbrot vom Markt, in Scheiben geschnitten und danach luftdicht verpackt, am besten das große Vollkornbrot mit Körnern"
+        launchBlank(size)
+        pasteAsChecklist("[12:30] Sybille: Hackfleisch 2x\n- Milch\n- $long\n• Eier")
+        waitForCheckboxes(4)
+        assertEquals(listOf("Hackfleisch 2x", "Milch", long, "Eier"), rule.rowTexts())
+        assertTrue("the long item wraps at $size sp without becoming two items", layout().lineCount > 4)
+        assertEquals(4, rule.tagCount("checkbox"))
+        tapRightOfLastLineAndType(size)
+        // the checkbox target works: ticking the first item moves it below the others (smart checklist)
+        rule.onAllNodesWithTag("checkbox")[0].performScrollTo().performClick()
+        rule.waitFor("Hackfleisch moved down at $size sp", { rule.rowTexts().toString() }) { rule.rowTexts().last() == "Hackfleisch 2x" }
+        assertEquals(listOf(false, false, false, true), checkboxStates())
     }
-
-    @Test fun aParagraphThatOnlyWrapsOnTheScreenIsCopiedWithoutLineBreaks() {
-        val long = "This is a long sentence that happens to wrap because the phone screen is narrow, and it goes on and on so that it wraps on any phone, " +
-            "also a wide one, and also at a small text size, because it is long enough for every screen we test on."
-        launchWith("$long\n", listOf(long), size = 20)
-        assertTrue("the paragraph wraps on the screen", layout().lineCount > 1)
-        selectToTheEndAndCopy("This")
-        assertEquals(long, t.clipboardText())
-        assertFalse('\n' in t.clipboardText()!!)
-    }
-
-    @Test fun aChecklistIsCopiedAsOneItemPerLine() {
-        launchWith("- [ ] Milk\n- [x] Bread\n- [ ] Water\n", listOf("Milk", "Bread", "Water"))
-        selectToTheEndAndCopy("Milk")
-        assertEquals("☐ Milk\n☑ Bread\n☐ Water", t.clipboardText())
-    }
-
-    // ---- F / H / I: several lines -> list items ----------------------------------------------------------------------
-
-    private fun threeLinesThenConvert(button: String, markerTag: String? = null) {
-        launchBlank()
-        focusField()
-        rule.field().performTextInput("Milk\nBread\nWater")
-        rule.waitFor("the text", { rule.rowTexts().toString() }) { rule.rowTexts() == listOf("Milk", "Bread", "Water") }
-        rule.formatButton(button).performClick()
-        rule.waitForIdle()
-        if (markerTag == null) waitForCheckboxes(3) else rule.waitFor("3 markers", { "${rule.tagCount(markerTag)}" }) { rule.tagCount(markerTag) == 3 }
-        assertEquals(listOf("Milk", "Bread", "Water"), rule.rowTexts())
-    }
-
-    @Test fun threeLinesBecomeThreeCheckboxes() = threeLinesThenConvert("Checklist")
-
-    @Test fun threeLinesBecomeThreeBullets() {
-        threeLinesThenConvert("Bulleted list", "marker")
-        assertEquals(0, rule.tagCount("checkbox"))
-    }
-
-    @Test fun threeLinesBecomeThreeNumberedItems() {
-        threeLinesThenConvert("Numbered list", "marker")
-        val numbers = rule.onAllNodesWithTag("marker").fetchSemanticsNodes().map { n -> n.config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text } }
-        assertEquals(listOf("1.", "2.", "3."), numbers)
-    }
-
-    @Test fun sourceMarkersAreCleanedWhenConverting() {
-        launchBlank()
-        focusField()
-        rule.field().performTextInput("- Milk\n* Bread\n• Water")
-        rule.formatButton("Checklist").performClick()
-        waitForCheckboxes(3)
-        assertEquals(listOf("Milk", "Bread", "Water"), rule.rowTexts())
-    }
-
-    // ---- G: several lines pasted into an empty checklist item --------------------------------------------------------
 
     @Test fun threeLinesPastedIntoAnEmptyChecklistItemAreThreeItems() {
         launchBlank()
@@ -290,8 +192,6 @@ class Alpha8Test {
         waitForCheckboxes(2)
     }
 
-    // ---- J: smart checklist ------------------------------------------------------------------------------------------
-
     @Test fun linesPastedIntoASmartChecklistLandAboveTheCompletedItems() {
         launchWith("- [ ] Milk\n- [x] Existing completed\n", listOf("Milk", "Existing completed"))
         runBlocking { t.app.repository.setSmartChecklist(t.app.repository.listNotes().single().id, true) }
@@ -303,8 +203,6 @@ class Alpha8Test {
         rule.waitForRowTexts(listOf("Milk", "Water", "Cheese", "Existing completed"))
         assertEquals(listOf(false, false, false, true), checkboxStates())
     }
-
-    // ---- K / L / M: Paste as Checklist ---------------------------------------------------------------------------------
 
     @Test fun pasteAsChecklistCleansTheRealWhatsAppShoppingList() {
         launchBlank()
@@ -357,8 +255,6 @@ class Alpha8Test {
         assertEquals(listOf("Bier", "Cola"), rule.rowTexts()) // the selected word is replaced by the cleaned list
     }
 
-    // ---- N: Undo -------------------------------------------------------------------------------------------------------
-
     @Test fun oneUndoTakesBackThePastedChecklistAndRedoBringsItBack() {
         launchWith("Intro\n", listOf("Intro"))
         rule.placeCaret(0, 5)
@@ -370,35 +266,6 @@ class Alpha8Test {
         assertEquals(0, rule.tagCount("checkbox"))
         rule.formatButton("Redo").performClick()
         waitForCheckboxes(34)
-    }
-
-    // ---- Several text sizes ------------------------------------------------------------------------------------------
-
-    private fun tapRightOfLastLineAndType(size: Int) {
-        // right of the text of the last row
-        val lines = rule.rowTexts()
-        val offset = 1 + text().length - lines.last().length // the start of the last row in the field
-        val l = layout()
-        val y = l.getLineForOffset(offset).let { (l.getLineTop(it) + l.getLineBottom(it)) / 2f }
-        rule.field().performTouchInput { click(Offset(width - 6f * density, y)) }
-        rule.waitForIdle()
-        rule.field().performTextInput("X")
-        rule.waitFor("X at the end of the last item at ${size} sp", { rule.rowTexts().toString() }) { rule.rowTexts().last().endsWith("X") }
-    }
-
-    private fun listAtSize(size: Int) {
-        val long = "Frisches Bauernbrot vom Markt, in Scheiben geschnitten und danach luftdicht verpackt, am besten das große Vollkornbrot mit Körnern"
-        launchBlank(size)
-        pasteAsChecklist("[12:30] Sybille: Hackfleisch 2x\n- Milch\n- $long\n• Eier")
-        waitForCheckboxes(4)
-        assertEquals(listOf("Hackfleisch 2x", "Milch", long, "Eier"), rule.rowTexts())
-        assertTrue("the long item wraps at $size sp without becoming two items", layout().lineCount > 4)
-        assertEquals(4, rule.tagCount("checkbox"))
-        tapRightOfLastLineAndType(size)
-        // the checkbox target works: ticking the first item moves it below the others (smart checklist)
-        rule.onAllNodesWithTag("checkbox")[0].performScrollTo().performClick()
-        rule.waitFor("Hackfleisch moved down at $size sp", { rule.rowTexts().toString() }) { rule.rowTexts().last() == "Hackfleisch 2x" }
-        assertEquals(listOf(false, false, false, true), checkboxStates())
     }
 
     @Test fun listsWork12sp() = listAtSize(12)

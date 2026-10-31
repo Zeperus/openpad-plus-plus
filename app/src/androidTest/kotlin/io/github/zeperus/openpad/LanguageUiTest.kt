@@ -13,9 +13,12 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** The language selector in Settings: Deutsch, English, System default - switching the app's screens without changing the phone. */
+/**
+ * The language selector in Settings: Deutsch, English and System default switch the app's screens without changing
+ * the phone.
+ */
 @RunWith(AndroidJUnit4::class)
-class Alpha4LanguageTest {
+class LanguageUiTest {
     private val app = ApplicationProvider.getApplicationContext<OpenPadApplication>()
 
     @get:Rule val rule = createEmptyComposeRule()
