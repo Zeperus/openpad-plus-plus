@@ -28,6 +28,7 @@ import io.github.zeperus.openpad.domain.NoteInfo
 import io.github.zeperus.openpad.domain.NoteLists
 import io.github.zeperus.openpad.domain.NoteNameConflictException
 import io.github.zeperus.openpad.domain.NoteNotFoundException
+import io.github.zeperus.openpad.domain.NoteNotInTrashException
 import io.github.zeperus.openpad.domain.NoteSourceUnavailableException
 import io.github.zeperus.openpad.domain.NoteRepository
 import io.github.zeperus.openpad.domain.NoteSearch
@@ -50,7 +51,10 @@ import io.github.zeperus.openpad.editor.Cursor
 import io.github.zeperus.openpad.editor.DocumentSelection
 import io.github.zeperus.openpad.editor.DocumentSelections
 import io.github.zeperus.openpad.editor.EditorDocument
+import io.github.zeperus.openpad.editor.EditorRow
+import io.github.zeperus.openpad.editor.RichText
 import io.github.zeperus.openpad.editor.Segment
+import io.github.zeperus.openpad.editor.Snapshot
 import io.github.zeperus.openpad.editor.SegmentEditing
 import io.github.zeperus.openpad.editor.SegmentOp
 import io.github.zeperus.openpad.editor.EditorSession
@@ -70,7 +74,7 @@ data class FindState(val query: String, val matches: List<FindMatch>, val curren
     val currentMatch: FindMatch? get() = matches.getOrNull(current)
 }
 
-enum class UserMessage { SaveFailed, NoteUnreadable, ActionFailed, SourceUnavailable, FolderNotEmpty }
+enum class UserMessage { SaveFailed, NoteUnreadable, ActionFailed, SourceUnavailable, FolderNotEmpty, MovedToTrash, SmartChecklistOn }
 
 enum class RenameResult { Ok, InvalidName, NameTaken, Failed }
 
@@ -209,6 +213,9 @@ class NotesViewModel(
 
     var message by mutableStateOf<UserMessage?>(null)
         private set
+
+    /** The note the last "Move to Trash" trashed; [undoTrash] restores it. */
+    private var lastTrashed: NoteId? = null
 
     /** True after an autosave/flush failed; false again after the next successful save. The UI shows a lasting "not saved" bar. */
     var saveFailed by mutableStateOf(false)
@@ -966,21 +973,43 @@ class NotesViewModel(
         val enable = !(editor.info?.smartChecklist ?: false)
         if (!editor.setSmartChecklist(enable)) return@act
         rich.smartChecklist = enable
-        if (enable) edit { it.sortChecklists() }
+        if (enable) {
+            message = UserMessage.SmartChecklistOn // set before the sort, so a failure of the sort is what the user sees
+            edit { it.sortChecklists() }
+        }
         afterEditorChanged()
     }
 
-    /** Empties the open note. The note and its file stay. */
+    /**
+     * Empties the open note. The note and its file stay. Clearing is one editing step: Undo brings the whole text back. The
+     * emptied note is written at once, as it always was.
+     */
     fun clear() = act {
-        if (readOnly) return@act
-        editor.clear()
-        text = editor.text
-        rich = EditorSession(EditorDocument.empty())
-        rich.smartChecklist = current?.smartChecklist == true
-        epoch++
-        registerSession()
-        publish()
+        if (!ready || readOnly) return@act
+        if (rich.doc.rows.all { it.kind == RowKind.Paragraph && it.text.isEmpty }) return@act // nothing to clear
+        edit(focus = false) { s ->
+            rich = clearedSession(s)
+            registerSession()
+            epoch++ // the rows are new: the editor is laid out again
+            true
+        }
+        saveNow()
         afterEditorChanged()
+    }
+
+    /**
+     * The session of [old] emptied to one blank paragraph. The undo history of [old] is kept and the document before the clear
+     * is its last step, so Undo returns to it with its caret. Built here because the session's own deletion keeps the edge rows
+     * of raw blocks (a table, a code block, an image) as empty rows, which would stay visible as empty blocks.
+     */
+    private fun clearedSession(old: EditorSession): EditorSession {
+        val doc = old.doc
+        val blank = doc.withRows(listOf(EditorRow(doc.nextId, RowKind.Paragraph, RichText(""), touched = true)), doc.nextId + 1)
+        val session = EditorSession(blank)
+        session.smartChecklist = old.smartChecklist
+        session.history.restore(old.history.undoSnapshots() + Snapshot(doc, old.cursor), emptyList())
+        session.moveCursor(Cursor(blank.rows.first().id, 0))
+        return session
     }
 
     /**
@@ -999,11 +1028,27 @@ class NotesViewModel(
         }
         val trashed = editor.moveToTrash()
         if (trashed != null) {
+            lastTrashed = trashed.id
+            message = UserMessage.MovedToTrash
             val s = session
             commitSession(if (s.activeNoteId == null) s.close(DocumentTab.Draft) else s.remove(trashed.id))
             syncEditor(markOpened = true)
         }
         refreshLists()
+    }
+
+    /** Undoes the last "Move to Trash": the note comes back from the Trash and is opened again. */
+    fun undoTrash() = act {
+        val id = lastTrashed ?: return@act
+        try {
+            repository.restoreFromTrash(id)
+        } catch (e: NoteNotInTrashException) {
+            lastTrashed = null
+            return@act // restored by hand (or deleted for good) meanwhile: nothing to undo
+        }
+        lastTrashed = null // a failed restore keeps the undo for another try
+        refreshLists()
+        openNoteInternal(id)
     }
 
     /** Restoring from the Trash does not reopen the note by itself. */
