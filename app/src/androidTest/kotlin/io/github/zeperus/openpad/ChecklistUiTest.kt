@@ -75,7 +75,7 @@ class ChecklistUiTest {
         runBlocking { app.settings.setStartupMode(StartupMode.ResumeSession) }
         launch()
         openDrawer()
-        rule.onNodeWithText("+ New Checklist").performClick()
+        rule.onNodeWithText("New checklist").performClick()
         rule.waitFor("one empty task", { "boxes=${rule.tagCount("checkbox")}" }) { rule.tagCount("checkbox") == 1 }
         rule.typeInLastRow("A")
         rule.typeInLastRow("\n")

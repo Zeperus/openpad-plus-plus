@@ -175,7 +175,7 @@ class ChecklistPasteUiTest {
         launchBlank()
         rule.onNodeWithContentDescription("Open navigation").performClick()
         rule.waitForIdle()
-        rule.onNodeWithText("+ New Checklist").performClick()
+        rule.onNodeWithText("New checklist").performClick()
         waitForCheckboxes(1)
         rule.waitForRowTexts(listOf(""))
         rule.field().performTextInput("Milk\nBread\nWater")

@@ -231,7 +231,7 @@ class SessionFlowTest {
         seed(listOf("Shopping", "Ideas", "Work"), active = 1, mode = StartupMode.ResumeSession)
         launch()
         waitForTabs("Shopping", "Ideas", "Work")
-        overflow("Delete note…")
+        overflow("Move to Trash…")
         rule.onNodeWithText("Move to Trash").performClick()
         waitForTabs("Shopping", "Work")
         assertEquals(2, mdCount("notes"))

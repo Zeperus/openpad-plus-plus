@@ -96,7 +96,7 @@ class NotesFlowTest {
         launch()
         repeat(3) {
             openDrawer()
-            rule.onNodeWithText("+ New Note").performClick()
+            rule.onNode(drawerEntry("New note")).performClick()
             rule.waitForIdle()
         }
         Thread.sleep(1_500) // longer than the autosave delay
@@ -109,7 +109,7 @@ class NotesFlowTest {
         rule.waitUntil(timeoutMillis = 5_000) { mdFiles().isNotEmpty() }
 
         rule.onNodeWithContentDescription("More options").performClick()
-        rule.onNodeWithText("Delete note…").performClick()
+        rule.onNodeWithText("Move to Trash…").performClick()
         rule.onNodeWithText("Move to Trash").performClick()
         rule.waitUntil(timeoutMillis = 5_000) { mdFiles().isEmpty() }
         assertTrue(trashFile("Doomed").exists())

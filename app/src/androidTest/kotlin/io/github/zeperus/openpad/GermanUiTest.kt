@@ -65,10 +65,10 @@ class GermanUiTest {
         launch()
         rule.onNodeWithContentDescription("Navigation öffnen").performClick()
         rule.waitForIdle()
-        rule.onNodeWithText("+ Neue Notiz").assertExists()
-        rule.onNodeWithText("+ Neue Checkliste").assertExists()
+        rule.onNode(hasText("Neue Notiz") and !hasTestTag("tab")).assertExists()
+        rule.onNodeWithText("Neue Checkliste").assertExists()
         rule.onNodeWithText("DATEIEN").assertExists()
         rule.onNodeWithText("PAPIERKORB").assertExists()
-        rule.onNodeWithText("Datei öffnen …").assertExists()
+        rule.onNodeWithText("Datei öffnen…").assertExists()
     }
 }

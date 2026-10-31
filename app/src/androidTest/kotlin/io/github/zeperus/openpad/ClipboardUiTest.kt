@@ -9,6 +9,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -140,7 +141,7 @@ class ClipboardUiTest {
         val copied = t.clipboardText()!!
         rule.onNodeWithContentDescription("Open navigation").performClick()
         rule.waitForIdle()
-        rule.onNodeWithText("+ New Note").performClick()
+        rule.onNode(hasText("New note") and !hasTestTag("tab")).performClick()
         rule.waitForRowTexts(listOf(""))
         rule.field().performTextInput(copied)
         rule.waitForRowTexts(listOf("Hello", "World"))

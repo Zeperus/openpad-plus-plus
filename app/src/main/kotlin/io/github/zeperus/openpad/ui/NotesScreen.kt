@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
@@ -121,21 +122,52 @@ private fun dialogSaver(vm: NotesViewModel): Saver<Dialog?, String> = Saver(
 fun NotesScreen(vm: NotesViewModel) {
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showSearch by rememberSaveable { mutableStateOf(false) }
-    if (showSettings) {
-        SettingsScreen(vm, onBack = { showSettings = false })
-    } else if (showSearch) {
-        SearchScreen(
-            vm,
-            onBack = { showSearch = false; vm.noteSearch.clear() },
-            onOpen = { hit ->
-                val query = vm.noteSearch.query
-                showSearch = false
-                vm.openFromSearch(hit.note.id, query)
-                vm.noteSearch.clear()
-            },
-        )
-    } else {
-        NotesContent(vm, onOpenSettings = { showSettings = true }, onOpenSearch = { showSearch = true })
+    // One snackbar host for all three screens, so a message raised while Settings or Search is open shows at once.
+    // This effect sits above the screen switch: changing the screen does not drop a pending message.
+    val snackbar = remember { SnackbarHostState() }
+    val message = vm.message
+    val messageText = when (message) {
+        UserMessage.SaveFailed -> stringResource(R.string.message_save_failed)
+        UserMessage.NoteUnreadable -> stringResource(R.string.message_note_unreadable)
+        UserMessage.ActionFailed -> stringResource(R.string.message_action_failed)
+        UserMessage.SourceUnavailable -> stringResource(R.string.message_source_unavailable)
+        UserMessage.FolderNotEmpty -> stringResource(R.string.message_folder_not_empty)
+        UserMessage.MovedToTrash -> stringResource(R.string.message_moved_to_trash)
+        UserMessage.SmartChecklistOn -> stringResource(R.string.message_smart_checklist_on)
+        UserMessage.FavoriteAdded -> stringResource(R.string.message_favorite_added)
+        UserMessage.FavoriteRemoved -> stringResource(R.string.message_favorite_removed)
+        null -> null
+    }
+    val undoLabel = stringResource(R.string.action_undo)
+    LaunchedEffect(message) {
+        if (messageText != null) {
+            // only a note that was just moved to Trash offers undo
+            val result = snackbar.showSnackbar(
+                message = messageText,
+                actionLabel = undoLabel.takeIf { message == UserMessage.MovedToTrash },
+            )
+            vm.messageShown()
+            if (result == SnackbarResult.ActionPerformed) vm.undoTrash()
+        }
+    }
+    Box(Modifier.fillMaxSize()) {
+        if (showSettings) {
+            SettingsScreen(vm, onBack = { showSettings = false })
+        } else if (showSearch) {
+            SearchScreen(
+                vm,
+                onBack = { showSearch = false; vm.noteSearch.clear() },
+                onOpen = { hit ->
+                    val query = vm.noteSearch.query
+                    showSearch = false
+                    vm.openFromSearch(hit.note.id, query)
+                    vm.noteSearch.clear()
+                },
+            )
+        } else {
+            NotesContent(vm, onOpenSettings = { showSettings = true }, onOpenSearch = { showSearch = true })
+        }
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).imePadding().navigationBarsPadding())
     }
 }
 
@@ -144,7 +176,6 @@ fun NotesScreen(vm: NotesViewModel) {
 private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenSearch: () -> Unit) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    val snackbar = remember { SnackbarHostState() }
     // the open dialog, the overflow menu and its second page survive a rotation
     val dialogStateSaver = remember(vm) { dialogSaver(vm) }
     var dialog by rememberSaveable(stateSaver = dialogStateSaver) { mutableStateOf<Dialog?>(null) }
@@ -167,30 +198,6 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
 
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
 
-    val message = vm.message
-    val messageText = when (message) {
-        UserMessage.SaveFailed -> stringResource(R.string.message_save_failed)
-        UserMessage.NoteUnreadable -> stringResource(R.string.message_note_unreadable)
-        UserMessage.ActionFailed -> stringResource(R.string.message_action_failed)
-        UserMessage.SourceUnavailable -> stringResource(R.string.message_source_unavailable)
-        UserMessage.FolderNotEmpty -> stringResource(R.string.message_folder_not_empty)
-        UserMessage.MovedToTrash -> stringResource(R.string.message_moved_to_trash)
-        UserMessage.SmartChecklistOn -> stringResource(R.string.message_smart_checklist_on)
-        null -> null
-    }
-    val undoLabel = stringResource(R.string.action_undo)
-    LaunchedEffect(message) {
-        if (messageText != null) {
-            // only a note that was just moved to Trash offers undo
-            val result = snackbar.showSnackbar(
-                message = messageText,
-                actionLabel = undoLabel.takeIf { message == UserMessage.MovedToTrash },
-            )
-            vm.messageShown()
-            if (result == SnackbarResult.ActionPerformed) vm.undoTrash()
-        }
-    }
-
     // A wide window (tablet, unfolded foldable, desktop mode) keeps the navigation visible next to the editor; a phone slides it in.
     BoxWithConstraints(Modifier.fillMaxSize()) {
     val wide = WindowSizeClass.calculateFromSize(DpSize(maxWidth, maxHeight)).widthSizeClass == WindowWidthSizeClass.Expanded
@@ -209,7 +216,6 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
     }
     val content: @Composable () -> Unit = {
         Scaffold(
-            snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
                 TopAppBar(
                     title = {

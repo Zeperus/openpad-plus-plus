@@ -2,18 +2,21 @@
 <resources>
     <string name="app_name">openPad++</string>
 
-    <string name="new_note">+ New Note</string>
-    <string name="new_checklist">+ New Checklist</string>
+    <string name="new_note">New note</string>
+    <string name="new_checklist">New checklist</string>
     <string name="section_favorites">FAVORITES</string>
     <string name="section_recent">RECENT</string>
     <string name="section_files">FILES</string>
     <string name="section_trash">TRASH</string>
     <string name="files_empty">No notes yet</string>
     <string name="trash_empty">Trash is empty</string>
+    <string name="sort_by_name">Sort by name</string>
+    <string name="sort_by_modified">Sort by last change</string>
 
     <string name="untitled">Untitled</string>
     <string name="tab_new_note">New note</string>
     <string name="editor_hint">Start typing…</string>
+    <string name="editor_continue_at_end">Continue writing at the end</string>
     <string name="open_drawer">Open navigation</string>
     <string name="more_options">More options</string>
     <string name="menu_back">Back</string>
@@ -34,7 +37,7 @@
     <string name="action_smart_checklist_off">Smart checklist: on (turn off)</string>
     <string name="action_rename">Rename…</string>
     <string name="action_clear">Clear note…</string>
-    <string name="action_delete">Delete note…</string>
+    <string name="action_delete">Move to Trash…</string>
     <string name="action_restore">Restore</string>
     <string name="action_undo">Undo</string>
     <string name="action_delete_permanently">Delete permanently</string>
@@ -72,12 +75,14 @@
     <string name="dialog_purge_title">Delete permanently?</string>
     <string name="dialog_purge_message">“%1$s” will be deleted for good. This cannot be undone.</string>
 
-    <string name="message_save_failed">Could not save your note. Changes are kept and will be retried.</string>
+    <string name="message_save_failed">Could not save your note. Your changes are kept.</string>
     <string name="message_note_unreadable">This file is not valid UTF-8 text and was not opened.</string>
     <string name="message_source_unavailable">That file is not available (moved, deleted or access was withdrawn). Open it again from your files.</string>
     <string name="message_action_failed">That did not work. Your notes were not changed.</string>
     <string name="message_moved_to_trash">Moved to Trash</string>
     <string name="message_smart_checklist_on">Smart checklist on: open items are kept above completed ones.</string>
+    <string name="message_favorite_added">Added to Favorites</string>
+    <string name="message_favorite_removed">Removed from Favorites</string>
 
     <string name="save_failed_banner">Not saved. Your changes are still here.</string>
     <string name="save_retry">Try again</string>
@@ -172,10 +177,10 @@
     <string name="task_done_description">Task, done: %1$s</string>
     <string name="action_edit_menu">Markdown clipboard…</string>
 
-    <string name="read_only_short">Read only</string>
-    <string name="read_only_reason_no_grant">Read only: the app that opened this file did not grant write access.</string>
-    <string name="read_only_reason_provider">Read only: this file\'s provider does not allow writing.</string>
-    <string name="read_only_reason_unknown">Read only: write access could not be checked.</string>
+    <string name="read_only_short">Read-only</string>
+    <string name="read_only_reason_no_grant">Read-only: the app that opened this file did not grant write access.</string>
+    <string name="read_only_reason_provider">Read-only: this file\'s provider does not allow writing.</string>
+    <string name="read_only_reason_unknown">Read-only: write access could not be checked.</string>
     <string name="action_open_writable">Open with write access…</string>
 
     <string name="settings_language">Language / Sprache</string>

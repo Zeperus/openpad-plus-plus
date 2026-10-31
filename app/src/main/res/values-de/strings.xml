@@ -1,17 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">openPad++</string>
-    <string name="new_note">+ Neue Notiz</string>
-    <string name="new_checklist">+ Neue Checkliste</string>
+    <string name="new_note">Neue Notiz</string>
+    <string name="new_checklist">Neue Checkliste</string>
     <string name="section_favorites">FAVORITEN</string>
     <string name="section_recent">ZULETZT VERWENDET</string>
     <string name="section_files">DATEIEN</string>
     <string name="section_trash">PAPIERKORB</string>
     <string name="files_empty">Noch keine Notizen</string>
     <string name="trash_empty">Der Papierkorb ist leer</string>
+    <string name="sort_by_name">Nach Name sortieren</string>
+    <string name="sort_by_modified">Nach letzter Änderung sortieren</string>
     <string name="untitled">Unbenannt</string>
     <string name="tab_new_note">Neue Notiz</string>
-    <string name="editor_hint">Hier tippen …</string>
+    <string name="editor_hint">Hier tippen…</string>
+    <string name="editor_continue_at_end">Am Ende weiterschreiben</string>
     <string name="open_drawer">Navigation öffnen</string>
     <string name="more_options">Weitere Optionen</string>
     <string name="menu_back">Zurück</string>
@@ -22,16 +25,16 @@
     <string name="action_close_all">Alle schließen</string>
     <string name="action_settings">Einstellungen</string>
     <string name="tab_options">Tab-Optionen</string>
-    <string name="open_file">Datei öffnen …</string>
-    <string name="action_share">Teilen …</string>
-    <string name="action_remove_external">Aus openPad++ entfernen …</string>
+    <string name="open_file">Datei öffnen…</string>
+    <string name="action_share">Teilen…</string>
+    <string name="action_remove_external">Aus openPad++ entfernen…</string>
     <string name="read_only_banner">Schreibgeschützt: Diese Datei kann nicht geändert werden.</string>
     <string name="external_file">Externe Datei</string>
     <string name="action_smart_checklist_on">Intelligente Checkliste: aus (einschalten)</string>
     <string name="action_smart_checklist_off">Intelligente Checkliste: an (ausschalten)</string>
-    <string name="action_rename">Umbenennen …</string>
-    <string name="action_clear">Inhalt löschen …</string>
-    <string name="action_delete">Notiz löschen …</string>
+    <string name="action_rename">Umbenennen…</string>
+    <string name="action_clear">Notiz leeren…</string>
+    <string name="action_delete">In den Papierkorb…</string>
     <string name="action_restore">Wiederherstellen</string>
     <string name="action_undo">Rückgängig</string>
     <string name="action_delete_permanently">Endgültig löschen</string>
@@ -53,7 +56,7 @@
     <string name="name_sanitized_hint">Wird gespeichert als „%1$s“</string>
     <string name="dialog_clear_title">Diese Notiz leeren?</string>
     <string name="dialog_clear_message">Der gesamte Text wird entfernt. Die Notiz selbst bleibt erhalten.</string>
-    <string name="dialog_clear_confirm">Inhalt löschen</string>
+    <string name="dialog_clear_confirm">Leeren</string>
     <string name="dialog_delete_title">In den Papierkorb verschieben?</string>
     <string name="dialog_delete_message">„%1$s“ wird in den Papierkorb verschoben. Dort lässt sie sich wiederherstellen.</string>
     <string name="dialog_delete_confirm">In den Papierkorb</string>
@@ -62,12 +65,14 @@
     <string name="dialog_remove_confirm">Entfernen</string>
     <string name="dialog_purge_title">Endgültig löschen?</string>
     <string name="dialog_purge_message">„%1$s“ wird endgültig gelöscht. Das lässt sich nicht rückgängig machen.</string>
-    <string name="message_save_failed">Die Notiz konnte nicht gespeichert werden. Deine Änderungen bleiben erhalten und es wird erneut versucht.</string>
+    <string name="message_save_failed">Die Notiz konnte nicht gespeichert werden. Deine Änderungen bleiben erhalten.</string>
     <string name="message_note_unreadable">Diese Datei ist kein gültiger UTF-8-Text und wurde nicht geöffnet.</string>
     <string name="message_source_unavailable">Diese Datei ist nicht verfügbar (verschoben, gelöscht oder Zugriff entzogen). Öffne sie erneut über deine Dateien.</string>
     <string name="message_action_failed">Das hat nicht geklappt. Deine Notizen wurden nicht verändert.</string>
     <string name="message_moved_to_trash">In den Papierkorb verschoben</string>
     <string name="message_smart_checklist_on">Smarte Checkliste an: offene Einträge stehen über den erledigten.</string>
+    <string name="message_favorite_added">Zu Favoriten hinzugefügt</string>
+    <string name="message_favorite_removed">Aus Favoriten entfernt</string>
     <string name="save_failed_banner">Nicht gespeichert. Deine Änderungen sind noch da.</string>
     <string name="save_retry">Erneut versuchen</string>
     <string name="external_conflict_title">In einer anderen App geändert</string>
@@ -115,7 +120,7 @@
     <string name="html_label">HTML</string>
     <string name="table_description">Tabelle, %1$d Spalten, %2$d Zeilen</string>
     <string name="image_generic">Bild</string>
-    <string name="image_loading">Bild wird geladen …</string>
+    <string name="image_loading">Bild wird geladen…</string>
     <string name="image_unavailable">Bild nicht verfügbar</string>
     <string name="image_placeholder_description">Bild: %1$s, %2$s</string>
     <string name="action_search">Notizen durchsuchen</string>
@@ -130,9 +135,9 @@
     <string name="find_previous">Vorheriger Treffer</string>
     <string name="find_next">Nächster Treffer</string>
     <string name="find_close">Suche schließen</string>
-    <string name="action_move_to_folder">In Ordner verschieben …</string>
-    <string name="action_delete_folder">Ordner löschen …</string>
-    <string name="new_folder">Neuer Ordner …</string>
+    <string name="action_move_to_folder">In Ordner verschieben…</string>
+    <string name="action_delete_folder">Ordner löschen…</string>
+    <string name="new_folder">Neuer Ordner…</string>
     <string name="folder_none">Kein Ordner</string>
     <string name="folder_taken">Einen Ordner mit diesem Namen gibt es schon.</string>
     <string name="folder_options">Ordneroptionen</string>
@@ -158,7 +163,7 @@
     <string name="read_only_reason_no_grant">Schreibgeschützt: Die App, die diese Datei geöffnet hat, hat keinen Schreibzugriff erlaubt.</string>
     <string name="read_only_reason_provider">Schreibgeschützt: Der Anbieter dieser Datei erlaubt kein Schreiben.</string>
     <string name="read_only_reason_unknown">Schreibgeschützt: Der Schreibzugriff konnte nicht geprüft werden.</string>
-    <string name="action_open_writable">Mit Schreibzugriff öffnen …</string>
+    <string name="action_open_writable">Mit Schreibzugriff öffnen…</string>
 
     <string name="settings_language">Sprache / Language</string>
     <string name="language_system">Systemstandard</string>

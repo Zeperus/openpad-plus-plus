@@ -73,7 +73,7 @@ class ExternalFileUiTest {
         rule.onNodeWithTag("read-only-banner").assertExists()
         rule.waitFor("the title says read only", { "" }) {
             rule.onNodeWithTag("title").fetchSemanticsNode().config.getOrNull(SemanticsProperties.Text)
-                ?.joinToString("") { it.text }?.contains("Read only") == true
+                ?.joinToString("") { it.text }?.contains("Read-only") == true
         }
         assertEquals(1, rule.tagCount("open-writable")) // the way out: pick the file again, asking for write access
         Thread.sleep(1_500)

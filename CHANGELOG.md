@@ -20,6 +20,15 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
   8000-word note: 586 ms -> 46 ms on the test machine), and the editor's segment layout is computed once per change.
 - **Search** clears old results as soon as you type, shows *Searching…*, works in the background, has a clear button and does not
   autocorrect the search words.
+- **FILES can be sorted by last change** (toggle in the FILES header, remembered) and every note there shows when it was last changed
+  ("5 min. ago", "Yesterday").
+- **Messages appear on every screen** (also in Settings and Search) and Favorites says *Added to / Removed from Favorites*.
+- **TalkBack:** list markers are no longer read as separate items, checklist labels are cut at a word with "…", the area below the last
+  line is announced as *Continue writing at the end*, drawer sections are headings, the Not saved / read-only bars are announced.
+- **Consistent words:** *Move to Trash…* (was *Delete note…*), *New note* / *New checklist* without a "+", *Read-only*; German
+  *In den Papierkorb…*, *Notiz leeren…*, no space before "…".
+- Remembered caret/undo history is written 0.8 s after the last change (at the latest after 5 s) instead of about every second while
+  typing, and its encoding runs in the background.
 - **Share** prepares the file in the background and keeps copies that another app may still be reading (older than an hour are removed).
 - `index.json` is written compactly (older, pretty-printed files are read as before); the title check on every save needs no regex.
 - **Easier to find and to undo:** *New folder* is always in the drawer (also before the first folder exists); the formatting bar shows
