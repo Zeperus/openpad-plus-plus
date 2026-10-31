@@ -46,8 +46,8 @@ class LocalizationTest {
 
     @Test fun `the examples from the specification read naturally`() {
         val de = german
-        assertEquals("+ Neue Notiz", de.getValue("new_note").text)
-        assertEquals("+ Neue Checkliste", de.getValue("new_checklist").text)
+        assertEquals("Neue Notiz", de.getValue("new_note").text)
+        assertEquals("Neue Checkliste", de.getValue("new_checklist").text)
         assertEquals("FAVORITEN", de.getValue("section_favorites").text)
         assertEquals("ZULETZT VERWENDET", de.getValue("section_recent").text)
         assertEquals("DATEIEN", de.getValue("section_files").text)

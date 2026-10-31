@@ -52,8 +52,7 @@ class NotesViewModelSessionTest {
             FileNoteRepository(root, clock = { tick++ }, dispatcher = dispatcher),
             FileSessionStore(sessionFile, dispatcher),
             settings,
-            CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()),
-        )
+            CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()), editorStateDispatcher = dispatcher)
     }
 
     private fun seedRepo() = FileNoteRepository(root, clock = { tick++ }, dispatcher = Dispatchers.IO)

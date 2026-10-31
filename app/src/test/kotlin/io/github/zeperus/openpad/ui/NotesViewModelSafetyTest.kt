@@ -56,8 +56,7 @@ class NotesViewModelSafetyTest {
             FileSessionStore(File(root, "session.json"), dispatcher),
             settings,
             CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()),
-            exportTarget = exportTarget,
-        )
+            exportTarget = exportTarget, editorStateDispatcher = dispatcher)
     }
 
     private val uri = "content://docs/doc/plan"

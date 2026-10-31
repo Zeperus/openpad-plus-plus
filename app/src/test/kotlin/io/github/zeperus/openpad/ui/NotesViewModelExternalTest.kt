@@ -44,8 +44,7 @@ class NotesViewModelExternalTest {
             FileNoteRepository(root, clock = { tick++ }, dispatcher = dispatcher, external = provider),
             FileSessionStore(File(root, "session.json"), dispatcher),
             settings,
-            CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()),
-        )
+            CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()), editorStateDispatcher = dispatcher)
     }
 
     private val uri = "content://docs/doc/notes"

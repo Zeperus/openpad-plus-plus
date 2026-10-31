@@ -48,8 +48,7 @@ class EditorFontSizeViewModelTest {
             FileSessionStore(File(root, "session.json"), dispatcher),
             settings,
             CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()),
-            FileEditorStateStore(File(root, "editor-state.json"), dispatcher),
-        )
+            FileEditorStateStore(File(root, "editor-state.json"), dispatcher), editorStateDispatcher = dispatcher)
     }
 
     private fun mdFiles() = root.walkTopDown().filter { it.isFile && it.name.endsWith(".md") }.toList()

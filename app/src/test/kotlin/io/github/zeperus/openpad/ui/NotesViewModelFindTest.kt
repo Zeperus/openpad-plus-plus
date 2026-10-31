@@ -37,8 +37,7 @@ class NotesViewModelFindTest {
             FileNoteRepository(root, clock = { tick++ }, dispatcher = dispatcher),
             FileSessionStore(File(root, "session.json"), dispatcher),
             settings,
-            CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()),
-        )
+            CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()), editorStateDispatcher = dispatcher)
     }
 
     private fun TestScope.settle() { advanceTimeBy(1_000); runCurrent() }

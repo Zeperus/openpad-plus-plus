@@ -7,9 +7,6 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import io.github.zeperus.openpad.domain.Autosaver
 import io.github.zeperus.openpad.domain.EditorStateStore
-import io.github.zeperus.openpad.editor.EditorStateCodec
-import io.github.zeperus.openpad.editor.PersistedEditorState
-import kotlinx.coroutines.delay
 import io.github.zeperus.openpad.domain.DocumentTab
 import io.github.zeperus.openpad.domain.FolderInfo
 import io.github.zeperus.openpad.domain.FolderNameConflictException
@@ -71,7 +68,7 @@ data class FindState(val query: String, val matches: List<FindMatch>, val curren
     val currentMatch: FindMatch? get() = matches.getOrNull(current)
 }
 
-enum class UserMessage { SaveFailed, NoteUnreadable, ActionFailed, SourceUnavailable, FolderNotEmpty, MovedToTrash, SmartChecklistOn }
+enum class UserMessage { SaveFailed, NoteUnreadable, ActionFailed, SourceUnavailable, FolderNotEmpty, MovedToTrash, SmartChecklistOn, FavoriteAdded, FavoriteRemoved }
 
 enum class RenameResult { Ok, InvalidName, NameTaken, Failed }
 
@@ -101,6 +98,8 @@ class NotesViewModel(
     private val exportTarget: ExportTarget? = null,
     /** Where the global search computes its hits (tests pass a test dispatcher). */
     private val searchDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    /** Where the remembered editor state is encoded for the file (tests pass a test dispatcher). */
+    private val editorStateDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
     private val actions = Mutex() // user actions and autosave run one at a time, in order
     private var editor = NoteEditor(repository)
@@ -110,10 +109,9 @@ class NotesViewModel(
     private var uiVersion = 0L
     private var focusToken = 0L
 
-    // Caret and recent undo history per open note, remembered across app restarts (see EditorStateCodec).
-    private val persistedStates = HashMap<String, PersistedEditorState>()
-    private val dirtyStates = HashSet<NoteId>()
-    private val stateChanges = Channel<Unit>(Channel.CONFLATED)
+    // Caret and recent undo history per open note, remembered across app restarts (see EditorStatePersistence).
+    private val editorStatePersistence = EditorStatePersistence(editorStates, scope, editorStateDispatcher)
+        .also { it.liveSessions = { id -> sessions[id] } }
 
     /** False until the previous session has been restored; the editor must not be used before that. */
     var ready by mutableStateOf(false)
@@ -259,15 +257,6 @@ class NotesViewModel(
                 } catch (_: Exception) {
                     // ignore
                 }
-            }
-        }
-    }
-
-    init {
-        scope.launch {
-            for (change in stateChanges) {
-                delay(STATE_DELAY_MILLIS) // a burst of typing is saved once
-                persistStates()
             }
         }
     }
@@ -556,29 +545,7 @@ class NotesViewModel(
     /** The open note's caret or history changed: it is saved shortly (and when the app goes to the background). */
     private fun markStateDirty() {
         val id = editor.info?.id ?: return
-        dirtyStates += id
-        stateChanges.trySend(Unit)
-    }
-
-    private suspend fun persistStates() {
-        val ids = dirtyStates.toList()
-        dirtyStates.clear()
-        val pruned = persistedStates.keys.retainAll(session.noteIds.mapTo(HashSet()) { it.value })
-        var changed = pruned
-        for (id in ids) {
-            val live = sessions[id] ?: continue
-            val captured = try { EditorStateCodec.capture(live) } catch (e: Exception) { continue }
-            persistedStates[id.value] = captured
-            changed = true
-        }
-        if (!changed) return
-        try {
-            editorStates.save(persistedStates.toMap())
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            // disposable: the next change writes it again
-        }
+        editorStatePersistence.markDirty(id)
     }
 
     private fun requestFocus(rowId: Long) {
@@ -617,7 +584,7 @@ class NotesViewModel(
     fun flush() {
         scope.launch {
             autosaver.flush()
-            persistStates() // after the text: the saved state is only valid for the text that is on disk
+            editorStatePersistence.persist() // after the text: the saved state is only valid for the text that is on disk
         }
     }
 
@@ -924,7 +891,10 @@ class NotesViewModel(
     /** Favorites or unfavorites the open note (creating it first if it is a draft with text). */
     fun toggleFavorite() = act {
         val favorite = !(editor.info?.favorite ?: false)
-        if (editor.setFavorite(favorite)) afterEditorChanged()
+        if (editor.setFavorite(favorite)) {
+            afterEditorChanged()
+            message = if (favorite) UserMessage.FavoriteAdded else UserMessage.FavoriteRemoved
+        }
     }
 
     /**
@@ -1033,10 +1003,10 @@ class NotesViewModel(
         noteSearch.cancel()
         scope.launch {
             autosaver.flush()
-            persistStates()
+            editorStatePersistence.persist()
             autosaver.close()
             sessionChanges.close() // the last queued session state is still written
-            stateChanges.close() // the state loop ends after the final write above
+            editorStatePersistence.close() // after the final write above
         }
     }
 
@@ -1049,7 +1019,7 @@ class NotesViewModel(
     private suspend fun startup() {
         try {
             val mode = preferences.load()
-            try { persistedStates.putAll(editorStates.load()) } catch (e: CancellationException) { throw e } catch (_: Exception) { /* nothing remembered */ }
+            editorStatePersistence.load()
             refreshLists()
             val initial = StartupPlanner.initial(mode, sessionStore.load(), notes.mapTo(HashSet()) { it.id })
             commitSession(initial)
@@ -1108,7 +1078,7 @@ class NotesViewModel(
 
     private fun commitSession(next: OpenDocuments) {
         session = next
-        if (persistedStates.keys.any { key -> next.noteIds.none { it.value == key } }) stateChanges.trySend(Unit) // closed tabs forget their history
+        editorStatePersistence.retainOnly(next.noteIds.toSet()) // closed tabs forget their history
         sessionChanges.trySend(next.toPersisted())
     }
 
@@ -1165,7 +1135,7 @@ class NotesViewModel(
     private fun sessionFor(next: NoteEditor): EditorSession {
         val id = next.info?.id
         val kept = id?.let { sessions[it] }?.takeIf { runCatching { it.markdown() == next.text }.getOrDefault(false) }
-        val restored = if (kept == null && id != null) persistedStates[id.value]?.let { EditorStateCodec.restore(next.text, it) } else null
+        val restored = if (kept == null && id != null) editorStatePersistence.restore(id, next.text) else null
         val result = kept ?: restored ?: EditorSession(if (id == null && next.smartOnCreate) EditorDocument.emptyChecklist() else EditorDocument.fromMarkdown(next.text))
         if (id != null) sessions[id] = result
         sessions.keys.retainAll((session.noteIds + listOfNotNull(id)).toSet())
@@ -1208,6 +1178,3 @@ class NotesViewModel(
         conflictDialogVisible = false
     }
 }
-
-private const val STATE_DELAY_MILLIS = 800L
-

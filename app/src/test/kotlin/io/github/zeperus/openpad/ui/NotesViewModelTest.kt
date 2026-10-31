@@ -62,8 +62,7 @@ class NotesViewModelTest {
             repo,
             FileSessionStore(sessionFile, dispatcher),
             settings,
-            CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()),
-        )
+            CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()), editorStateDispatcher = dispatcher)
     }
 
     @Test fun `starts with a blank draft and no files`() = runTest {

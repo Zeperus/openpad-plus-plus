@@ -30,6 +30,17 @@ data class PersistedEditorState(
     }
 }
 
+/**
+ * What [EditorStateCodec.encode] needs from a session, copied on the main thread. The documents and caret values in it are
+ * immutable, so the expensive encoding can run elsewhere while the session keeps being edited.
+ */
+class EditorStateSnapshot(
+    val doc: EditorDocument,
+    val cursor: Cursor?,
+    val undo: List<Snapshot>,
+    val redo: List<Snapshot>,
+)
+
 /** Turning an [EditorSession] into a [PersistedEditorState] and back. Bounded in steps and size; every failure means "start fresh". */
 object EditorStateCodec {
     const val MAX_STEPS = 25
@@ -41,8 +52,22 @@ object EditorStateCodec {
     fun fingerprint(text: String): String =
         MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).take(16).joinToString("") { "%02x".format(it) }
 
-    fun capture(session: EditorSession): PersistedEditorState {
-        val markdown = session.markdown()
+    fun capture(session: EditorSession): PersistedEditorState = encode(snapshot(session))
+
+    /** The cheap part of [capture], for the main thread: only references to immutable documents and the caret are taken. */
+    fun snapshot(session: EditorSession): EditorStateSnapshot = EditorStateSnapshot(
+        doc = session.doc,
+        cursor = session.cursor,
+        undo = session.history.undoSnapshots().takeLast(MAX_STEPS),
+        redo = session.history.redoSnapshots().takeLast(MAX_STEPS),
+    )
+
+    /**
+     * The expensive part of [capture]: the Markdown of the document and of each history step, the fingerprint and the bounds.
+     * It reads the snapshot only, so it can run off the main thread.
+     */
+    fun encode(snap: EditorStateSnapshot): PersistedEditorState {
+        val markdown = snap.doc.toMarkdown()
         val withHistory = markdown.length <= MAX_DOCUMENT_CHARS
         val budget = intArrayOf(MAX_HISTORY_CHARS)
         fun steps(snapshots: List<Snapshot>): List<PersistedStep> {
@@ -57,9 +82,9 @@ object EditorStateCodec {
         }
         return PersistedEditorState(
             fingerprint = fingerprint(markdown),
-            cursor = cursorOf(session.doc, session.cursor),
-            undo = if (withHistory) steps(session.history.undoSnapshots()) else emptyList(),
-            redo = if (withHistory) steps(session.history.redoSnapshots()) else emptyList(),
+            cursor = cursorOf(snap.doc, snap.cursor),
+            undo = if (withHistory) steps(snap.undo) else emptyList(),
+            redo = if (withHistory) steps(snap.redo) else emptyList(),
         )
     }
 

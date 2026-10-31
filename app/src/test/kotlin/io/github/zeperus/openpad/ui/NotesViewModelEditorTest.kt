@@ -50,6 +50,7 @@ class NotesViewModelEditorTest {
             CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()),
             io.github.zeperus.openpad.data.FileEditorStateStore(File(root, "editor-state.json"), dispatcher),
             searchDispatcher = dispatcher,
+            editorStateDispatcher = dispatcher,
         )
     }
 

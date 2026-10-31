@@ -48,8 +48,7 @@ class NotesViewModelUndoTest {
             disk,
             FileSessionStore(File(root, "session.json"), dispatcher),
             settings,
-            CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()),
-        )
+            CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()), editorStateDispatcher = dispatcher)
         return Harness(vm, disk)
     }
 

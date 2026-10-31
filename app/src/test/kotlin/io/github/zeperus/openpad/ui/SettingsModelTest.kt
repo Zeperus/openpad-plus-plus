@@ -2,6 +2,7 @@ package io.github.zeperus.openpad.ui
 
 import io.github.zeperus.openpad.domain.AppLanguage
 import io.github.zeperus.openpad.domain.EditorFontSize
+import io.github.zeperus.openpad.domain.FilesSort
 import io.github.zeperus.openpad.domain.LanguageManager
 import io.github.zeperus.openpad.domain.LocaleApplier
 import io.github.zeperus.openpad.domain.SettingsStore
@@ -22,6 +23,7 @@ class SettingsModelTest {
         var mode: StartupMode = StartupMode.ResumeAndBlank,
         var language: AppLanguage = AppLanguage.System,
         var size: Int? = null,
+        var sortChoice: FilesSort = FilesSort.Name,
     ) : SettingsStore {
         override suspend fun startupMode() = mode
         override suspend fun setStartupMode(mode: StartupMode) { this.mode = mode }
@@ -29,6 +31,8 @@ class SettingsModelTest {
         override suspend fun setLanguage(language: AppLanguage) { this.language = language }
         override suspend fun editorFontSize() = EditorFontSize.fromStored(size)
         override suspend fun setEditorFontSize(sp: Int) { size = sp }
+        override suspend fun filesSort() = sortChoice
+        override suspend fun setFilesSort(sort: FilesSort) { sortChoice = sort }
     }
 
     /** A store whose every read fails, as an unreadable preferences file would. */
@@ -37,6 +41,7 @@ class SettingsModelTest {
         override suspend fun setStartupMode(mode: StartupMode) = Unit
         override suspend fun language(): AppLanguage = throw IOException("unreadable")
         override suspend fun editorFontSize(): Int = throw IOException("unreadable")
+        override suspend fun filesSort(): FilesSort = throw IOException("unreadable")
     }
 
     private class FakeApplier : LocaleApplier {
@@ -66,6 +71,28 @@ class SettingsModelTest {
         assertEquals(StartupMode.Default, model.load())
         assertEquals(AppLanguage.Default, model.language)
         assertEquals(EditorFontSize.DEFAULT, model.editorFontSize)
+        assertEquals(FilesSort.Default, model.filesSort)
+    }
+
+    @Test fun `the files sort is loaded, and nothing stored means by name`() = runTest {
+        val stored = SettingsModel(FakeSettings(sortChoice = FilesSort.Modified), null, this)
+        stored.load()
+        assertEquals(FilesSort.Modified, stored.filesSort)
+        val fresh = SettingsModel(FakeSettings(), null, this)
+        fresh.load()
+        assertEquals(FilesSort.Name, fresh.filesSort)
+    }
+
+    @Test fun `choosing the files sort shows it at once, stores it and it survives a restart`() = runTest {
+        val settings = FakeSettings()
+        val model = SettingsModel(settings, null, this)
+        model.chooseFilesSort(FilesSort.Modified)
+        assertEquals(FilesSort.Modified, model.filesSort) // at once, before the background write
+        advanceUntilIdle()
+        assertEquals(FilesSort.Modified, settings.sortChoice)
+        val restarted = SettingsModel(settings, null, this)
+        restarted.load()
+        assertEquals(FilesSort.Modified, restarted.filesSort)
     }
 
     @Test fun `a cancelled read is not swallowed`() = runTest {
