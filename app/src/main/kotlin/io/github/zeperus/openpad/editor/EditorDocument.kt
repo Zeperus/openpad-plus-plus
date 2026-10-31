@@ -97,47 +97,60 @@ class EditorDocument internal constructor(
     fun toBlocks(): Pair<List<Block>, List<Int?>> {
         val blocks = ArrayList<Block>()
         val origins = ArrayList<Int?>()
-        var i = 0
-        while (i < rows.size) {
-            val start = i
-            val block: Block
-            when (val kind = rows[i].kind) {
-                RowKind.Paragraph -> { block = Block.Paragraph(rows[i].text.toInlines()); i++ }
-                is RowKind.Heading -> { block = Block.Heading(kind.level, rows[i].text.toInlines()); i++ }
-                RowKind.Rule -> { block = Block.Rule; i++ }
-                is RowKind.Code -> { block = Block.CodeBlock(rows[i].text.text, kind.info, kind.style); i++ }
-                // an image on its own is a raw row for the UI, but still the paragraph it was
-                RowKind.Raw -> { block = rows[i].text.text.let { t -> if (RawBlocks.classify(t) is RawBlock.Image) Block.Paragraph(listOf(Inline.Raw(t))) else Block.Raw(t) }; i++ }
-                RowKind.Quote -> {
-                    // quote lines belong together, except that two quotes parsed from separate blocks stay separate
-                    val firstOrigin = rows[i].origin?.block
-                    i++
-                    while (i < rows.size && rows[i].kind == RowKind.Quote &&
-                        (rows[i].origin == null || firstOrigin == null || rows[i].origin?.block == firstOrigin)
-                    ) i++
-                    block = Block.Quote(rows.subList(start, i).map { Block.Paragraph(it.text.toInlines()) })
-                }
-                is RowKind.ListItem -> {
-                    // a top-level list: all following list rows up to the first row of a different list at depth 0
-                    val firstList = kind.list.id
-                    i++
-                    while (i < rows.size) {
-                        val r = rows[i]
-                        val k = r.kind as? RowKind.ListItem ?: break
-                        if (r.depth == 0 && k.list.id != firstList) break
-                        i++
-                    }
-                    block = buildList(rows.subList(start, i))
-                }
-            }
-            val group = rows.subList(start, i)
+        var start = 0
+        while (start < rows.size) {
+            val end = groupEnd(start)
+            val group = rows.subList(start, end)
+            // an untouched group is still its parsed block, so it is not converted again
             val original = originalBlockFor(group)
-            blocks += if (original != null) parsed!!.blocks[original].block else block
+            blocks += if (original != null) parsed!!.blocks[original].block else blockOf(group)
             // a group made only of rows of one parsed block is offered to the serializer as that block: if edits made it
             // equal to the original again it is written verbatim, otherwise it is regenerated
             origins += original ?: group.map { it.origin?.block }.distinct().singleOrNull()
+            start = end
         }
         return blocks to origins
+    }
+
+    /** The index after the last row of the group that starts at [start]: the rows that form one top-level block. */
+    private fun groupEnd(start: Int): Int {
+        var i = start + 1
+        when (val kind = rows[start].kind) {
+            RowKind.Quote -> {
+                // quote lines belong together, except that two quotes parsed from separate blocks stay separate
+                val firstOrigin = rows[start].origin?.block
+                while (i < rows.size && rows[i].kind == RowKind.Quote &&
+                    (rows[i].origin == null || firstOrigin == null || rows[i].origin?.block == firstOrigin)
+                ) i++
+            }
+            is RowKind.ListItem -> {
+                // a top-level list: all following list rows up to the first row of a different list at depth 0
+                val firstList = kind.list.id
+                while (i < rows.size) {
+                    val r = rows[i]
+                    val k = r.kind as? RowKind.ListItem ?: break
+                    if (r.depth == 0 && k.list.id != firstList) break
+                    i++
+                }
+            }
+            else -> {} // every other kind is one row
+        }
+        return i
+    }
+
+    /** The block that the rows of [group] make (a group as delimited by [groupEnd]). */
+    private fun blockOf(group: List<EditorRow>): Block {
+        val first = group.first()
+        return when (val kind = first.kind) {
+            RowKind.Paragraph -> Block.Paragraph(first.text.toInlines())
+            is RowKind.Heading -> Block.Heading(kind.level, first.text.toInlines())
+            RowKind.Rule -> Block.Rule
+            is RowKind.Code -> Block.CodeBlock(first.text.text, kind.info, kind.style)
+            // an image on its own is a raw row for the UI, but still the paragraph it was
+            RowKind.Raw -> first.text.text.let { t -> if (RawBlocks.classify(t) is RawBlock.Image) Block.Paragraph(listOf(Inline.Raw(t))) else Block.Raw(t) }
+            RowKind.Quote -> Block.Quote(group.map { Block.Paragraph(it.text.toInlines()) })
+            is RowKind.ListItem -> buildList(group)
+        }
     }
 
     /** The parsed block this group of rows still is exactly, if untouched and complete. */

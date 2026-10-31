@@ -81,6 +81,18 @@ sealed interface DocItem {
 }
 
 object Segments {
+    private var cachedDoc: EditorDocument? = null
+    private var cachedMode: Set<Long>? = null
+    private var cachedItems: List<DocItem> = emptyList()
+
+    /** [split] with the standard block rule for [sourceMode], reusing the last result for the same document instance and mode (documents are immutable). */
+    @Synchronized fun splitFor(doc: EditorDocument, sourceMode: Set<Long>): List<DocItem> {
+        if (doc === cachedDoc && sourceMode == cachedMode) return cachedItems
+        val items = split(doc) { isBlock(it, sourceMode) }
+        cachedDoc = doc; cachedMode = sourceMode; cachedItems = items
+        return items
+    }
+
     /** The document as text segments and blocks, in order. [isBlock] says which rows are drawn as non-text blocks. */
     fun split(doc: EditorDocument, isBlock: (EditorRow) -> Boolean): List<DocItem> {
         val items = ArrayList<DocItem>()
@@ -106,7 +118,7 @@ object Segments {
 
     /** The segment that holds row [rowId], or null (it is a block, or gone). */
     fun containing(doc: EditorDocument, rowId: Long, sourceMode: Set<Long>): Segment? =
-        split(doc) { isBlock(it, sourceMode) }.firstNotNullOfOrNull { (it as? DocItem.Text)?.segment?.takeIf { s -> rowId in s.ids } }
+        splitFor(doc, sourceMode).firstNotNullOfOrNull { (it as? DocItem.Text)?.segment?.takeIf { s -> rowId in s.ids } }
 }
 
 /**

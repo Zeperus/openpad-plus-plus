@@ -89,7 +89,7 @@ private fun RichEditorContent(vm: NotesViewModel, modifier: Modifier = Modifier)
         val sourceRows = remember { mutableStateListOf<Long>() } // raw blocks currently opened as text
         val source = sourceRows.toSet()
         val keys = remember { SegmentKeys() }
-        val items = remember(ui.doc, source) { Segments.split(ui.doc) { Segments.isBlock(it, source) } }
+        val items = remember(ui.doc, source) { Segments.splitFor(ui.doc, source) }
         val segmentKeys = remember(items) { keys.assign(items.filterIsInstance<DocItem.Text>().map { it.segment.ids }) }
         // how many text segments come before each item: the index of its key in segmentKeys, computed once per list
         val textIndexBefore = remember(items) {
