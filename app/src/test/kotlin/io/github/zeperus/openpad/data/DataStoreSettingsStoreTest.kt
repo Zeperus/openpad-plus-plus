@@ -4,6 +4,7 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import io.github.zeperus.openpad.domain.FilesSort
 import io.github.zeperus.openpad.domain.StartupMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -126,6 +127,27 @@ class DataStoreSettingsStoreTest {
             val dataStore = PreferenceDataStoreFactory.create(scope = CoroutineScope(Dispatchers.IO + job)) { file }
             dataStore.edit { it[stringPreferencesKey("editor_font_size")] = "large" }
             assertEquals(16, DataStoreSettingsStore(dataStore).editorFontSize())
+        } finally {
+            job.cancelAndJoin()
+        }
+    }
+
+    // ---- Files sort ---------------------------------------------------------------------------------------------
+
+    @Test fun `the files sort defaults to name, can be chosen and survives recreating the store`() {
+        assertEquals(FilesSort.Name, withStore { it.filesSort() })
+        for (sort in FilesSort.entries) {
+            withStore { it.setFilesSort(sort) }
+            assertEquals(sort, withStore { it.filesSort() })
+        }
+    }
+
+    @Test fun `an unknown stored files sort falls back to name`() = runBlocking {
+        val job = Job()
+        try {
+            val dataStore = PreferenceDataStoreFactory.create(scope = CoroutineScope(Dispatchers.IO + job)) { file }
+            dataStore.edit { it[stringPreferencesKey("files_sort")] = "Size" }
+            assertEquals(FilesSort.Name, DataStoreSettingsStore(dataStore).filesSort())
         } finally {
             job.cancelAndJoin()
         }

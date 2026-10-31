@@ -67,4 +67,9 @@ interface SettingsStore {
     suspend fun editorFontSize(): Int = EditorFontSize.DEFAULT
 
     suspend fun setEditorFontSize(sp: Int) = Unit
+
+    /** The order of the drawer's FILES section; [FilesSort.Default] if none was chosen or the stored value is unusable. */
+    suspend fun filesSort(): FilesSort = FilesSort.Default
+
+    suspend fun setFilesSort(sort: FilesSort) = Unit
 }

@@ -36,13 +36,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.text.format.DateUtils
 import io.github.zeperus.openpad.R
+import io.github.zeperus.openpad.domain.FilesSort
 import io.github.zeperus.openpad.domain.FolderInfo
 import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteInfo
+import io.github.zeperus.openpad.domain.NoteLists
 
 @Composable
 internal fun DrawerContent(
@@ -56,6 +60,8 @@ internal fun DrawerContent(
     onRenameFolder: (FolderInfo) -> Unit,
     onDeleteFolder: (FolderInfo) -> Unit,
 ) {
+    val sort = vm.preferences.filesSort
+    val files = remember(vm.notes, sort) { NoteLists.sorted(vm.notes, sort) }
     LazyColumn(contentPadding = PaddingValues(vertical = 12.dp), modifier = Modifier.fillMaxSize().testTag("drawer")) {
         item {
             Button(
@@ -80,23 +86,39 @@ internal fun DrawerContent(
             item(key = "header-recent") { SectionHeader(stringResource(R.string.section_recent)) }
             noteRows("recent", vm.recent, vm.current?.id, onOpen)
         }
-        item(key = "header-files") { SectionHeader(stringResource(R.string.section_files)) }
-        if (vm.notes.isEmpty()) {
+        item(key = "header-files") {
+            SectionHeader(
+                stringResource(R.string.section_files),
+                trailing = {
+                    TextButton(
+                        onClick = { vm.preferences.chooseFilesSort(if (sort == FilesSort.Name) FilesSort.Modified else FilesSort.Name) },
+                        modifier = Modifier.testTag("files-sort"),
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                    ) {
+                        Text(
+                            stringResource(if (sort == FilesSort.Name) R.string.sort_by_modified else R.string.sort_by_name),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                },
+            )
+        }
+        if (files.isEmpty()) {
             item(key = "files-empty") { EmptyHint(stringResource(R.string.files_empty)) }
         }
         if (vm.folders.isEmpty()) {
-            noteRows("file", vm.notes, vm.current?.id, onOpen)
+            noteRows("file", files, vm.current?.id, onOpen, showDate = true)
         } else {
             // folders first (collapsible), then the notes that are in no folder
             for (folder in vm.folders) {
-                val inside = vm.notes.filter { it.folderId == folder.id }
+                val inside = files.filter { it.folderId == folder.id }
                 val open = folder.id in vm.expandedFolders || inside.any { it.id == vm.current?.id }
                 item(key = "folder-${folder.id}") {
                     FolderHeader(folder, inside.size, open, onToggle = { vm.toggleFolder(folder.id) }, onRename = { onRenameFolder(folder) }, onDelete = { onDeleteFolder(folder) })
                 }
-                if (open) noteRows("in-${folder.id}", inside, vm.current?.id, onOpen, indent = 16.dp)
+                if (open) noteRows("in-${folder.id}", inside, vm.current?.id, onOpen, indent = 16.dp, showDate = true)
             }
-            noteRows("file", vm.notes.filter { n -> n.folderId == null || vm.folders.none { it.id == n.folderId } }, vm.current?.id, onOpen)
+            noteRows("file", files.filter { n -> n.folderId == null || vm.folders.none { it.id == n.folderId } }, vm.current?.id, onOpen, showDate = true)
         }
         // Shown in both cases, so the first folder can be created too.
         item(key = "new-folder") {
@@ -127,18 +149,35 @@ internal fun DrawerContent(
     }
 }
 
-/** One drawer row per note. [section] namespaces the lazy-list keys: the same note can appear in two sections. */
+/**
+ * One drawer row per note. [section] namespaces the lazy-list keys: the same note can appear in two sections.
+ * [showDate] adds the last change as a relative date under the title (FILES only).
+ */
 internal fun LazyListScope.noteRows(
     section: String,
     notes: List<NoteInfo>,
     selected: NoteId?,
     onOpen: (NoteInfo) -> Unit,
     indent: androidx.compose.ui.unit.Dp = 0.dp,
+    showDate: Boolean = false,
 ) {
     items(notes, key = { "$section-${it.id.value}" }) { note ->
         val externalLabel = stringResource(R.string.external_file)
         NavigationDrawerItem(
-            label = { Text(note.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            label = {
+                Column {
+                    Text(note.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (showDate) {
+                        Text(
+                            DateUtils.getRelativeTimeSpanString(note.updatedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            },
             selected = note.id == selected,
             onClick = { onOpen(note) },
             badge = if (note.isExternal) {
@@ -149,14 +188,21 @@ internal fun LazyListScope.noteRows(
     }
 }
 
+/** A drawer section title, optionally followed by a [trailing] control on the same line. */
 @Composable
-internal fun SectionHeader(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 28.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
-    )
+internal fun SectionHeader(text: String, trailing: (@Composable () -> Unit)? = null) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 28.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f).semantics { heading() },
+        )
+        trailing?.invoke()
+    }
 }
 
 @Composable

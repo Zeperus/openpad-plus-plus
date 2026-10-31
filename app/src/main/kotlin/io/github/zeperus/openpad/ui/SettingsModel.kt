@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.zeperus.openpad.domain.AppLanguage
 import io.github.zeperus.openpad.domain.EditorFontSize
+import io.github.zeperus.openpad.domain.FilesSort
 import io.github.zeperus.openpad.domain.LanguageManager
 import io.github.zeperus.openpad.domain.SettingsStore
 import io.github.zeperus.openpad.domain.StartupMode
@@ -30,12 +31,17 @@ class SettingsModel(
     var editorFontSize by mutableIntStateOf(EditorFontSize.DEFAULT)
         private set
 
+    /** The order of the drawer's FILES section (Name or last change). A display preference: never changes a note. */
+    var filesSort by mutableStateOf(FilesSort.Default)
+        private set
+
     /** Reads the stored values; each falls back to its default if it cannot be read. Called once at startup. Returns the startup mode. */
     suspend fun load(): StartupMode {
         val mode = readOr(StartupMode.Default) { store.startupMode() }
         startupMode = mode
         language = readOr(AppLanguage.Default) { languageManager?.restore() ?: store.language() }
         editorFontSize = readOr(EditorFontSize.DEFAULT) { store.editorFontSize() }
+        filesSort = readOr(FilesSort.Default) { store.filesSort() }
         return mode
     }
 
@@ -60,6 +66,12 @@ class SettingsModel(
         if (size == editorFontSize) return
         editorFontSize = size
         scope.launch { write { store.setEditorFontSize(size) } }
+    }
+
+    /** The drawer's FILES order: shown at once, remembered in the background. */
+    fun chooseFilesSort(sort: FilesSort) {
+        filesSort = sort
+        scope.launch { write { store.setFilesSort(sort) } }
     }
 
     fun increaseEditorFontSize() = chooseEditorFontSize(EditorFontSize.increased(editorFontSize))

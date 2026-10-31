@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import io.github.zeperus.openpad.domain.AppLanguage
 import io.github.zeperus.openpad.domain.EditorFontSize
+import io.github.zeperus.openpad.domain.FilesSort
 import io.github.zeperus.openpad.domain.SettingsStore
 import io.github.zeperus.openpad.domain.StartupMode
 import kotlinx.coroutines.CoroutineScope
@@ -55,10 +56,22 @@ class DataStoreSettingsStore(private val dataStore: DataStore<Preferences>) : Se
         dataStore.edit { it[EDITOR_FONT_SIZE] = EditorFontSize.clamp(sp) }
     }
 
+    override suspend fun filesSort(): FilesSort {
+        val stored = dataStore.data
+            .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+            .first()[FILES_SORT]
+        return FilesSort.entries.firstOrNull { it.name == stored } ?: FilesSort.Default
+    }
+
+    override suspend fun setFilesSort(sort: FilesSort) {
+        dataStore.edit { it[FILES_SORT] = sort.name }
+    }
+
     companion object {
         private val EDITOR_FONT_SIZE = intPreferencesKey("editor_font_size")
         private val LANGUAGE = stringPreferencesKey("language")
         private val STARTUP_MODE = stringPreferencesKey("startup_mode")
+        private val FILES_SORT = stringPreferencesKey("files_sort")
 
         /** At most one DataStore may be active per [file]; [scope] bounds its lifetime. */
         fun create(file: File, scope: CoroutineScope) = DataStoreSettingsStore(

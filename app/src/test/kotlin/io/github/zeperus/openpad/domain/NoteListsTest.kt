@@ -107,4 +107,41 @@ class NoteListsTest {
         val inFavorites = NoteLists.favorites(notes).map { it.id }.toSet()
         assertTrue(NoteLists.recent(notes).none { it.id in inFavorites })
     }
+
+    // ---- Files order -----------------------------------------------------------------------------------------
+
+    @Test fun `by name is alphabetical ignoring case and not affected by the last change`() {
+        val notes = listOf(note("banana", updated = 99), note("Apple", updated = 1), note("cherry"))
+        assertEquals(listOf("Apple", "banana", "cherry"), titles(NoteLists.sorted(notes, FilesSort.Name)))
+    }
+
+    @Test fun `by name ties on the title are broken by id regardless of input order`() {
+        val a = note("Same", id = "b")
+        val b = note("same", id = "a")
+        listOf(listOf(a, b), listOf(b, a)).forEach {
+            assertEquals(listOf("a", "b"), NoteLists.sorted(it, FilesSort.Name).map { n -> n.id.value })
+        }
+    }
+
+    @Test fun `by last change is newest first, then title, then id, regardless of input order`() {
+        val zeta = note("Zeta", updated = 1, id = "z")
+        val alpha = note("alpha", updated = 9, id = "2")
+        val beta = note("Beta", updated = 9, id = "1") // same change time as alpha: title decides
+        val gammaLower = note("gamma", updated = 5, id = "3")
+        val gammaUpper = note("Gamma", updated = 5, id = "0") // same title ignoring case: id decides
+        val expected = listOf("alpha", "Beta", "Gamma", "gamma", "Zeta")
+        val all = listOf(zeta, alpha, beta, gammaLower, gammaUpper)
+        listOf(all, all.reversed(), listOf(beta, gammaLower, zeta, gammaUpper, alpha)).forEach {
+            assertEquals(expected, titles(NoteLists.sorted(it, FilesSort.Modified)))
+        }
+    }
+
+    @Test fun `sorting keeps every note and does not change the input`() {
+        val notes = listOf(note("b", updated = 1), note("a", updated = 2))
+        val sorted = NoteLists.sorted(notes, FilesSort.Modified)
+        assertEquals(2, sorted.size)
+        assertEquals(listOf("b", "a"), titles(notes))
+    }
+
+    @Test fun `the default order is by name`() = assertEquals(FilesSort.Name, FilesSort.Default)
 }
