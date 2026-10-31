@@ -26,6 +26,9 @@ class FakeExternalDocuments : ExternalDocuments {
     var failReads = false
     var hang = false
 
+    /** While set, reads and writes block the calling thread (real blocking I/O, unlike [hang]) until it is counted down. */
+    @Volatile var blockThread: java.util.concurrent.CountDownLatch? = null
+
     fun put(uri: String, text: String, name: String? = null, bytes: ByteArray? = null) {
         files[uri] = bytes ?: text.toByteArray(Charsets.UTF_8)
         if (name != null) names[uri] = name
@@ -35,6 +38,7 @@ class FakeExternalDocuments : ExternalDocuments {
 
     private suspend fun gate() {
         if (hang) delay(Long.MAX_VALUE)
+        blockThread?.await()
     }
 
     override suspend fun read(uri: String, maxBytes: Int): ByteArray {

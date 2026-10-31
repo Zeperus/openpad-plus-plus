@@ -9,6 +9,7 @@ import io.github.zeperus.openpad.domain.FolderNotFoundException
 import io.github.zeperus.openpad.domain.InvalidFolderNameException
 import io.github.zeperus.openpad.domain.InvalidNoteNameException
 import io.github.zeperus.openpad.domain.NoExternalDocuments
+import io.github.zeperus.openpad.domain.NoteChangedExternallyException
 import io.github.zeperus.openpad.domain.ReadOnlyReason
 import io.github.zeperus.openpad.domain.WriteAccess
 import io.github.zeperus.openpad.domain.NoteSourceUnavailableException
@@ -24,6 +25,9 @@ import io.github.zeperus.openpad.domain.NoteStorageException
 import io.github.zeperus.openpad.domain.NoteTitles
 import io.github.zeperus.openpad.domain.NoteUnreadableException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -35,6 +39,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.nio.charset.CharacterCodingException
+import java.security.MessageDigest
 import java.util.UUID
 
 /**
@@ -64,6 +69,8 @@ class FileNoteRepository internal constructor(
     private val external: ExternalDocuments = NoExternalDocuments,
     /** How long one provider call may take before the document counts as unavailable. */
     private val externalTimeoutMs: Long = EXTERNAL_TIMEOUT_MS,
+    /** Deletes a file of the Trash; returns false if it could not be deleted. */
+    private val deleteFile: (File) -> Boolean = File::delete,
 ) : NoteRepository {
     constructor(
         root: File,
@@ -83,6 +90,12 @@ class FileNoteRepository internal constructor(
     private val mutex = Mutex()
     private var entries: MutableMap<String, Entry>? = null
     private var folders: MutableMap<String, FolderEntry> = LinkedHashMap() // reloaded together with [entries]
+    /** External note id -> SHA-256 of the bytes last read from or written to its document. In memory only. */
+    private val externalBaseline = HashMap<String, String>()
+    /** Runs provider calls outside the caller; on timeout the caller is released even if the provider call is stuck in blocking I/O. */
+    private val providerScope = CoroutineScope(SupervisorJob() + dispatcher) // Dispatchers.IO in the app
+    /** Writes to providers stay in order: a write that was abandoned after a timeout still finishes before the next one starts. */
+    private val providerWrites = Mutex()
 
     @Serializable
     private data class IndexData(val version: Int = 0, val notes: List<Entry> = emptyList(), val folders: List<FolderEntry> = emptyList())
@@ -284,7 +297,8 @@ class FileNoteRepository internal constructor(
 
     override suspend fun deletePermanently(id: NoteId): Unit = locked { notes ->
         val entry = notes[id.value]?.takeIf { it.trashedAt != null } ?: throw NoteNotInTrashException(id)
-        trashFile(entry.id).delete()
+        val file = trashFile(entry.id)
+        if (file.exists() && !deleteFile(file)) throw NoteStorageException("The note could not be deleted")
         notes.remove(entry.id)
         persist(notes)
     }
@@ -316,13 +330,20 @@ class FileNoteRepository internal constructor(
         val entry = notes[id.value]?.takeIf { it.uri != null } ?: throw NoteNotFoundException(id)
         notes.remove(entry.id)
         persist(notes)
+        externalBaseline.remove(entry.id)
         backupFile(entry.id).delete()
+    }
+
+    override suspend fun overrideExternalChange(id: NoteId): Unit = locked { notes ->
+        val entry = notes[id.value]?.takeIf { it.uri != null } ?: throw NoteNotFoundException(id)
+        externalBaseline[entry.id] = digest(ext { external.read(entry.uri!!, MAX_EXTERNAL_BYTES) })
     }
 
     /** Reads an external document, keeping the entry's title and BOM flag in step with what the provider reports. */
     private suspend fun openExternalContent(notes: MutableMap<String, Entry>, entry: Entry): NoteContent {
         val uri = entry.uri!!
         val bytes = ext { external.read(uri, MAX_EXTERNAL_BYTES) }
+        externalBaseline[entry.id] = digest(bytes)
         val hasBom = bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()
         val text = try {
             AtomicFiles.decodeStrict(if (hasBom) bytes.copyOfRange(3, bytes.size) else bytes)
@@ -354,15 +375,19 @@ class FileNoteRepository internal constructor(
     /**
      * Writes an external document in place. Providers cannot replace a file atomically, so the new text is first kept
      * in a private recovery copy, and after writing the content is read back and compared: a failed or partial write is
-     * reported (the editor keeps the text and retries) instead of being believed.
+     * reported (the editor keeps the text and retries) instead of being believed. A document that another app changed
+     * since it was last read or written is not overwritten unless the user confirms it (see [overrideExternalChange]).
      */
     private suspend fun saveExternal(notes: MutableMap<String, Entry>, entry: Entry, text: String): NoteInfo {
         val uri = entry.uri!!
         val bytes = ((if (entry.bom) "\uFEFF" else "") + text).toByteArray(Charsets.UTF_8)
         backupsDir.mkdirs()
         AtomicFiles.writeText(backupFile(entry.id), text)
-        ext { external.write(uri, bytes) }
+        checkNotChangedExternally(entry, uri, bytes)
+        ext(write = true) { external.write(uri, bytes) }
         val written = ext { external.read(uri, bytes.size + 16) }
+        // the read-back is the last state seen of the document, even if it is a partial write (then a retry is not a conflict)
+        externalBaseline[entry.id] = digest(written)
         if (!written.contentEquals(bytes)) throw NoteSourceUnavailableException("The document was not written completely")
         val updated = entry.copy(updatedAt = clock())
         notes[updated.id] = updated
@@ -370,13 +395,33 @@ class FileNoteRepository internal constructor(
         return updated.toInfo()
     }
 
+    /**
+     * Throws [NoteChangedExternallyException] if the document differs from what openPad++ last saw of it, unless it
+     * already holds exactly the bytes about to be written. Without a baseline (no read in this session) nothing is checked.
+     */
+    private suspend fun checkNotChangedExternally(entry: Entry, uri: String, bytes: ByteArray) {
+        val baseline = externalBaseline[entry.id] ?: return
+        val current = digest(ext { external.read(uri, MAX_EXTERNAL_BYTES) })
+        if (current != baseline && current != digest(bytes)) throw NoteChangedExternallyException(entry.title)
+    }
+
+    private fun digest(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+
     private fun backupFile(id: String) = File(backupsDir, idToFileName(id).also { requireValidId(id) })
 
-    /** Provider calls can hang; bound them so that one broken provider cannot freeze every note operation. */
-    private suspend fun <T> ext(block: suspend () -> T): T = try {
-        withTimeout(externalTimeoutMs) { block() }
-    } catch (e: TimeoutCancellationException) {
-        throw NoteSourceUnavailableException("The document provider did not answer in time", e)
+    /**
+     * Provider calls are blocking I/O that coroutine timeouts cannot interrupt. The call therefore runs in its own
+     * coroutine: after the timeout the caller is released even if the provider is stuck, and the call is not cancelled,
+     * so a stuck write is never overtaken by a newer one. Writes run one after another ([providerWrites]).
+     */
+    private suspend fun <T> ext(write: Boolean = false, block: suspend () -> T): T {
+        val call = providerScope.async { if (write) providerWrites.withLock { block() } else block() }
+        return try {
+            withTimeout(externalTimeoutMs) { call.await() }
+        } catch (e: TimeoutCancellationException) {
+            throw NoteSourceUnavailableException("The document provider did not answer in time", e)
+        }
     }
 
     private fun externalTitle(displayName: String?): String {

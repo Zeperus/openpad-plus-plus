@@ -57,6 +57,9 @@ interface NoteRepository {
     /** Removes an external document from openPad++. The file itself is never touched or deleted. */
     suspend fun forgetExternal(id: NoteId)
 
+    /** Allows the next save of the external note [id] to overwrite the document although it was changed outside the app (the user chose to keep their version). */
+    suspend fun overrideExternalChange(id: NoteId)
+
     suspend fun moveToTrash(id: NoteId): NoteInfo
 
     suspend fun restoreFromTrash(id: NoteId): NoteInfo
@@ -89,6 +92,9 @@ class NoteUnreadableException(title: String, cause: Throwable? = null) :
 
 /** The external document cannot be read or written right now (missing, permission revoked, provider gone, too slow). */
 class NoteSourceUnavailableException(message: String, cause: Throwable? = null) : NoteStorageException(message, cause)
+
+/** The external document was changed by another app since openPad++ last read or wrote it. Nothing was written. */
+class NoteChangedExternallyException(val title: String) : NoteStorageException("The document was changed outside openPad++: $title")
 
 /** The operation does not make sense for an external document (Trash, rename). */
 class ExternalNotSupportedException(operation: String) : NoteStorageException("Not supported for external documents: $operation")
