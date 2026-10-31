@@ -97,9 +97,10 @@ internal fun DrawerContent(
                 if (open) noteRows("in-${folder.id}", inside, vm.current?.id, onOpen, indent = 16.dp)
             }
             noteRows("file", vm.notes.filter { n -> n.folderId == null || vm.folders.none { it.id == n.folderId } }, vm.current?.id, onOpen)
-            item(key = "new-folder") {
-                TextButton(onClick = onNewFolder, modifier = Modifier.padding(horizontal = 12.dp).testTag("new-folder")) { Text(stringResource(R.string.new_folder)) }
-            }
+        }
+        // Shown in both cases, so the first folder can be created too.
+        item(key = "new-folder") {
+            TextButton(onClick = onNewFolder, modifier = Modifier.padding(horizontal = 12.dp).testTag("new-folder")) { Text(stringResource(R.string.new_folder)) }
         }
         item(key = "divider") { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
         item(key = "header-trash") { SectionHeader(stringResource(R.string.section_trash)) }

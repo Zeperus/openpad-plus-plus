@@ -3,6 +3,7 @@ package io.github.zeperus.openpad.ui
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -67,6 +68,7 @@ internal fun TabStrip(vm: NotesViewModel) {
                     color = if (item.isActive) MaterialTheme.colorScheme.secondaryContainer
                     else MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier
+                        .heightIn(min = 48.dp)
                         .testTag("tab")
                         .semantics { selected = item.isActive }
                         .combinedClickable(
@@ -76,13 +78,19 @@ internal fun TabStrip(vm: NotesViewModel) {
                             role = Role.Tab,
                         ),
                 ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.labelLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.widthIn(max = 160.dp).padding(horizontal = 12.dp, vertical = 8.dp),
-                    )
+                    // The inner box has its own minimum height so the text is centred even if the Surface does not pass its constraints down.
+                    Box(
+                        modifier = Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.labelLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 160.dp),
+                        )
+                    }
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     DropdownMenuItem(
