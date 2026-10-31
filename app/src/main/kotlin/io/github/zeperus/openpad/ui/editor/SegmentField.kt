@@ -64,6 +64,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.editableText
 import androidx.compose.ui.semantics.semantics
@@ -612,6 +613,8 @@ internal fun SegmentField(
                                 IntOffset((styles.depthIndentDp.dp.toPx() * row.depth).toInt(), top.toInt())
                             }
                         }
+                        // decorative: the row's own text is in the field, TalkBack must not read the bullet or number as an item
+                        .semantics { hideFromAccessibility() }
                         .testTag("marker"),
                 )
             }
@@ -622,7 +625,7 @@ internal fun SegmentField(
         for (row in segment.rows) {
             val task = (row.kind as? RowKind.ListItem)?.takeIf { it.checked != null } ?: continue
             androidx.compose.runtime.key(row.id) {
-                val label = stringResource(if (task.checked == true) R.string.task_done_description else R.string.task_open_description, row.text.text.take(60))
+                val label = stringResource(if (task.checked == true) R.string.task_done_description else R.string.task_open_description, taskLabel(row.text.text))
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
@@ -668,3 +671,19 @@ internal fun SegmentField(
 private const val CHECKBOX_TARGET_LEFT = -16
 
 internal val BULLETS = listOf("•", "◦", "▪")
+
+/** How much of a task's text its checkbox announces. */
+private const val TASK_LABEL_MAX = 60
+
+/** A cut at a space is only taken if it leaves at least this many characters: a label is not shrunk to one short word. */
+private const val TASK_LABEL_MIN_CUT = 30
+
+/**
+ * The text of a task as its checkbox announces it: the whole text up to [TASK_LABEL_MAX] characters. A longer text is cut at the last
+ * space before that limit (if that space is after [TASK_LABEL_MIN_CUT]), or at the limit itself, and "…" is appended.
+ */
+internal fun taskLabel(text: String): String {
+    if (text.length <= TASK_LABEL_MAX) return text
+    val space = text.lastIndexOf(' ', TASK_LABEL_MAX - 1)
+    return if (space > TASK_LABEL_MIN_CUT) text.substring(0, space).trimEnd() + "…" else text.substring(0, TASK_LABEL_MAX) + "…"
+}

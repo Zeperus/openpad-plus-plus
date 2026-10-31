@@ -29,8 +29,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
+import io.github.zeperus.openpad.R
 import io.github.zeperus.openpad.editor.DocItem
 import io.github.zeperus.openpad.editor.EditorRow
 import io.github.zeperus.openpad.editor.RawBlocks
@@ -138,6 +143,7 @@ private fun RichEditorContent(vm: NotesViewModel, modifier: Modifier = Modifier)
 
         val scrollScope = rememberCoroutineScope()
         val hold = remember(listState) { ScrollHold(listState, scrollScope) }
+        val continueLabel = stringResource(R.string.editor_continue_at_end)
         androidx.compose.runtime.CompositionLocalProvider(LocalScrollHold provides hold) {
         LazyColumn(state = listState, modifier = modifier.fillMaxSize().testTag("editor")) {
             items(items.size, key = { itemKeys[it] }) { index ->
@@ -167,12 +173,15 @@ private fun RichEditorContent(vm: NotesViewModel, modifier: Modifier = Modifier)
             }
             item(key = "end") {
                 // a tap below the last row puts the caret at the end of the note
+                // announced by TalkBack as a named button, otherwise it is an unnamed stop
                 Box(
                     Modifier.fillMaxWidth().height(160.dp).clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         enabled = !readOnly,
-                    ) { vm.focusEnd() },
+                        onClickLabel = continueLabel,
+                        role = Role.Button,
+                    ) { vm.focusEnd() }.semantics { contentDescription = continueLabel },
                 )
             }
         }
