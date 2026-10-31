@@ -2,11 +2,14 @@ package io.github.zeperus.openpad.ui.editor
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -18,19 +21,27 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
+import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -52,6 +63,9 @@ import io.github.zeperus.openpad.editor.SpanKind
 import io.github.zeperus.openpad.markdown.CodeStyle
 import io.github.zeperus.openpad.ui.EditorUi
 import io.github.zeperus.openpad.ui.NotesViewModel
+import kotlinx.coroutines.launch
+
+private val BarElevation = 3.dp
 
 /**
  * The compact formatting bar above the keyboard: paragraph style, inline styles, lists, indentation, rule, undo/redo. One
@@ -67,46 +81,53 @@ fun FormattingBar(vm: NotesViewModel, modifier: Modifier = Modifier) {
     val inlineOk = ui.cursor != null && kind != RowKind.Rule && kind !is RowKind.Code && kind != RowKind.Raw
     val listKind = kind as? RowKind.ListItem
 
-    Surface(tonalElevation = 3.dp, modifier = modifier.fillMaxWidth().testTag("formatting-bar")) {
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            FormatButton("↶", stringResource(R.string.format_undo), false, ui.canUndo) { vm.undo() }
-            FormatButton("↷", stringResource(R.string.format_redo), false, ui.canRedo) { vm.redo() }
-            Divider()
-            Box {
-                FormatButton(paragraphLabel(kind), stringResource(R.string.format_paragraph_style), selected = false, enabled = ui.cursor != null && kind != RowKind.Raw, wide = true) { styleMenu = true }
-                DropdownMenu(expanded = styleMenu, onDismissRequest = { styleMenu = false }) {
-                    val items = listOf(
-                        R.string.format_text to RowKind.Paragraph,
-                        R.string.format_heading_1 to RowKind.Heading(1),
-                        R.string.format_heading_2 to RowKind.Heading(2),
-                        R.string.format_heading_3 to RowKind.Heading(3),
-                        R.string.format_heading_4 to RowKind.Heading(4),
-                        R.string.format_quote to RowKind.Quote,
-                        R.string.format_code_block to RowKind.Code(null, CodeStyle.Fenced),
-                    )
-                    for ((label, target) in items) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(label)) },
-                            onClick = { styleMenu = false; vm.setBlock(target) },
+    Surface(tonalElevation = BarElevation, modifier = modifier.fillMaxWidth().testTag("formatting-bar")) {
+        val scroll = rememberScrollState()
+        Box {
+            Row(
+                Modifier.horizontalScroll(scroll).padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Order: the most used actions come first, so they are in view on a narrow phone without scrolling.
+                FormatButton("↶", stringResource(R.string.format_undo), false, ui.canUndo) { vm.undo() }
+                FormatButton("↷", stringResource(R.string.format_redo), false, ui.canRedo) { vm.redo() }
+                Divider()
+                Box {
+                    FormatButton(paragraphLabel(kind), stringResource(R.string.format_paragraph_style), selected = false, enabled = ui.cursor != null && kind != RowKind.Raw, wide = true) { styleMenu = true }
+                    DropdownMenu(expanded = styleMenu, onDismissRequest = { styleMenu = false }) {
+                        val items = listOf(
+                            R.string.format_text to RowKind.Paragraph,
+                            R.string.format_heading_1 to RowKind.Heading(1),
+                            R.string.format_heading_2 to RowKind.Heading(2),
+                            R.string.format_heading_3 to RowKind.Heading(3),
+                            R.string.format_heading_4 to RowKind.Heading(4),
+                            R.string.format_quote to RowKind.Quote,
+                            R.string.format_code_block to RowKind.Code(null, CodeStyle.Fenced),
                         )
+                        for ((label, target) in items) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(label)) },
+                                onClick = { styleMenu = false; vm.setBlock(target) },
+                            )
+                        }
                     }
                 }
+                FormatButton("B", stringResource(R.string.format_bold), SpanKind.Bold in ui.active, inlineOk, bold = true) { vm.toggleStyle(SpanKind.Bold) }
+                FormatButton("I", stringResource(R.string.format_italic), SpanKind.Italic in ui.active, inlineOk, italic = true) { vm.toggleStyle(SpanKind.Italic) }
+                Divider()
+                FormatButton("•", stringResource(R.string.format_bullets), listKind != null && !listKind.list.ordered && listKind.checked == null, ui.cursor != null) { vm.toggleList(false) }
+                FormatButton("1.", stringResource(R.string.format_numbers), listKind != null && listKind.list.ordered, ui.cursor != null) { vm.toggleList(true) }
+                FormatButton("☑", stringResource(R.string.format_tasks), listKind?.checked != null, ui.cursor != null) { vm.toggleTask() }
+                Divider()
+                FormatButton("S", stringResource(R.string.format_strike), SpanKind.Strike in ui.active, inlineOk, strike = true) { vm.toggleStyle(SpanKind.Strike) }
+                FormatButton("</>", stringResource(R.string.format_code), SpanKind.Code in ui.active, inlineOk, mono = true) { vm.toggleStyle(SpanKind.Code) }
+                FormatButton("🔗︎", stringResource(R.string.format_link), ui.link != null, inlineOk) { linkDialog = true }
+                Divider()
+                FormatButton("⇤", stringResource(R.string.format_outdent), false, listKind != null) { vm.outdent() }
+                FormatButton("⇥", stringResource(R.string.format_indent), false, listKind != null) { vm.indent() }
+                FormatButton("―", stringResource(R.string.format_rule), false, ui.cursor != null) { vm.insertRule() }
             }
-            FormatButton("B", stringResource(R.string.format_bold), SpanKind.Bold in ui.active, inlineOk, bold = true) { vm.toggleStyle(SpanKind.Bold) }
-            FormatButton("I", stringResource(R.string.format_italic), SpanKind.Italic in ui.active, inlineOk, italic = true) { vm.toggleStyle(SpanKind.Italic) }
-            FormatButton("S", stringResource(R.string.format_strike), SpanKind.Strike in ui.active, inlineOk, strike = true) { vm.toggleStyle(SpanKind.Strike) }
-            FormatButton("</>", stringResource(R.string.format_code), SpanKind.Code in ui.active, inlineOk, mono = true) { vm.toggleStyle(SpanKind.Code) }
-            FormatButton("🔗", stringResource(R.string.format_link), ui.link != null, inlineOk) { linkDialog = true }
-            Divider()
-            FormatButton("•", stringResource(R.string.format_bullets), listKind != null && !listKind.list.ordered && listKind.checked == null, ui.cursor != null) { vm.toggleList(false) }
-            FormatButton("1.", stringResource(R.string.format_numbers), listKind != null && listKind.list.ordered, ui.cursor != null) { vm.toggleList(true) }
-            FormatButton("☑", stringResource(R.string.format_tasks), listKind?.checked != null, ui.cursor != null) { vm.toggleTask() }
-            FormatButton("⇤", stringResource(R.string.format_outdent), false, listKind != null) { vm.outdent() }
-            FormatButton("⇥", stringResource(R.string.format_indent), false, listKind != null) { vm.indent() }
-            FormatButton("―", stringResource(R.string.format_rule), false, ui.cursor != null) { vm.insertRule() }
+            ScrollFades(scroll)
         }
     }
 
@@ -126,6 +147,34 @@ private fun Divider() {
     Box(Modifier.padding(horizontal = 4.dp).width(1.dp).height(20.dp).background(MaterialTheme.colorScheme.outlineVariant))
 }
 
+/**
+ * Soft edges at both ends of the scrolling row, drawn only where the row can still scroll in that direction. The fades are
+ * plain Boxes without pointer input, so touches go through to the buttons and the scroll.
+ */
+@Composable
+private fun BoxScope.ScrollFades(scroll: ScrollState) {
+    val bar = MaterialTheme.colorScheme.surfaceColorAtElevation(BarElevation)
+    if (scroll.value > 0) ScrollFade(bar, atStart = true)
+    if (scroll.value < scroll.maxValue) ScrollFade(bar, atStart = false)
+}
+
+@Composable
+private fun BoxScope.ScrollFade(bar: Color, atStart: Boolean) {
+    val gradient = if (atStart) listOf(bar, Color.Transparent) else listOf(Color.Transparent, bar)
+    Box(
+        Modifier
+            .align(if (atStart) Alignment.CenterStart else Alignment.CenterEnd)
+            .fillMaxHeight()
+            .width(24.dp)
+            .background(Brush.horizontalGradient(gradient)),
+    )
+}
+
+/**
+ * One button of the bar. A tap runs [onClick]; a long press shows [description] as a tooltip and runs nothing.
+ * The tooltip popup is not focusable, so it never takes the keyboard focus away from the text.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FormatButton(
     label: String,
@@ -140,26 +189,41 @@ private fun FormatButton(
     onClick: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .padding(horizontal = 1.dp)
-            .heightIn(min = 48.dp) // the recommended touch target; the bar scrolls sideways instead of shrinking the buttons
-            .widthIn(min = if (wide) 52.dp else 44.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) colors.secondaryContainer else Color.Transparent)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = description; this.selected = selected },
+    val tooltipState = rememberTooltipState()
+    val scope = rememberCoroutineScope()
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text(description) } },
+        state = tooltipState,
+        focusable = false,
     ) {
-        Text(
-            text = label,
-            fontSize = 16.sp,
-            fontWeight = if (bold) FontWeight.Bold else null,
-            fontStyle = if (italic) FontStyle.Italic else null,
-            fontFamily = if (mono) FontFamily.Monospace else null,
-            textDecoration = if (strike) TextDecoration.LineThrough else null,
-            color = if (enabled) colors.onSurface else colors.onSurface.copy(alpha = 0.38f),
-        )
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .padding(horizontal = 1.dp)
+                .heightIn(min = 48.dp) // the recommended touch target; the bar scrolls sideways instead of shrinking the buttons
+                .widthIn(min = if (wide) 56.dp else 48.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(if (selected) colors.secondaryContainer else Color.Transparent)
+                // combinedClickable instead of clickable: a long press must not also fire onClick
+                .combinedClickable(
+                    enabled = enabled,
+                    role = Role.Button,
+                    onClick = onClick,
+                    onLongClick = { scope.launch { tooltipState.show() } },
+                )
+                .semantics { contentDescription = description; this.selected = selected },
+        ) {
+            Text(
+                text = label,
+                fontSize = 16.sp,
+                fontWeight = if (bold) FontWeight.Bold else null,
+                fontStyle = if (italic) FontStyle.Italic else null,
+                fontFamily = if (mono) FontFamily.Monospace else null,
+                textDecoration = if (strike) TextDecoration.LineThrough else null,
+                color = if (enabled) colors.onSurface else colors.onSurface.copy(alpha = 0.38f),
+            )
+        }
     }
 }
 
