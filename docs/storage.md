@@ -70,11 +70,20 @@ app's storage.
   the same entry.
 - **Reading:** strict UTF-8 (anything else is reported, never opened for editing), size limit 8 MB, a UTF-8 byte order
   mark is stripped for editing and written back if the file had one, line endings are untouched. Every provider call has a
-  15-second timeout, so a hanging provider cannot freeze the repository.
+  15-second timeout. Provider calls are blocking I/O that a coroutine timeout cannot interrupt, so each call runs in its own
+  coroutine: after the timeout the repository is released (the document counts as unavailable) even if the provider is still
+  stuck. Writes to providers stay strictly in order, so a write that was abandoned after a timeout is never overtaken by a newer one.
 - **Writing:** providers cannot replace a file atomically, so (1) the new text is first written atomically to a private
   recovery copy `external-backups/<id>.md`, (2) the document is overwritten, (3) its content is **read back and compared**.
   If the provider fails or writes only part, the save fails visibly (the editor keeps the text and retries) and the original
   or the recovery copy still has the content.
+- **Changed by another app (audit follow-up):** the repository remembers (in memory) a SHA-256 of what it last read from or wrote
+  to each external document. Before overwriting, it reads the document again; if it differs from that state (and is not already
+  exactly the new text) the save is refused with `NoteChangedExternallyException` and the user is asked: *Reload* shows the other
+  app's version (the editor's text stays in the recovery copy), *Keep mine* overwrites it. When the app comes back to the
+  foreground, an external document without unsaved edits is re-read and shown anew if it changed. Remaining gap: providers offer
+  no compare-and-swap, so a change made in the instant between this check and the write is not detected; without a read in the
+  running process (nothing opened yet) there is nothing to compare with.
 - **Read-only:** detected when the document is opened (see "Write access" below); it is shown as `Name · Read only` with a banner that says
   why, and is never written (editor, Clear and autosave are blocked). Copy, search, share and closing still work.
 - **No Trash:** moving an external file to the Trash would delete it from the user's storage. Instead *Remove from
@@ -138,11 +147,16 @@ something other than whitespace; the first autosave then creates the note. Conse
 - `Autosaver` debounces: save 800 ms after the last keystroke, but at the latest 5 s into a typing burst.
   Saves also happen when the app is stopped (`ON_STOP`), before switching notes, creating a new note, renaming,
   deleting, and when the view model is cleared. The work runs in an application-lifetime scope so it is not
-  cancelled with the screen. Failures keep the text in memory, show a message and are retried on the next change.
+  cancelled with the screen. Failures keep the text in memory, show a message and a lasting "Not saved - Try again" bar
+  (until the next successful save) and are retried on the next change.
+- The save on `ON_STOP` is started, not awaited: Android normally keeps the process alive long enough, but if the system kills
+  the process in the same instant, the last <1 s of typing can be lost. Blocking the main thread to wait would risk a deadlock
+  (the save itself continues on the main thread), so this is a documented limit, not a guarantee.
 - Every file write is **atomic**: write `<name>.tmp` beside the target, `fsync`, then atomically rename over the
   target. A crash leaves either the complete old or the complete new content. Stale `.tmp` files are removed on
   the next start. (The containing directory is not fsynced; a power loss right after a rename may lose that
-  one rename, never produce a half-written file.)
+  one rename, never produce a half-written file.) The atomic rename needs a file system that supports it; the app's private
+  storage always does. Elsewhere `AtomicFiles.move` falls back to a normal move.
 - Text is read with a **strict UTF-8 decoder**. A file that is not valid UTF-8 is reported
   (`NoteUnreadableException`) and never opened for editing, because saving would corrupt it.
 - All repository operations are serialized by one mutex.
@@ -194,7 +208,15 @@ start (including when the file was already renamed but the index not yet rewritt
 
 *Delete* moves the file to `trash/` and sets `trashedAt`. *Restore* moves it back; if another note has taken the
 title in the meantime the restored note gets a numeric suffix (`Plan 2`) - it never overwrites or renames another note. *Delete permanently* works only
-on notes that are already in Trash. Trashed notes can be read but not saved or renamed.
+on notes that are already in Trash; if the file cannot be deleted, the note stays in Trash and an error is shown (it is never
+reported as deleted while the file is still there). Trashed notes can be read but not saved or renamed.
+
+## Export (audit follow-up)
+
+Settings -> Backup -> *Export all notes...* asks for a folder (`ACTION_OPEN_DOCUMENT_TREE`, no permission) and writes a copy of every
+active internal note as `<Title>.md` (names made safe and unique like titles, `NoteExport.plan`). Existing files are never overwritten:
+the provider gives a duplicate name a suffix. External documents are skipped (they already are files the user owns), Trash is not
+exported. The result shows how many notes were written, skipped, and which failed. It is a one-shot copy, not a sync.
 
 ## Session and settings (Milestone 4)
 
