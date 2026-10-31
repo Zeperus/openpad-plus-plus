@@ -78,13 +78,13 @@ internal fun SettingsScreen(vm: NotesViewModel, onBack: () -> Unit) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .selectable(
-                                selected = vm.startupMode == mode,
-                                onClick = { vm.chooseStartupMode(mode) },
+                                selected = vm.preferences.startupMode == mode,
+                                onClick = { vm.preferences.chooseStartupMode(mode) },
                                 role = Role.RadioButton,
                             )
                             .padding(horizontal = 24.dp, vertical = 12.dp),
                     ) {
-                        RadioButton(selected = vm.startupMode == mode, onClick = null)
+                        RadioButton(selected = vm.preferences.startupMode == mode, onClick = null)
                         Text(stringResource(label), modifier = Modifier.padding(start = 16.dp))
                     }
                 }
@@ -102,13 +102,13 @@ internal fun SettingsScreen(vm: NotesViewModel, onBack: () -> Unit) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .selectable(
-                                selected = vm.language == language,
-                                onClick = { vm.chooseLanguage(language) },
+                                selected = vm.preferences.language == language,
+                                onClick = { vm.preferences.chooseLanguage(language) },
                                 role = Role.RadioButton,
                             )
                             .padding(horizontal = 24.dp, vertical = 12.dp),
                     ) {
-                        RadioButton(selected = vm.language == language, onClick = null)
+                        RadioButton(selected = vm.preferences.language == language, onClick = null)
                         Text(stringResource(label), modifier = Modifier.padding(start = 16.dp))
                     }
                 }
@@ -144,7 +144,7 @@ internal fun SettingsScreen(vm: NotesViewModel, onBack: () -> Unit) {
 /** Text size: [-] 16 sp [+] and a live preview in the editor's own sizes. */
 @Composable
 internal fun EditorTextSizeSetting(vm: NotesViewModel) {
-    val size = vm.editorFontSize
+    val size = vm.preferences.editorFontSize
     val typography = remember(size) { io.github.zeperus.openpad.editor.EditorTypography(size.toFloat()) }
     val decreaseLabel = stringResource(R.string.font_size_decrease)
     val increaseLabel = stringResource(R.string.font_size_increase)
@@ -152,7 +152,7 @@ internal fun EditorTextSizeSetting(vm: NotesViewModel) {
         Text(stringResource(R.string.settings_text_size), style = MaterialTheme.typography.bodyLarge)
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(
-                onClick = { vm.decreaseEditorFontSize() },
+                onClick = { vm.preferences.decreaseEditorFontSize() },
                 enabled = size > io.github.zeperus.openpad.domain.EditorFontSize.MIN,
                 modifier = Modifier.testTag("font-size-minus").semantics { contentDescription = decreaseLabel },
             ) { Text("\u2212", style = MaterialTheme.typography.headlineSmall) }
@@ -162,7 +162,7 @@ internal fun EditorTextSizeSetting(vm: NotesViewModel) {
                 modifier = Modifier.padding(horizontal = 12.dp).testTag("font-size-value"),
             )
             IconButton(
-                onClick = { vm.increaseEditorFontSize() },
+                onClick = { vm.preferences.increaseEditorFontSize() },
                 enabled = size < io.github.zeperus.openpad.domain.EditorFontSize.MAX,
                 modifier = Modifier.testTag("font-size-plus").semantics { contentDescription = increaseLabel },
             ) { Text("+", style = MaterialTheme.typography.headlineSmall) }

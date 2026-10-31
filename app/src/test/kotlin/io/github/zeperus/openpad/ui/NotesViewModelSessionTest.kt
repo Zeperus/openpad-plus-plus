@@ -92,7 +92,7 @@ class NotesViewModelSessionTest {
     @Test fun `a new installation uses resume plus blank note`() = runTest {
         val vm = launch()
         assertTrue(vm.ready)
-        assertEquals(StartupMode.ResumeAndBlank, vm.startupMode)
+        assertEquals(StartupMode.ResumeAndBlank, vm.preferences.startupMode)
         assertEquals(listOf("blank"), vm.tabTitles())
         assertTrue(mdFiles().isEmpty())
     }
@@ -212,8 +212,8 @@ class NotesViewModelSessionTest {
     @Test fun `choosing a startup mode is stored and applied on the next launch`() = runTest {
         previousSession()
         val vm = launch()
-        vm.chooseStartupMode(StartupMode.BlankNote)
-        assertEquals(StartupMode.BlankNote, vm.startupMode)
+        vm.preferences.chooseStartupMode(StartupMode.BlankNote)
+        assertEquals(StartupMode.BlankNote, vm.preferences.startupMode)
         assertEquals(StartupMode.BlankNote, settings.mode)
         assertEquals(listOf("blank"), launch().tabTitles())
     }

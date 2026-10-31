@@ -44,7 +44,6 @@ import io.github.zeperus.openpad.domain.OpenDocuments
 import io.github.zeperus.openpad.domain.PersistedSession
 import io.github.zeperus.openpad.domain.SessionStore
 import io.github.zeperus.openpad.domain.SettingsStore
-import io.github.zeperus.openpad.domain.StartupMode
 import io.github.zeperus.openpad.domain.StartupPlanner
 import io.github.zeperus.openpad.domain.TabItem
 import io.github.zeperus.openpad.editor.Cursor
@@ -200,16 +199,8 @@ class NotesViewModel(
     var expandedFolders by mutableStateOf<Set<String>>(emptySet())
         private set
 
-    var startupMode by mutableStateOf(StartupMode.Default)
-        private set
-
-    /** The language chosen in Settings (the screens follow it through Android's per-app locales). */
-    var language by mutableStateOf(io.github.zeperus.openpad.domain.AppLanguage.Default)
-        private set
-
-    /** The editor's body text size in sp (Settings -> Editor -> Text size). A global preference: no effect on any note's content, undo or saving. */
-    var editorFontSize by mutableIntStateOf(io.github.zeperus.openpad.domain.EditorFontSize.DEFAULT)
-        private set
+    /** The app preferences shown in Settings (startup mode, language, editor text size). Independent of the notes. */
+    val preferences = SettingsModel(settings, languageManager, scope)
 
     var message by mutableStateOf<UserMessage?>(null)
         private set
@@ -1062,30 +1053,6 @@ class NotesViewModel(
         refreshLists()
     }
 
-    // ---- Settings --------------------------------------------------------------------------------------------
-
-    fun chooseLanguage(choice: io.github.zeperus.openpad.domain.AppLanguage) = act {
-        language = choice
-        languageManager?.choose(choice) ?: settings.setLanguage(choice)
-    }
-
-    /** Sets the text size (clamped to the supported range). The screen follows at once; saving the preference happens in the background. */
-    fun chooseEditorFontSize(sp: Int) {
-        val size = io.github.zeperus.openpad.domain.EditorFontSize.clamp(sp)
-        if (size == editorFontSize) return
-        editorFontSize = size
-        act { settings.setEditorFontSize(size) }
-    }
-
-    fun increaseEditorFontSize() = chooseEditorFontSize(io.github.zeperus.openpad.domain.EditorFontSize.increased(editorFontSize))
-
-    fun decreaseEditorFontSize() = chooseEditorFontSize(io.github.zeperus.openpad.domain.EditorFontSize.decreased(editorFontSize))
-
-    fun chooseStartupMode(mode: StartupMode) = act {
-        settings.setStartupMode(mode)
-        startupMode = mode
-    }
-
     fun messageShown() {
         message = null
     }
@@ -1109,28 +1076,7 @@ class NotesViewModel(
      */
     private suspend fun startup() {
         try {
-            val mode = try {
-                settings.startupMode()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                StartupMode.Default
-            }
-            startupMode = mode
-            language = try {
-                languageManager?.restore() ?: settings.language()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                io.github.zeperus.openpad.domain.AppLanguage.Default
-            }
-            editorFontSize = try {
-                settings.editorFontSize()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                io.github.zeperus.openpad.domain.EditorFontSize.DEFAULT
-            }
+            val mode = preferences.load()
             try { persistedStates.putAll(editorStates.load()) } catch (e: CancellationException) { throw e } catch (_: Exception) { /* nothing remembered */ }
             refreshLists()
             val initial = StartupPlanner.initial(mode, sessionStore.load(), notes.mapTo(HashSet()) { it.id })

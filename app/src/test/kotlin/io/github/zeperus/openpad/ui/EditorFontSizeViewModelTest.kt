@@ -55,31 +55,31 @@ class EditorFontSizeViewModelTest {
     private fun mdFiles() = root.walkTopDown().filter { it.isFile && it.name.endsWith(".md") }.toList()
 
     @Test fun `the default size is 16 sp`() = runTest {
-        assertEquals(16, launch().editorFontSize)
+        assertEquals(16, launch().preferences.editorFontSize)
     }
 
     @Test fun `increasing and decreasing move by one sp and stop at the limits`() = runTest {
         val vm = launch()
-        vm.increaseEditorFontSize(); assertEquals(17, vm.editorFontSize)
-        vm.decreaseEditorFontSize(); vm.decreaseEditorFontSize(); assertEquals(15, vm.editorFontSize)
-        repeat(30) { vm.decreaseEditorFontSize() }
-        assertEquals(12, vm.editorFontSize)
-        repeat(40) { vm.increaseEditorFontSize() }
-        assertEquals(28, vm.editorFontSize)
-        vm.chooseEditorFontSize(1000); assertEquals(28, vm.editorFontSize)
-        vm.chooseEditorFontSize(-1); assertEquals(12, vm.editorFontSize)
+        vm.preferences.increaseEditorFontSize(); assertEquals(17, vm.preferences.editorFontSize)
+        vm.preferences.decreaseEditorFontSize(); vm.preferences.decreaseEditorFontSize(); assertEquals(15, vm.preferences.editorFontSize)
+        repeat(30) { vm.preferences.decreaseEditorFontSize() }
+        assertEquals(12, vm.preferences.editorFontSize)
+        repeat(40) { vm.preferences.increaseEditorFontSize() }
+        assertEquals(28, vm.preferences.editorFontSize)
+        vm.preferences.chooseEditorFontSize(1000); assertEquals(28, vm.preferences.editorFontSize)
+        vm.preferences.chooseEditorFontSize(-1); assertEquals(12, vm.preferences.editorFontSize)
     }
 
     @Test fun `the size is saved and comes back after a restart`() = runTest {
         val first = launch()
-        first.chooseEditorFontSize(22); runCurrent()
+        first.preferences.chooseEditorFontSize(22); runCurrent()
         assertEquals(22, settings.size)
-        assertEquals(22, launch().editorFontSize)
+        assertEquals(22, launch().preferences.editorFontSize)
     }
 
     @Test fun `a corrupted stored size means the default`() = runTest {
         settings.size = 9999
-        assertEquals(16, launch().editorFontSize)
+        assertEquals(16, launch().preferences.editorFontSize)
     }
 
     @Test fun `changing the size does not change the Markdown, the undo history or the saved file`() = runTest {
@@ -93,7 +93,7 @@ class EditorFontSizeViewModelTest {
         val text = vm.text
         val rows = vm.ui.doc.rows.map { it.id to it.text.text }
         val id = vm.current!!.id
-        vm.chooseEditorFontSize(24); vm.chooseEditorFontSize(12); vm.increaseEditorFontSize()
+        vm.preferences.chooseEditorFontSize(24); vm.preferences.chooseEditorFontSize(12); vm.preferences.increaseEditorFontSize()
         advanceTimeBy(5_000); runCurrent()
         assertEquals(canUndo, vm.ui.canUndo)
         assertEquals(text, vm.text)
@@ -106,7 +106,7 @@ class EditorFontSizeViewModelTest {
 
     @Test fun `changing the size on a blank page creates no note and no undo step`() = runTest {
         val vm = launch()
-        vm.chooseEditorFontSize(20); vm.chooseEditorFontSize(28)
+        vm.preferences.chooseEditorFontSize(20); vm.preferences.chooseEditorFontSize(28)
         advanceTimeBy(5_000); runCurrent()
         assertNull(vm.current)
         assertTrue(mdFiles().isEmpty())
@@ -120,7 +120,7 @@ class EditorFontSizeViewModelTest {
         val row = vm.ui.doc.rows[0].id
         vm.onSelection(row, 4, 7)
         val cursor = vm.ui.cursor
-        vm.chooseEditorFontSize(28)
+        vm.preferences.chooseEditorFontSize(28)
         assertEquals(cursor, vm.ui.cursor)
     }
 }

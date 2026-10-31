@@ -76,7 +76,7 @@ internal val LocalScrollHold = staticCompositionLocalOf<ScrollHold?> { null }
 
 @Composable
 fun RichEditor(vm: NotesViewModel, modifier: Modifier = Modifier) {
-    val typography = androidx.compose.runtime.remember(vm.editorFontSize) { io.github.zeperus.openpad.editor.EditorTypography(vm.editorFontSize.toFloat()) }
+    val typography = androidx.compose.runtime.remember(vm.preferences.editorFontSize) { io.github.zeperus.openpad.editor.EditorTypography(vm.preferences.editorFontSize.toFloat()) }
     androidx.compose.runtime.CompositionLocalProvider(LocalEditorTypography provides typography) { RichEditorContent(vm, modifier) }
 }
 
