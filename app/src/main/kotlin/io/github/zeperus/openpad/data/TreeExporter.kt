@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
+import io.github.zeperus.openpad.domain.ExportTarget
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,13 +16,13 @@ import java.io.OutputStream
  * Writes exported notes as new documents into a folder the user picked (ACTION_OPEN_DOCUMENT_TREE). Never overwrites: providers
  * give a duplicate name a suffix.
  */
-class TreeExporter(private val context: Context, private val dispatcher: CoroutineDispatcher = Dispatchers.IO) {
+class TreeExporter(private val context: Context, private val dispatcher: CoroutineDispatcher = Dispatchers.IO) : ExportTarget {
     private val resolver: ContentResolver get() = context.contentResolver
 
-    /** Creates [fileName] (MIME text/markdown) in the tree [treeUri] and writes [text] as UTF-8. Throws IOException on failure. */
-    suspend fun write(treeUri: String, fileName: String, text: String): Unit = withContext(dispatcher) {
+    /** Creates [fileName] (MIME text/markdown) in the folder tree [folderUri] and writes [text] as UTF-8. Throws IOException on failure. */
+    override suspend fun write(folderUri: String, fileName: String, text: String): Unit = withContext(dispatcher) {
         val bytes = text.toByteArray(Charsets.UTF_8)
-        val document = createDocument(treeUri, fileName)
+        val document = createDocument(folderUri, fileName)
         try {
             openForWrite(document, fileName).use { it.write(bytes) }
         } catch (e: IOException) {

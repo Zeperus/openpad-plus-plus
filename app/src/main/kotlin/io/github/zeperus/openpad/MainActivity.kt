@@ -12,6 +12,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.zeperus.openpad.data.ExternalAccess
+import io.github.zeperus.openpad.data.TreeExporter
 import io.github.zeperus.openpad.ui.NotesScreen
 import io.github.zeperus.openpad.ui.NotesViewModel
 import io.github.zeperus.openpad.ui.theme.OpenPadTheme
@@ -29,7 +30,7 @@ class MainActivity : AppCompatActivity() {
         setContent {
             OpenPadTheme {
                 val vm: NotesViewModel = viewModel(
-                    factory = viewModelFactory { initializer { NotesViewModel(app.repository, app.sessionStore, app.settings, app.appScope, app.editorStates, app.languageManager) } },
+                    factory = viewModelFactory { initializer { NotesViewModel(app.repository, app.sessionStore, app.settings, app.appScope, app.editorStates, app.languageManager, TreeExporter(app)) } },
                 )
                 viewModel = vm
                 LaunchedEffect(vm) {
@@ -38,6 +39,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 // Whatever the reason for leaving the screen, pending edits go to disk first.
                 LifecycleEventEffect(Lifecycle.Event.ON_STOP) { vm.flush() }
+                // Back on screen: an external document another app changed meanwhile is shown anew (if nothing is unsaved).
+                LifecycleEventEffect(Lifecycle.Event.ON_START) { vm.onAppResumed() }
                 NotesScreen(vm)
             }
         }

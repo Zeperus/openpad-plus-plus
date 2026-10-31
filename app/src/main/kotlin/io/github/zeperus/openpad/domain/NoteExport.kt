@@ -6,6 +6,11 @@ data class ExportItem(val id: NoteId, val fileName: String)
 /** What an export did: how many files were written, which notes failed (title), how many external documents were skipped (they already are files the user owns). */
 data class ExportResult(val written: Int, val failed: List<String>, val skippedExternal: Int)
 
+/** Where an export writes its files (the Android implementation is TreeExporter). */
+fun interface ExportTarget {
+    suspend fun write(folderUri: String, fileName: String, text: String)
+}
+
 object NoteExport {
     /**
      * File names for exporting [notes] into one folder: active internal notes only (external documents are skipped; trashed notes are

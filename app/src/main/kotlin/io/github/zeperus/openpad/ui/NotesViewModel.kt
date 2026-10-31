@@ -16,8 +16,12 @@ import io.github.zeperus.openpad.domain.FolderNameConflictException
 import io.github.zeperus.openpad.domain.FolderNotEmptyException
 import io.github.zeperus.openpad.domain.InvalidFolderNameException
 import io.github.zeperus.openpad.domain.InvalidNoteNameException
+import io.github.zeperus.openpad.domain.ExportResult
+import io.github.zeperus.openpad.domain.ExportTarget
+import io.github.zeperus.openpad.domain.NoteChangedExternallyException
 import io.github.zeperus.openpad.domain.NoteContent
 import io.github.zeperus.openpad.domain.NoteEditor
+import io.github.zeperus.openpad.domain.NoteExport
 import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteInfo
 import io.github.zeperus.openpad.domain.NoteLists
@@ -91,6 +95,7 @@ class NotesViewModel(
     private val scope: CoroutineScope,
     private val editorStates: EditorStateStore = EditorStateStore.None,
     private val languageManager: io.github.zeperus.openpad.domain.LanguageManager? = null,
+    private val exportTarget: ExportTarget? = null,
 ) : ViewModel() {
     private val actions = Mutex() // user actions and autosave run one at a time, in order
     private var editor = NoteEditor(repository)
@@ -200,6 +205,22 @@ class NotesViewModel(
     var message by mutableStateOf<UserMessage?>(null)
         private set
 
+    /** True after an autosave/flush failed; false again after the next successful save. The UI shows a lasting "not saved" bar. */
+    var saveFailed by mutableStateOf(false)
+        private set
+
+    /** Title of the active external document that another app changed since openPad++ read it; the UI asks reload / keep mine. */
+    var externalConflict by mutableStateOf<String?>(null)
+        private set
+
+    /** True while "Export all notes" runs. */
+    var exporting by mutableStateOf(false)
+        private set
+
+    /** The result of the last export, shown once by the UI. */
+    var exportResult by mutableStateOf<ExportResult?>(null)
+        private set
+
     /** The tab strip. The draft's title is empty here; the UI shows its own "New note" label for it. */
     val tabs: List<TabItem> get() = session.items(notes, draftTitle = "")
 
@@ -241,8 +262,15 @@ class NotesViewModel(
 
     private val autosaver = Autosaver(
         scope,
-        onError = { message = UserMessage.SaveFailed },
-    ) { actions.withLock { saveNow() } }
+        onError = { e ->
+            if (e is NoteChangedExternallyException) {
+                externalConflict = e.title
+            } else {
+                message = UserMessage.SaveFailed
+                saveFailed = true
+            }
+        },
+    ) { actions.withLock { saveNow(); saveFailed = false } }
 
     init {
         act { startup() }
@@ -606,6 +634,89 @@ class NotesViewModel(
         }
     }
 
+    /** Tries the failed save again (the "not saved" bar's retry). */
+    fun retrySave() = flush()
+
+    /**
+     * Conflict answer "use the other app's version": the open external document shows what the file holds now. The editor's own
+     * text is still in the repository's recovery copy (external-backups), written before the conflict check.
+     */
+    fun reloadExternal() = act {
+        val id = editor.info?.id ?: return@act
+        val content = repository.openNote(id)
+        sessions.remove(id)
+        switchTo(NoteEditor(repository, NoteContent(content.info, content.text, content.readOnly, content.readOnlyReason)))
+        externalConflict = null
+        saveFailed = false
+    }
+
+    /** Conflict answer "keep mine": the editor's text overwrites the document, which is allowed once for the current on-disk version. */
+    fun keepMineExternal() = act {
+        val id = editor.info?.id ?: return@act
+        repository.overrideExternalChange(id)
+        saveNow()
+        externalConflict = null
+        saveFailed = false
+    }
+
+    /** Closes the conflict question without choosing; the next save asks again. */
+    fun dismissExternalConflict() {
+        externalConflict = null
+    }
+
+    /**
+     * The app is shown again (ON_START). An external document that another app changed meanwhile is reloaded, but only if
+     * the editor holds nothing unsaved; otherwise the text the user is typing is left alone.
+     */
+    fun onAppResumed() = act {
+        if (!ready) return@act
+        val info = editor.info ?: return@act
+        if (!info.isExternal || editor.hasUnsavedChanges) return@act
+        val content = try {
+            repository.openNote(info.id)
+        } catch (e: NoteSourceUnavailableException) {
+            return@act
+        }
+        if (content.text != editor.text) {
+            sessions.remove(info.id)
+            switchTo(NoteEditor(repository, NoteContent(content.info, content.text, content.readOnly, content.readOnlyReason)))
+        }
+    }
+
+    /**
+     * "Export all notes": writes every active internal note as a `.md` file into the folder [folderUri] (picked by the user).
+     * External documents are not copied - they already are files the user owns. The outcome goes to [exportResult].
+     */
+    fun exportAll(folderUri: String) = act {
+        val target = exportTarget ?: return@act
+        saveNow()
+        exporting = true
+        try {
+            val all = repository.listNotes()
+            val plan = NoteExport.plan(all)
+            val titles = all.associate { it.id to it.title }
+            var written = 0
+            val failed = ArrayList<String>()
+            for (item in plan) {
+                try {
+                    target.write(folderUri, item.fileName, repository.openNote(item.id).text)
+                    written++
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    failed += titles[item.id] ?: item.fileName
+                }
+            }
+            exportResult = ExportResult(written, failed, all.count { it.isExternal })
+        } finally {
+            exporting = false
+        }
+    }
+
+    fun exportResultShown() {
+        exportResult = null
+    }
+
     // ---- Documents -------------------------------------------------------------------------------------------
 
     /** "New note": activates the single blank page, creating it if there is none. Never a second draft. */
@@ -945,7 +1056,9 @@ class NotesViewModel(
     private suspend fun saveNow() {
         val saved = editor
         val wasDraft = saved.isDraft
-        if (saved.save()) {
+        val wrote = saved.save()
+        saveFailed = false // whatever was pending is on disk now (a failure throws before this line)
+        if (wrote) {
             if (saved === editor) {
                 current = saved.info
                 if (wasDraft) materializeDraft(saved.info)
@@ -1046,6 +1159,8 @@ class NotesViewModel(
             actions.withLock {
                 try {
                     block()
+                } catch (e: NoteChangedExternallyException) {
+                    externalConflict = e.title // asked, not failed: the user decides what happens to the document
                 } catch (e: NoteStorageException) {
                     message = UserMessage.ActionFailed
                 }
