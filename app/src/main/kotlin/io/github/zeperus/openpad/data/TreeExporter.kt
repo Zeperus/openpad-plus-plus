@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.OutputStream
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Writes exported notes as new documents into a folder the user picked (ACTION_OPEN_DOCUMENT_TREE). Never overwrites: providers
@@ -25,10 +26,12 @@ class TreeExporter(private val context: Context, private val dispatcher: Corouti
         val document = createDocument(folderUri, fileName)
         try {
             openForWrite(document, fileName).use { it.write(bytes) }
-        } catch (e: IOException) {
-            // Do not leave an empty or half-written file behind: a retry would then get a "2" suffix.
-            runCatching { DocumentsContract.deleteDocument(resolver, document) }
+        } catch (e: CancellationException) {
             throw e
+        } catch (e: Exception) {
+            // Do not leave an empty or half-written file behind, whatever went wrong: a retry would then get a "2" suffix.
+            runCatching { DocumentsContract.deleteDocument(resolver, document) }
+            throw if (e is IOException) e else IOException("Could not write '$fileName'", e)
         }
     }
 
@@ -47,7 +50,7 @@ class TreeExporter(private val context: Context, private val dispatcher: Corouti
     }
 
     private fun openForWrite(document: Uri, fileName: String): OutputStream = try {
-        resolver.openOutputStream(document, "wt") ?: throw IOException("The provider cannot write '$fileName'")
+        resolver.openOutputStream(document, "w") ?: throw IOException("The provider cannot write '$fileName'")
     } catch (e: SecurityException) {
         throw IOException("No permission to write '$fileName'", e)
     } catch (e: IllegalArgumentException) {

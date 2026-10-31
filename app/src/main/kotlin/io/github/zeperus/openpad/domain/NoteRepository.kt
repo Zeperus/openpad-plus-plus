@@ -60,6 +60,9 @@ interface NoteRepository {
     /** Allows the next save of the external note [id] to overwrite the document although it was changed outside the app (the user chose to keep their version). */
     suspend fun overrideExternalChange(id: NoteId)
 
+    /** For an external note: its current content if it differs from what openPad++ last read or wrote, else null. Does not change what later saves compare against. */
+    suspend fun checkExternal(id: NoteId): NoteContent?
+
     suspend fun moveToTrash(id: NoteId): NoteInfo
 
     suspend fun restoreFromTrash(id: NoteId): NoteInfo

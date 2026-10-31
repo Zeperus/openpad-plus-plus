@@ -141,16 +141,25 @@ class ExternalDocumentsTest {
         assertEquals("second try", provider.text(uri))
     }
 
-    @Test fun `a hanging provider times out instead of freezing the repository`() = runBlocking {
+    @Test(timeout = 20_000) fun `a hanging provider times out instead of freezing the repository`() = runBlocking {
         provider.put(uri, "t", name = "A.md")
         val r = FileNoteRepository(root, clock = { now++ }, newId = { UUID(0, ++ids).toString() }, external = provider, externalTimeoutMs = 150)
         val id = r.openExternal(uri, true).id
-        provider.hang = true
+        val latch = java.util.concurrent.CountDownLatch(1)
+        provider.blockThread = latch // a real blocking call, as a stuck provider makes it
         try { r.openNote(id); fail("expected a timeout") } catch (_: NoteSourceUnavailableException) {}
-        provider.hang = false
-        // the repository is not stuck: other operations and a retry work
+        // the repository is not stuck: other operations work while the provider still hangs
         assertEquals(1, r.listNotes().size)
-        assertEquals("t", r.openNote(id).text)
+        latch.countDown()
+        provider.blockThread = null
+        // once the provider answers, the document can be read again (its abandoned call has to end first)
+        var text: String? = null
+        repeat(100) {
+            if (text == null) {
+                text = try { r.openNote(id).text } catch (_: NoteSourceUnavailableException) { Thread.sleep(20); null }
+            }
+        }
+        assertEquals("t", text)
     }
 
     // ---- Content fidelity ------------------------------------------------------------------------------------

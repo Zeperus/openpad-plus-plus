@@ -92,10 +92,17 @@ class FileNoteRepository internal constructor(
     private var folders: MutableMap<String, FolderEntry> = LinkedHashMap() // reloaded together with [entries]
     /** External note id -> SHA-256 of the bytes last read from or written to its document. In memory only. */
     private val externalBaseline = HashMap<String, String>()
-    /** Runs provider calls outside the caller; on timeout the caller is released even if the provider call is stuck in blocking I/O. */
-    private val providerScope = CoroutineScope(SupervisorJob() + dispatcher) // Dispatchers.IO in the app
-    /** Writes to providers stay in order: a write that was abandoned after a timeout still finishes before the next one starts. */
-    private val providerWrites = Mutex()
+    /**
+     * Runs provider calls outside the caller; on timeout the caller is released even if the provider call is stuck in blocking I/O.
+     * Stuck calls can occupy at most [PROVIDER_THREADS] threads; internal notes keep using [dispatcher].
+     */
+    // On the real IO pool, stuck provider calls may occupy at most PROVIDER_THREADS threads. Test dispatchers are used as they are
+    // (an unconfined test dispatcher cannot be wrapped).
+    private val providerScope = CoroutineScope(
+        SupervisorJob() + if (dispatcher === Dispatchers.IO) Dispatchers.IO.limitedParallelism(PROVIDER_THREADS) else dispatcher,
+    )
+    /** URIs with a provider call still in progress (including one abandoned after a timeout). A document never has two calls at once. */
+    private val busyDocuments: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
     @Serializable
     private data class IndexData(val version: Int = 0, val notes: List<Entry> = emptyList(), val folders: List<FolderEntry> = emptyList())
@@ -318,7 +325,7 @@ class FileNoteRepository internal constructor(
         val id = newId().also(::requireValidId)
         val now = clock()
         val entry = Entry(
-            id = id, title = externalTitle(ext { external.displayName(uri) }), createdAt = now, updatedAt = now,
+            id = id, title = externalTitle(ext(uri) { external.displayName(uri) }), createdAt = now, updatedAt = now,
             autoTitle = false, lastOpenedAt = now, uri = uri, persistent = persistent,
         )
         notes[id] = entry
@@ -336,22 +343,30 @@ class FileNoteRepository internal constructor(
 
     override suspend fun overrideExternalChange(id: NoteId): Unit = locked { notes ->
         val entry = notes[id.value]?.takeIf { it.uri != null } ?: throw NoteNotFoundException(id)
-        externalBaseline[entry.id] = digest(ext { external.read(entry.uri!!, MAX_EXTERNAL_BYTES) })
+        val uri = entry.uri!!
+        externalBaseline[entry.id] = digest(ext(uri) { external.read(uri, MAX_EXTERNAL_BYTES) })
+    }
+
+    override suspend fun checkExternal(id: NoteId): NoteContent? = locked { notes ->
+        val entry = activeEntry(notes, id).takeIf { it.uri != null } ?: throw NoteNotFoundException(id)
+        val uri = entry.uri!!
+        val bytes = ext(uri) { external.read(uri, MAX_EXTERNAL_BYTES) }
+        val baseline = externalBaseline[entry.id] ?: return@locked null
+        if (digest(bytes) == baseline) return@locked null
+        // deliberately no baseline update: the next save still compares against what openPad++ last read or wrote
+        NoteContent(entry.toInfo(), decodeDocumentText(entry.title, bytes))
     }
 
     /** Reads an external document, keeping the entry's title and BOM flag in step with what the provider reports. */
     private suspend fun openExternalContent(notes: MutableMap<String, Entry>, entry: Entry): NoteContent {
         val uri = entry.uri!!
-        val bytes = ext { external.read(uri, MAX_EXTERNAL_BYTES) }
+        val bytes = ext(uri) { external.read(uri, MAX_EXTERNAL_BYTES) }
+        val hasBom = hasUtf8Bom(bytes)
+        val text = decodeDocumentText(entry.title, bytes)
+        // only a version that could be read becomes the baseline: an unreadable one written by another app must still be reported on save
         externalBaseline[entry.id] = digest(bytes)
-        val hasBom = bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()
-        val text = try {
-            AtomicFiles.decodeStrict(if (hasBom) bytes.copyOfRange(3, bytes.size) else bytes)
-        } catch (e: CharacterCodingException) {
-            throw NoteUnreadableException(entry.title, e)
-        }
         var current = entry
-        val name = runCatching { ext { external.displayName(uri) } }.getOrNull()
+        val name = runCatching { ext(uri) { external.displayName(uri) } }.getOrNull()
         if (name != null) {
             val title = externalTitle(name)
             if (title != current.title) current = current.copy(title = title)
@@ -362,7 +377,7 @@ class FileNoteRepository internal constructor(
             persist(notes)
         }
         val access = try {
-            ext { external.writeAccess(uri) }
+            ext(uri) { external.writeAccess(uri) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -384,15 +399,38 @@ class FileNoteRepository internal constructor(
         backupsDir.mkdirs()
         AtomicFiles.writeText(backupFile(entry.id), text)
         checkNotChangedExternally(entry, uri, bytes)
-        ext(write = true) { external.write(uri, bytes) }
-        val written = ext { external.read(uri, bytes.size + 16) }
-        // the read-back is the last state seen of the document, even if it is a partial write (then a retry is not a conflict)
-        externalBaseline[entry.id] = digest(written)
-        if (!written.contentEquals(bytes)) throw NoteSourceUnavailableException("The document was not written completely")
+        val readBack = try {
+            ext(uri) { external.write(uri, bytes) }
+            ext(uri) { external.read(uri, bytes.size + 16) }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            rebaselineAfterFailedWrite(entry.id, uri)
+            throw e
+        }
+        if (!readBack.contentEquals(bytes)) {
+            // the read-back is the last state seen of the document, even if it is a partial write (then a retry is not a conflict)
+            externalBaseline[entry.id] = digest(readBack)
+            throw NoteSourceUnavailableException("The document was not written completely")
+        }
+        externalBaseline[entry.id] = digest(bytes)
         val updated = entry.copy(updatedAt = clock())
         notes[updated.id] = updated
         persist(notes)
         return updated.toInfo()
+    }
+
+    /**
+     * After a write that failed with an exception, the document may hold the old text, the new text or a part of it. The
+     * baseline becomes whatever it holds now, so the next save is not reported as a change by another app. If it cannot be
+     * read either, the baseline is dropped (nothing is compared until the document is read again).
+     */
+    private suspend fun rebaselineAfterFailedWrite(entryId: String, uri: String) {
+        try {
+            externalBaseline[entryId] = digest(ext(uri) { external.read(uri, MAX_EXTERNAL_BYTES) })
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            externalBaseline.remove(entryId)
+        }
     }
 
     /**
@@ -401,22 +439,43 @@ class FileNoteRepository internal constructor(
      */
     private suspend fun checkNotChangedExternally(entry: Entry, uri: String, bytes: ByteArray) {
         val baseline = externalBaseline[entry.id] ?: return
-        val current = digest(ext { external.read(uri, MAX_EXTERNAL_BYTES) })
+        val current = digest(ext(uri) { external.read(uri, MAX_EXTERNAL_BYTES) })
         if (current != baseline && current != digest(bytes)) throw NoteChangedExternallyException(entry.title)
     }
 
     private fun digest(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 0xFF) }
 
+    private fun hasUtf8Bom(bytes: ByteArray) =
+        bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()
+
+    /** The text of an external document: a UTF-8 byte order mark is not part of it. Not UTF-8 means [NoteUnreadableException]. */
+    private fun decodeDocumentText(title: String, bytes: ByteArray): String {
+        val body = if (hasUtf8Bom(bytes)) bytes.copyOfRange(3, bytes.size) else bytes
+        return try {
+            AtomicFiles.decodeStrict(body)
+        } catch (e: CharacterCodingException) {
+            throw NoteUnreadableException(title, e)
+        }
+    }
+
     private fun backupFile(id: String) = File(backupsDir, idToFileName(id).also { requireValidId(id) })
 
     /**
      * Provider calls are blocking I/O that coroutine timeouts cannot interrupt. The call therefore runs in its own
-     * coroutine: after the timeout the caller is released even if the provider is stuck, and the call is not cancelled,
-     * so a stuck write is never overtaken by a newer one. Writes run one after another ([providerWrites]).
+     * coroutine: after the timeout the caller is released even if the provider is stuck, and the call is not cancelled.
+     * A document has at most one provider call at a time ([busyDocuments]): while an earlier call is still stuck, a new
+     * one fails at once instead of queueing, so no stale write can run later.
      */
-    private suspend fun <T> ext(write: Boolean = false, block: suspend () -> T): T {
-        val call = providerScope.async { if (write) providerWrites.withLock { block() } else block() }
+    private suspend fun <T> ext(uri: String, block: suspend () -> T): T {
+        if (!busyDocuments.add(uri)) throw NoteSourceUnavailableException("The document provider is still busy with an earlier request")
+        val call = providerScope.async {
+            try {
+                block()
+            } finally {
+                busyDocuments.remove(uri)
+            }
+        }
         return try {
             withTimeout(externalTimeoutMs) { call.await() }
         } catch (e: TimeoutCancellationException) {
@@ -609,6 +668,8 @@ class FileNoteRepository internal constructor(
         const val LAST_OPENED_SINCE_VERSION = 3
         const val MAX_EXTERNAL_BYTES = 8 * 1024 * 1024
         const val EXTERNAL_TIMEOUT_MS = 15_000L
+        /** Threads that provider calls may occupy at the same time, including stuck ones. */
+        const val PROVIDER_THREADS = 4
         val ID_PATTERN = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
     }
 }

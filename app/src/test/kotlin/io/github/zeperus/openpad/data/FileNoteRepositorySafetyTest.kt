@@ -5,11 +5,14 @@ import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteNotFoundException
 import io.github.zeperus.openpad.domain.NoteSourceUnavailableException
 import io.github.zeperus.openpad.domain.NoteStorageException
+import io.github.zeperus.openpad.domain.NoteUnreadableException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Rule
@@ -80,7 +83,7 @@ class FileNoteRepositorySafetyTest {
 
     // ---- Provider that blocks --------------------------------------------------------------------------------
 
-    @Test fun `a provider that blocks forever does not block other notes`() = runBlocking {
+    @Test(timeout = 20_000) fun `a provider that blocks forever does not block other notes and its abandoned save never runs`() = runBlocking {
         provider.put(uri, "stuck", name = "Stuck.md")
         val r = repo(externalTimeoutMs = 300)
         val id = r.openExternal(uri, persistent = true).id
@@ -96,6 +99,10 @@ class FileNoteRepositorySafetyTest {
             release.countDown()
         }
         assertEquals(2, r.listNotes().size)
+        // once the stuck call returns, the document is usable again; the abandoned save was never queued, so nothing is written
+        assertEquals("stuck", retryUntilFree { r.openNote(id) }.text)
+        assertEquals("stuck", provider.text(uri))
+        assertTrue(provider.writes.isEmpty())
     }
 
     // ---- Document changed by another app ---------------------------------------------------------------------
@@ -150,5 +157,89 @@ class FileNoteRepositorySafetyTest {
         val r = repo()
         val info = r.createNote("internal")
         try { r.overrideExternalChange(info.id); fail() } catch (_: NoteNotFoundException) {}
+    }
+
+    // ---- Failed writes and unreadable versions ---------------------------------------------------------------
+
+    @Test fun `a write that fails midway is not mistaken for a change by another app on the retry`() = runBlocking {
+        provider.put(uri, "old text", name = "Doc.md")
+        val r = repo()
+        val id = r.openExternal(uri, persistent = true).id
+        r.openNote(id)
+        provider.truncateThenFail = 3
+        try { r.saveNote(id, "a long new text"); fail("expected the failed write to be reported") } catch (_: NoteSourceUnavailableException) {}
+        provider.truncateThenFail = null
+        r.saveNote(id, "a long new text") // the document holds the partial text, which is ours: no conflict
+        assertEquals("a long new text", provider.text(uri))
+    }
+
+    @Test fun `an unreadable version written by another app is reported and never overwritten`() = runBlocking {
+        provider.put(uri, "readable", name = "Doc.md")
+        val r = repo()
+        val id = r.openExternal(uri, persistent = true).id
+        r.openNote(id) // the baseline: the last version that was read
+        val invalid = byteArrayOf(0xC3.toByte(), 0x28)
+        provider.put(uri, "", bytes = invalid)
+        try { r.openNote(id); fail("expected the unreadable document to be reported") } catch (_: NoteUnreadableException) {}
+        try { r.saveNote(id, "our text"); fail("expected a conflict") } catch (_: NoteChangedExternallyException) {}
+        assertTrue(invalid.contentEquals(provider.files.getValue(uri)))
+    }
+
+    // ---- Concurrency of provider calls -----------------------------------------------------------------------
+
+    @Test(timeout = 20_000) fun `a document with a stuck call fails fast on the next call while other documents keep working`() = runBlocking {
+        val other = "content://docs/doc/other"
+        provider.put(uri, "one", name = "One.md")
+        provider.put(other, "two", name = "Two.md")
+        val r = repo(externalTimeoutMs = 300)
+        val id = r.openExternal(uri, persistent = true).id
+        val otherId = r.openExternal(other, persistent = true).id
+        r.openNote(id)
+        r.openNote(otherId)
+        val release = CountDownLatch(1)
+        provider.blockThread = release
+        provider.blockOnly = uri
+        try {
+            try { r.saveNote(id, "stuck"); fail("expected a timeout") } catch (_: NoteSourceUnavailableException) {}
+            val started = System.nanoTime()
+            try { r.saveNote(id, "second"); fail("expected an immediate refusal") } catch (_: NoteSourceUnavailableException) {}
+            val elapsedMs = (System.nanoTime() - started) / 1_000_000
+            assertTrue("the second call took $elapsedMs ms, it must not wait", elapsedMs < 250)
+            r.saveNote(otherId, "two new")
+            assertEquals("two new", provider.text(other))
+            r.createNote("internal")
+        } finally {
+            release.countDown()
+        }
+        assertEquals(3, r.listNotes().size)
+    }
+
+    // ---- Checking for outside changes without moving the baseline --------------------------------------------
+
+    @Test fun `checkExternal reports a change and does not move the baseline`() = runBlocking {
+        provider.put(uri, "original", name = "Doc.md")
+        val r = repo()
+        val id = r.openExternal(uri, persistent = true).id
+        r.openNote(id)
+        assertNull(r.checkExternal(id)) // unchanged
+        provider.put(uri, "changed elsewhere")
+        assertEquals("changed elsewhere", r.checkExternal(id)?.text)
+        assertEquals("changed elsewhere", provider.text(uri)) // the check never writes
+        // the baseline still is the original: saving is still refused
+        try { r.saveNote(id, "our text"); fail("expected a conflict") } catch (_: NoteChangedExternallyException) {}
+        assertEquals("changed elsewhere", provider.text(uri))
+    }
+
+    /** Retries [block] until the document accepts calls again: a stuck call releases it only when it returns. */
+    private suspend fun <T> retryUntilFree(block: suspend () -> T): T {
+        val deadline = System.nanoTime() + 10_000_000_000L
+        while (true) {
+            try {
+                return block()
+            } catch (e: NoteSourceUnavailableException) {
+                if (System.nanoTime() > deadline) throw e
+                delay(20)
+            }
+        }
     }
 }
