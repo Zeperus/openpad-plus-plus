@@ -31,8 +31,6 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import io.github.zeperus.openpad.R
@@ -172,17 +170,16 @@ private fun RichEditorContent(vm: NotesViewModel, modifier: Modifier = Modifier)
                 }
             }
             item(key = "end") {
-                // a tap below the last row puts the caret at the end of the note
-                // announced by TalkBack as a named button, otherwise it is an unnamed stop
-                Box(
-                    Modifier.fillMaxWidth().height(160.dp).clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        enabled = !readOnly,
-                        onClickLabel = continueLabel,
-                        role = Role.Button,
-                    ) { vm.focusEnd() }.semantics { contentDescription = continueLabel },
-                )
+                // a tap below the last row puts the caret at the end of the note. In an editable note the area is a button whose
+                // action TalkBack announces (onClickLabel); a read-only note has no such action, so the area carries no semantics at all
+                val endInteraction = remember { MutableInteractionSource() }
+                val endTap = if (readOnly) Modifier else Modifier.clickable(
+                    interactionSource = endInteraction,
+                    indication = null,
+                    onClickLabel = continueLabel,
+                    role = Role.Button,
+                ) { vm.focusEnd() }
+                Box(Modifier.fillMaxWidth().height(160.dp).then(endTap))
             }
         }
         }

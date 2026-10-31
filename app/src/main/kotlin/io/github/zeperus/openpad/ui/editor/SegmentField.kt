@@ -513,7 +513,7 @@ internal fun SegmentField(
                             codeBackground.copy(alpha = if (k is RowKind.Raw) 0.5f else 1f),
                             topLeft = Offset(-8.dp.toPx(), top), size = Size(size.width + 16.dp.toPx(), bottom - top), cornerRadius = CornerRadius(6.dp.toPx()),
                         )
-                        is RowKind.ListItem -> Unit // the markers are text overlays (below), so they are semantic and scale with the font
+                        is RowKind.ListItem -> Unit // the markers are text overlays (below): they scale with the font; TalkBack skips bullets, reads numbers
                         else -> Unit
                     }
                 }
@@ -613,8 +613,8 @@ internal fun SegmentField(
                                 IntOffset((styles.depthIndentDp.dp.toPx() * row.depth).toInt(), top.toInt())
                             }
                         }
-                        // decorative: the row's own text is in the field, TalkBack must not read the bullet or number as an item
-                        .semantics { hideFromAccessibility() }
+                        // a bullet is decoration (the row's own text is in the field); the number of an ordered item is content and stays readable
+                        .semantics { if (!item.list.ordered) hideFromAccessibility() }
                         .testTag("marker"),
                 )
             }
@@ -685,5 +685,8 @@ private const val TASK_LABEL_MIN_CUT = 30
 internal fun taskLabel(text: String): String {
     if (text.length <= TASK_LABEL_MAX) return text
     val space = text.lastIndexOf(' ', TASK_LABEL_MAX - 1)
-    return if (space > TASK_LABEL_MIN_CUT) text.substring(0, space).trimEnd() + "…" else text.substring(0, TASK_LABEL_MAX) + "…"
+    if (space > TASK_LABEL_MIN_CUT) return text.substring(0, space).trimEnd() + "…"
+    // an emoji is two chars: a cut between its halves would leave a lone high surrogate, so the cut moves one char earlier
+    val cut = if (text[TASK_LABEL_MAX - 1].isHighSurrogate()) TASK_LABEL_MAX - 1 else TASK_LABEL_MAX
+    return text.substring(0, cut) + "…"
 }
