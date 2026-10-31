@@ -277,7 +277,12 @@ class NotesViewModel(
         act { startup() }
     }
 
-    /** Replaces the whole document with [newText] (Markdown). Used for programmatic changes; typing uses [onRowText]. */
+    /**
+     * Replaces the whole document with [newText] (Markdown) and starts a fresh editor session for it. **Test entry point only:** the app
+     * never calls it - typing goes through [applyFieldOp] / [onRowText], which keep row identity, focus and undo. Do not use it for
+     * programmatic edits in the app.
+     */
+    @androidx.annotation.VisibleForTesting
     fun onTextChange(newText: String) {
         if (!ready || readOnly) return
         rich = EditorSession(EditorDocument.fromMarkdown(newText))
