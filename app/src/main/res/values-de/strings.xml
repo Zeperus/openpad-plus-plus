@@ -11,6 +11,8 @@
     <string name="trash_empty">Der Papierkorb ist leer</string>
     <string name="sort_by_name">Nach Name sortieren</string>
     <string name="sort_by_modified">Nach letzter Änderung sortieren</string>
+    <string name="sort_current_name">A–Z</string>
+    <string name="sort_current_modified">Neueste</string>
     <string name="untitled">Unbenannt</string>
     <string name="tab_new_note">Neue Notiz</string>
     <string name="editor_hint">Hier tippen…</string>
@@ -70,7 +72,7 @@
     <string name="message_source_unavailable">Diese Datei ist nicht verfügbar (verschoben, gelöscht oder Zugriff entzogen). Öffne sie erneut über deine Dateien.</string>
     <string name="message_action_failed">Das hat nicht geklappt. Deine Notizen wurden nicht verändert.</string>
     <string name="message_moved_to_trash">In den Papierkorb verschoben</string>
-    <string name="message_smart_checklist_on">Smarte Checkliste an: offene Einträge stehen über den erledigten.</string>
+    <string name="message_smart_checklist_on">Intelligente Checkliste an: offene Einträge stehen über den erledigten.</string>
     <string name="message_favorite_added">Zu Favoriten hinzugefügt</string>
     <string name="message_favorite_removed">Aus Favoriten entfernt</string>
     <string name="save_failed_banner">Nicht gespeichert. Deine Änderungen sind noch da.</string>
@@ -186,5 +188,5 @@
     <string name="export_done_written">Exportierte Notizen: %1$d</string>
     <string name="export_done_skipped">Übersprungene externe Dateien: %1$d</string>
     <string name="export_done_failed">Nicht exportiert: %1$s</string>
-    <string name="export_done_more">und %1$d weitere</string>
+    <string name="export_done_more">" und %1$d weitere"</string>
 </resources>

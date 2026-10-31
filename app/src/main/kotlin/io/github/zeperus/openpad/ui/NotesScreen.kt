@@ -6,7 +6,7 @@ import androidx.compose.ui.platform.LocalContext
 import io.github.zeperus.openpad.ShareHelper
 import io.github.zeperus.openpad.data.ExternalAccess
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.saveable.Saver
@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,7 +62,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.zeperus.openpad.R
@@ -69,6 +73,7 @@ import io.github.zeperus.openpad.ui.editor.FormattingBar
 import io.github.zeperus.openpad.ui.editor.RichEditor
 import io.github.zeperus.openpad.domain.FolderInfo
 import io.github.zeperus.openpad.domain.NoteInfo
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -141,15 +146,24 @@ fun NotesScreen(vm: NotesViewModel) {
     val undoLabel = stringResource(R.string.action_undo)
     LaunchedEffect(message) {
         if (messageText != null) {
-            // only a note that was just moved to Trash offers undo
-            val result = snackbar.showSnackbar(
-                message = messageText,
-                actionLabel = undoLabel.takeIf { message == UserMessage.MovedToTrash },
-            )
-            vm.messageShown()
-            if (result == SnackbarResult.ActionPerformed) vm.undoTrash()
+            if (message == UserMessage.SaveFailed && vm.saveFailed) {
+                // the red bar above the editor already says it: a second message would be read out twice
+                vm.messageShown()
+            } else {
+                // only a note that was just moved to Trash offers undo; that message stays for Long, the others for Short
+                val trashed = message == UserMessage.MovedToTrash
+                val result = snackbar.showSnackbar(
+                    message = messageText,
+                    actionLabel = undoLabel.takeIf { trashed },
+                    withDismissAction = trashed,
+                    duration = if (trashed) SnackbarDuration.Long else SnackbarDuration.Short,
+                )
+                vm.messageShown()
+                if (result == SnackbarResult.ActionPerformed) vm.undoTrash()
+            }
         }
     }
+    val showingEditor = !showSettings && !showSearch
     Box(Modifier.fillMaxSize()) {
         if (showSettings) {
             SettingsScreen(vm, onBack = { showSettings = false })
@@ -167,7 +181,11 @@ fun NotesScreen(vm: NotesViewModel) {
         } else {
             NotesContent(vm, onOpenSettings = { showSettings = true }, onOpenSearch = { showSearch = true })
         }
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).imePadding().navigationBarsPadding())
+        // above the formatting bar while the notes screen shows it, so the bar stays tappable
+        SnackbarHost(
+            snackbar,
+            Modifier.align(Alignment.BottomCenter).imePadding().navigationBarsPadding().padding(bottom = if (showingEditor) 64.dp else 0.dp),
+        )
     }
 }
 
@@ -224,19 +242,12 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                         // long press, so that it is not changed by accident. External documents keep their file name.
                         val canRename = vm.canRename
                         // A title the user chose has no tap action: no ripple and no "rename" tap label, only the long press.
-                        val titleInteraction = remember { MutableInteractionSource() }
-                        val titleClicks = if (vm.hasExplicitTitle) {
-                            Modifier.combinedClickable(
-                                interactionSource = titleInteraction,
-                                indication = null,
-                                enabled = canRename,
-                                onLongClickLabel = renameLabel,
-                                onClick = {},
-                                onLongClick = { dialog = Dialog.Rename },
-                            )
-                        } else {
-                            Modifier.combinedClickable(
-                                enabled = canRename,
+                        val titleClicks = when {
+                            !canRename -> Modifier
+                            vm.hasExplicitTitle -> Modifier
+                                .pointerInput(Unit) { detectTapGestures(onLongPress = { dialog = Dialog.Rename }) }
+                                .semantics { onLongClick(label = renameLabel) { dialog = Dialog.Rename; true } }
+                            else -> Modifier.combinedClickable(
                                 onClickLabel = renameLabel,
                                 onLongClickLabel = renameLabel,
                                 onClick = { dialog = Dialog.Rename },
@@ -361,8 +372,14 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                                     vm.share { title, markdown ->
                                         // the share file is written off the main thread; only the intent is started here
                                         scope.launch {
-                                            val intent = withContext(Dispatchers.IO) { ShareHelper.createIntent(context, title, markdown) }
-                                            context.startActivity(intent)
+                                            try {
+                                                val intent = withContext(Dispatchers.IO) { ShareHelper.createIntent(context, title, markdown) }
+                                                context.startActivity(intent)
+                                            } catch (e: CancellationException) {
+                                                throw e
+                                            } catch (e: Exception) {
+                                                vm.reportShareFailed()
+                                            }
                                         }
                                     }
                                 },

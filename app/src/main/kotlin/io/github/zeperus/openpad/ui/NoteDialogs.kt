@@ -132,7 +132,6 @@ internal fun NameDialog(
     var submitting by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
     // the file name it will be saved as, when that differs from the typed name (e.g. "a/b" -> "a b")
     val savedAs = if (fileNameHint) NoteFileName.sanitizeOrNull(name.text)?.takeIf { it != name.text.trim() } else null
     fun submit() {
@@ -152,6 +151,8 @@ internal fun NameDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
+            // requested here, where the field is composed: a request from outside the dialog content finds no field yet
+            LaunchedEffect(Unit) { focusRequester.requestFocus() }
             TextField(
                 value = name,
                 onValueChange = { name = it; error = null },
@@ -189,16 +190,32 @@ internal fun MoveToFolderDialog(vm: NotesViewModel, onDismiss: () -> Unit) {
     var creating by rememberSaveable { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf("") }
     var error by rememberSaveable { mutableStateOf<RenameResult?>(null) }
+    var submitting by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
     val currentFolder = vm.current?.folderId
+    fun createFolder() {
+        if (submitting || name.isBlank()) return // also blocks a second IME "done" while the first is still running
+        submitting = true
+        scope.launch {
+            val result = vm.createFolderAndMove(name)
+            if (result == RenameResult.Ok) {
+                onDismiss()
+            } else {
+                error = result
+                submitting = false // the user corrects the name and confirms again
+            }
+        }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.dialog_move_title)) },
         text = {
-            // the folder list scrolls above a fixed "New folder" entry, so many folders cannot push it out of reach
+            // the folder list scrolls and takes only the height left over, so "New folder" and its field stay in view (landscape)
             Column {
                 Column(
                     Modifier
+                        .weight(1f, fill = false)
                         .heightIn(max = 320.dp)
                         .verticalScroll(rememberScrollState())
                         .selectableGroup(),
@@ -215,13 +232,16 @@ internal fun MoveToFolderDialog(vm: NotesViewModel, onDismiss: () -> Unit) {
                     }
                 }
                 if (creating) {
+                    LaunchedEffect(Unit) { focusRequester.requestFocus() }
                     TextField(
                         value = name,
                         onValueChange = { name = it; error = null },
                         label = { Text(stringResource(R.string.dialog_rename_label)) },
                         singleLine = true,
                         isError = error != null,
-                        modifier = Modifier.testTag("name-field"),
+                        modifier = Modifier.focusRequester(focusRequester).testTag("name-field"),
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { createFolder() }),
                         supportingText = {
                             when (error) {
                                 RenameResult.InvalidName -> Text(stringResource(R.string.rename_invalid))
@@ -238,12 +258,9 @@ internal fun MoveToFolderDialog(vm: NotesViewModel, onDismiss: () -> Unit) {
         },
         confirmButton = {
             if (creating) {
-                TextButton(onClick = {
-                    scope.launch {
-                        val result = vm.createFolderAndMove(name)
-                        if (result == RenameResult.Ok) onDismiss() else error = result
-                    }
-                }) { Text(stringResource(R.string.dialog_new_folder_confirm)) }
+                TextButton(onClick = { createFolder() }, enabled = name.isNotBlank() && !submitting) {
+                    Text(stringResource(R.string.dialog_new_folder_confirm))
+                }
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) } },

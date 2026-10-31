@@ -250,5 +250,6 @@ internal const val MAX_LISTED_EXPORT_FAILURES = 10
 internal fun failedTitlesForDialog(failed: List<String>): String {
     val shown = failed.take(MAX_LISTED_EXPORT_FAILURES).joinToString(", ")
     val rest = failed.size - MAX_LISTED_EXPORT_FAILURES
-    return if (rest > 0) shown + ", " + stringResource(R.string.export_done_more, rest) else shown
+    // the resource carries its own separator (", and" / " und"), so German gets no comma before "und"
+    return if (rest > 0) shown + stringResource(R.string.export_done_more, rest) else shown
 }

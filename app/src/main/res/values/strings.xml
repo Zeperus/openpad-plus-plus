@@ -12,6 +12,8 @@
     <string name="trash_empty">Trash is empty</string>
     <string name="sort_by_name">Sort by name</string>
     <string name="sort_by_modified">Sort by last change</string>
+    <string name="sort_current_name">A–Z</string>
+    <string name="sort_current_modified">Newest</string>
 
     <string name="untitled">Untitled</string>
     <string name="tab_new_note">New note</string>
@@ -204,5 +206,5 @@
     <string name="export_done_written">Exported notes: %1$d</string>
     <string name="export_done_skipped">External files skipped: %1$d</string>
     <string name="export_done_failed">Not exported: %1$s</string>
-    <string name="export_done_more">and %1$d more</string>
+    <string name="export_done_more">", and %1$d more"</string>
 </resources>

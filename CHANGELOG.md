@@ -21,7 +21,7 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 - **Search** clears old results as soon as you type, shows *Searching…*, works in the background, has a clear button and does not
   autocorrect the search words.
 - **FILES can be sorted by last change** (toggle in the FILES header, remembered) and every note there shows when it was last changed
-  ("5 min. ago", "Yesterday").
+  ("5 min. ago", "Yesterday"; refreshed every minute); the sort button shows the current order.
 - **Messages appear on every screen** (also in Settings and Search) and Favorites says *Added to / Removed from Favorites*.
 - **TalkBack:** list markers are no longer read as separate items, checklist labels are cut at a word with "…", the area below the last
   line is announced as *Continue writing at the end*, drawer sections are headings, the Not saved / read-only bars are announced.

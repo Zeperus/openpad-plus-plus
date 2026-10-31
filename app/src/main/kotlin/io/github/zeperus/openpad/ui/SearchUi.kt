@@ -40,6 +40,9 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -90,7 +93,7 @@ fun SearchScreen(vm: NotesViewModel, onBack: () -> Unit, onOpen: (SearchHit) -> 
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (noteSearch.searching && results.isEmpty()) {
                 Row(
-                    Modifier.padding(horizontal = 24.dp, vertical = 16.dp).testTag("search-running"),
+                    Modifier.padding(horizontal = 24.dp, vertical = 16.dp).semantics { liveRegion = LiveRegionMode.Polite }.testTag("search-running"),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -98,7 +101,11 @@ fun SearchScreen(vm: NotesViewModel, onBack: () -> Unit, onOpen: (SearchHit) -> 
                     Text(stringResource(R.string.search_running), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else if (noteSearch.query.isNotBlank() && results.isEmpty()) {
-                Text(stringResource(R.string.search_no_results), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(24.dp))
+                Text(
+                    stringResource(R.string.search_no_results),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(24.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                )
             }
             LazyColumn(Modifier.fillMaxSize()) {
                 items(results, key = { it.note.id.value }) { hit ->

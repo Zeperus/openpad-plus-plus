@@ -31,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -47,6 +48,7 @@ import io.github.zeperus.openpad.domain.FolderInfo
 import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteInfo
 import io.github.zeperus.openpad.domain.NoteLists
+import kotlinx.coroutines.delay
 
 @Composable
 internal fun DrawerContent(
@@ -62,6 +64,13 @@ internal fun DrawerContent(
 ) {
     val sort = vm.preferences.filesSort
     val files = remember(vm.notes, sort) { NoteLists.sorted(vm.notes, sort) }
+    // the relative dates ("5 min. ago") move on while the drawer is composed: the time is read again every minute
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            delay(60_000)
+            value = System.currentTimeMillis()
+        }
+    }
     LazyColumn(contentPadding = PaddingValues(vertical = 12.dp), modifier = Modifier.fillMaxSize().testTag("drawer")) {
         item {
             Button(
@@ -80,25 +89,25 @@ internal fun DrawerContent(
         // Favorites and Recent appear only when they have entries; a note may be in FILES and in one of them.
         if (vm.favorites.isNotEmpty()) {
             item(key = "header-favorites") { SectionHeader(stringResource(R.string.section_favorites)) }
-            noteRows("favorite", vm.favorites, vm.current?.id, onOpen)
+            noteRows("favorite", vm.favorites, vm.current?.id, onOpen, now = now)
         }
         if (vm.recent.isNotEmpty()) {
             item(key = "header-recent") { SectionHeader(stringResource(R.string.section_recent)) }
-            noteRows("recent", vm.recent, vm.current?.id, onOpen)
+            noteRows("recent", vm.recent, vm.current?.id, onOpen, now = now)
         }
         item(key = "header-files") {
             SectionHeader(
                 stringResource(R.string.section_files),
                 trailing = {
+                    // the text shows the order in use; TalkBack says what a tap does
+                    val current = stringResource(if (sort == FilesSort.Name) R.string.sort_current_name else R.string.sort_current_modified)
+                    val action = stringResource(if (sort == FilesSort.Name) R.string.sort_by_modified else R.string.sort_by_name)
                     TextButton(
                         onClick = { vm.preferences.chooseFilesSort(if (sort == FilesSort.Name) FilesSort.Modified else FilesSort.Name) },
-                        modifier = Modifier.testTag("files-sort"),
+                        modifier = Modifier.testTag("files-sort").semantics { contentDescription = action },
                         contentPadding = PaddingValues(horizontal = 8.dp),
                     ) {
-                        Text(
-                            stringResource(if (sort == FilesSort.Name) R.string.sort_by_modified else R.string.sort_by_name),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
+                        Text(current, style = MaterialTheme.typography.labelSmall)
                     }
                 },
             )
@@ -107,7 +116,7 @@ internal fun DrawerContent(
             item(key = "files-empty") { EmptyHint(stringResource(R.string.files_empty)) }
         }
         if (vm.folders.isEmpty()) {
-            noteRows("file", files, vm.current?.id, onOpen, showDate = true)
+            noteRows("file", files, vm.current?.id, onOpen, showDate = true, now = now)
         } else {
             // folders first (collapsible), then the notes that are in no folder
             for (folder in vm.folders) {
@@ -116,9 +125,9 @@ internal fun DrawerContent(
                 item(key = "folder-${folder.id}") {
                     FolderHeader(folder, inside.size, open, onToggle = { vm.toggleFolder(folder.id) }, onRename = { onRenameFolder(folder) }, onDelete = { onDeleteFolder(folder) })
                 }
-                if (open) noteRows("in-${folder.id}", inside, vm.current?.id, onOpen, indent = 16.dp, showDate = true)
+                if (open) noteRows("in-${folder.id}", inside, vm.current?.id, onOpen, indent = 16.dp, showDate = true, now = now)
             }
-            noteRows("file", files.filter { n -> n.folderId == null || vm.folders.none { it.id == n.folderId } }, vm.current?.id, onOpen, showDate = true)
+            noteRows("file", files.filter { n -> n.folderId == null || vm.folders.none { it.id == n.folderId } }, vm.current?.id, onOpen, showDate = true, now = now)
         }
         // Shown in both cases, so the first folder can be created too.
         item(key = "new-folder") {
@@ -151,7 +160,7 @@ internal fun DrawerContent(
 
 /**
  * One drawer row per note. [section] namespaces the lazy-list keys: the same note can appear in two sections.
- * [showDate] adds the last change as a relative date under the title (FILES only).
+ * [showDate] adds the last change as a relative date under the title (FILES only), measured from [now].
  */
 internal fun LazyListScope.noteRows(
     section: String,
@@ -160,6 +169,7 @@ internal fun LazyListScope.noteRows(
     onOpen: (NoteInfo) -> Unit,
     indent: androidx.compose.ui.unit.Dp = 0.dp,
     showDate: Boolean = false,
+    now: Long,
 ) {
     items(notes, key = { "$section-${it.id.value}" }) { note ->
         val externalLabel = stringResource(R.string.external_file)
@@ -168,8 +178,10 @@ internal fun LazyListScope.noteRows(
                 Column {
                     Text(note.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (showDate) {
+                        // a date in the future (clock skew) counts as now
+                        val relative = DateUtils.getRelativeTimeSpanString(minOf(note.updatedAt, now), now, DateUtils.MINUTE_IN_MILLIS, DateUtils.FORMAT_ABBREV_RELATIVE)
                         Text(
-                            DateUtils.getRelativeTimeSpanString(note.updatedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString(),
+                            relative.toString(),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
