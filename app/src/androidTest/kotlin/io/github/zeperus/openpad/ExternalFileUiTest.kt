@@ -5,6 +5,7 @@ import android.provider.DocumentsContract
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.platform.app.InstrumentationRegistry
@@ -96,7 +97,8 @@ class ExternalFileUiTest {
         open("liar.md", write = true)
         rule.waitFor("the document", { "rows=${rule.rowTexts()}" }) { rule.rowTexts().firstOrNull() == "x" }
         rule.typeInLastRow("!")
-        rule.waitFor("the save failure is reported", { "" }) { rule.onAllNodesWithText("Could not save", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        // reported by the lasting "Not saved" bar (the snackbar is skipped while the bar is shown)
+        rule.waitFor("the save failure is reported", { "" }) { rule.onAllNodes(hasTestTag("save-failed-banner")).fetchSemanticsNodes().isNotEmpty() }
         assertEquals("x\n", content("liar.md"))
     }
 

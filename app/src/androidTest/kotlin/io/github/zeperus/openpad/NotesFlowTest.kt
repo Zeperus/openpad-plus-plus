@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -156,13 +157,22 @@ class NotesFlowTest {
         launch()
         openDrawer()
         rule.onNodeWithText("FAVORITES").assertIsDisplayed()
+        // The drawer is a lazy list taller than a small screen: compare what is on screen together, scrolling in between.
+        val recentTop = top("RECENT")
+        assertTrue(top("FAVORITES") < recentTop)
+        val filesTop = rule.onAllNodesWithText("FILES").fetchSemanticsNodes().firstOrNull()?.boundsInRoot?.top ?: Float.MAX_VALUE
+        fun entryTops(title: String) = rule.onAllNodes(drawerEntry(title)).fetchSemanticsNodes().map { it.boundsInRoot.top }
+        // Favorites lists the favorite; Recent lists the other notes but not the favorite
+        assertEquals(1, entryTops("Pinned").count { it < recentTop })
+        assertEquals(0, entryTops("Pinned").count { it > recentTop && it < filesTop })
+        assertEquals(1, entryTops("Alpha").count { it > recentTop && it < filesTop })
+        rule.onNodeWithTag("drawer").performScrollToNode(hasText("FILES"))
+        if (rule.onAllNodesWithText("RECENT").fetchSemanticsNodes().isNotEmpty()) assertTrue(top("RECENT") < top("FILES"))
         rule.onNodeWithTag("drawer").performScrollToNode(hasText("TRASH")) // a small screen does not show the whole drawer
-        assertTrue(top("FAVORITES") < top("RECENT"))
-        assertTrue(top("RECENT") < top("FILES"))
-        assertTrue(top("FILES") < top("TRASH"))
-        // FILES is the complete list: the favorite is there too, but not twice in Recent
-        assertEquals(2, drawerEntryCount("Pinned")) // Favorites + Files
-        assertEquals(2, drawerEntryCount("Alpha")) // Recent + Files
+        val filesNow = top("FILES")
+        assertTrue(filesNow < top("TRASH"))
+        // FILES is the complete list: the favorite is there too
+        for (title in listOf("Pinned", "Alpha", "Beta")) assertEquals(title, 1, entryTops(title).count { it > filesNow && it < top("TRASH") })
     }
 
     @Test fun favoritesAndRecentAreHiddenWhenThereIsNothingToShow() {
