@@ -36,6 +36,7 @@
     <string name="settings_title">Einstellungen</string>
     <string name="settings_back">Zurück</string>
     <string name="settings_version">openPad++ %1$s (Testversion)</string>
+    <string name="settings_timing">Gemessen: Tastendruck %1$.1f ms (Ø %2$.1f, max %3$.1f, %4$d Änderungen) · Öffnen %5$.0f ms (max %6$.0f)</string>
     <string name="settings_startup">Start</string>
     <string name="startup_resume_session">Sitzung fortsetzen</string>
     <string name="startup_resume_blank">Sitzung + leere Notiz</string>

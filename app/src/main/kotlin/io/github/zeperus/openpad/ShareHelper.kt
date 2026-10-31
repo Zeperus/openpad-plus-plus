@@ -14,14 +14,19 @@ import java.io.File
 object ShareHelper {
     const val AUTHORITY_SUFFIX = ".share"
     private const val DIR = "share"
+    private const val MAX_AGE_MILLIS = 3_600_000L
 
     fun authority(context: Context) = context.packageName + AUTHORITY_SUFFIX
 
-    /** Writes the cache copy and returns the file to share. Old copies are removed first. */
+    /**
+     * Writes the cache copy and returns the file to share. Copies older than one hour are removed first (not all of them:
+     * a recipient may still be reading an earlier share). Each share gets its own timestamped folder.
+     */
     fun prepareFile(context: Context, title: String, text: String): File {
         val root = File(context.cacheDir, DIR)
-        root.deleteRecursively()
-        val dir = File(root, System.currentTimeMillis().toString()).apply { mkdirs() }
+        val now = System.currentTimeMillis()
+        root.listFiles()?.filter { it.lastModified() < now - MAX_AGE_MILLIS }?.forEach { it.deleteRecursively() }
+        val dir = File(root, now.toString()).apply { mkdirs() }
         return File(dir, NoteFileName.toFileName(title)).apply { writeText(text, Charsets.UTF_8) }
     }
 

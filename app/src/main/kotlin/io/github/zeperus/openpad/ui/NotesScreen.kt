@@ -1,6 +1,7 @@
 package io.github.zeperus.openpad.ui
 
 import androidx.activity.compose.BackHandler
+import android.content.pm.ApplicationInfo
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.rememberScrollState
@@ -99,12 +100,15 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.zeperus.openpad.R
+import io.github.zeperus.openpad.ui.editor.EditorDiagnostics
 import io.github.zeperus.openpad.ui.editor.FormattingBar
 import io.github.zeperus.openpad.ui.editor.RichEditor
 import io.github.zeperus.openpad.domain.FolderInfo
 import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteInfo
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private sealed interface Dialog {
     data object Rename : Dialog
@@ -319,7 +323,11 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                                 onClick = {
                                     menuOpen = false
                                     vm.share { title, markdown ->
-                                        context.startActivity(ShareHelper.createIntent(context, title, markdown))
+                                        // the share file is written off the main thread; only the intent is started here
+                                        scope.launch {
+                                            val intent = withContext(Dispatchers.IO) { ShareHelper.createIntent(context, title, markdown) }
+                                            context.startActivity(intent)
+                                        }
                                     }
                                 },
                             )
@@ -926,6 +934,18 @@ private fun SettingsScreen(vm: NotesViewModel, onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 24.dp).testTag("version"),
             )
+            if ((context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) { // debug builds only: the measured editor timing
+                val t = EditorDiagnostics.timing
+                Text(
+                    text = stringResource(
+                        R.string.settings_timing,
+                        t.lastEditMs, t.avgEditMs, t.maxEditMs, t.edits, t.lastOpenMs, t.maxOpenMs,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp).testTag("editor-timing"),
+                )
+            }
         }
     }
 }

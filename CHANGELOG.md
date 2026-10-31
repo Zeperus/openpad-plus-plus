@@ -12,6 +12,15 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
   unchanged external document.
 - **Lasting "Not saved" bar** with *Try again* after a failed save, until the next save succeeds (before: a 4-second message).
 
+### Changed
+- **Faster editing in long lists:** list markers and checkboxes find their row in constant time (was a linear search per row, i.e.
+  quadratic per layout); *Find in note* is only recomputed when the text or the search changes, not on every caret move; the editor's
+  segment lookup no longer counts items again for every visible row.
+- **Share** prepares the file in the background and keeps copies that another app may still be reading (older than an hour are removed).
+- `index.json` is written compactly (older, pretty-printed files are read as before); the title check on every save needs no regex.
+- Debug/test builds show measured editing and opening times at the bottom of Settings (for measuring on a phone).
+- The view model ends its background loop when it is discarded.
+
 ### Fixed
 - Ticking the top item of a long Smart Checklist keeps the scroll position (after Alpha 8).
 - *Delete permanently* checks that the file is really gone; if not, the note stays in Trash and an error is shown (before, it could

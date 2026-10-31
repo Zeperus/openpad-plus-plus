@@ -56,6 +56,7 @@ import io.github.zeperus.openpad.editor.EditorSession
 import io.github.zeperus.openpad.editor.ListImport
 import io.github.zeperus.openpad.editor.RowKind
 import io.github.zeperus.openpad.editor.SpanKind
+import io.github.zeperus.openpad.ui.editor.EditorDiagnostics
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
@@ -129,6 +130,9 @@ class NotesViewModel(
     /** Find in note (null = closed). */
     var find by mutableStateOf<FindState?>(null)
         private set
+
+    /** The document [find]'s matches were computed for: they are only searched again when the document or the query changes. */
+    private var findDoc: Any? = null
 
     /** Global note search: what was typed and what it found. */
     var searchQuery by mutableStateOf("")
@@ -358,7 +362,9 @@ class NotesViewModel(
     }
 
     private fun computeFind(query: String, current: Int): FindState {
-        val matches = FindInNote.matches(rich.doc, query)
+        val doc = rich.doc
+        val matches = FindInNote.matches(doc, query)
+        findDoc = doc
         return FindState(query, matches, current.coerceIn(0, maxOf(0, matches.lastIndex)))
     }
 
@@ -536,6 +542,7 @@ class NotesViewModel(
      */
     private inline fun edit(focus: Boolean = true, operation: (EditorSession) -> Boolean) {
         if (!ready || readOnly) return
+        val started = System.nanoTime()
         val before = rich.cursor?.rowId
         val changed = try {
             operation(rich)
@@ -549,6 +556,7 @@ class NotesViewModel(
         markStateDirty()
         val row = rich.cursor?.rowId
         if (focus && row != null && row != before) requestFocus(row)
+        EditorDiagnostics.recordEdit(System.nanoTime() - started)
     }
 
     private fun commitMarkdown() {
@@ -618,7 +626,8 @@ class NotesViewModel(
     private fun publish() {
         ui = snapshot()
         docSelection = docSelection?.let { DocumentSelections.validated(rich.doc, it) }
-        find = find?.let { computeFind(it.query, it.current) }
+        val f = find
+        if (f != null && rich.doc !== findDoc) find = computeFind(f.query, f.current) // a caret move alone keeps the matches
     }
 
     /** The open note's session belongs to its tab. A draft has none until it becomes a note. */
@@ -994,11 +1003,13 @@ class NotesViewModel(
     }
 
     override fun onCleared() {
+        searchJob?.cancel()
         scope.launch {
             autosaver.flush()
             persistStates()
             autosaver.close()
             sessionChanges.close() // the last queued session state is still written
+            stateChanges.close() // the state loop ends after the final write above
         }
     }
 
@@ -1117,6 +1128,7 @@ class NotesViewModel(
     }
 
     private fun switchTo(next: NoteEditor) {
+        val started = System.nanoTime()
         markStateDirty() // the tab being left keeps its caret and history for later
         editor = next
         text = next.text
@@ -1132,6 +1144,7 @@ class NotesViewModel(
         epoch++
         focusRequest = null
         publish()
+        EditorDiagnostics.recordOpen(System.nanoTime() - started)
     }
 
     /** The open tab's own session if it still matches the file exactly (keeps caret and undo), otherwise a fresh one. */
