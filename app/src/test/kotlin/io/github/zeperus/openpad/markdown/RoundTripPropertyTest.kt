@@ -1,5 +1,6 @@
 package io.github.zeperus.openpad.markdown
 
+import io.github.zeperus.openpad.PropertyBudget
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -23,7 +24,8 @@ class RoundTripPropertyTest {
     @Test fun `random documents keep their meaning through serialize and parse`() {
         var failures = 0
         val report = StringBuilder()
-        repeat(4000) { seed ->
+        val cases = PropertyBudget.cases(4000)
+        repeat(cases) { seed ->
             val doc = Gen(seed).document()
             val md = MarkdownSerializer.serialize(OpenPadDocument(doc))
             if (semantic(doc) != reparsed(md)) {
@@ -31,13 +33,13 @@ class RoundTripPropertyTest {
                 if (failures <= 3) report.append("\n--- seed $seed\nwritten:\n$md\nwanted: ${semantic(doc)}\ngot:    ${reparsed(md)}\n")
             }
         }
-        assertEquals("$failures of 4000 random documents changed meaning:$report", 0, failures)
+        assertEquals("$failures of $cases random documents changed meaning:$report", 0, failures)
     }
 
     @Test fun `serializing the parsed result again changes nothing`() {
         var failures = 0
         val report = StringBuilder()
-        repeat(2000) { seed ->
+        repeat(PropertyBudget.cases(2000)) { seed ->
             val md = MarkdownSerializer.serialize(OpenPadDocument(Gen(seed + 100_000).document()))
             val again = MarkdownSerializer.serialize(MarkdownParser.parseDocument(md))
             // tight/loose can flip in deeply nested lists (CommonMark reads it inconsistently): compare without blank lines
@@ -52,7 +54,7 @@ class RoundTripPropertyTest {
     @Test fun `random text in a paragraph always reads back as exactly that text`() {
         var failures = 0
         val report = StringBuilder()
-        repeat(6000) { seed ->
+        repeat(PropertyBudget.cases(6000)) { seed ->
             val g = Gen(seed + 200_000)
             val text = g.text() + g.text()
             val normalized = InlineNormalizer.block(listOf(Inline.Text(text)))
@@ -68,7 +70,7 @@ class RoundTripPropertyTest {
     }
 
     @Test fun `random inline formatting always keeps its visible text`() {
-        repeat(3000) { seed ->
+        repeat(PropertyBudget.cases(3000)) { seed ->
             val g = Gen(seed + 300_000)
             val inlines = InlineNormalizer.block(g.inlines(0))
             if (inlines.isEmpty()) return@repeat
@@ -82,7 +84,7 @@ class RoundTripPropertyTest {
     }
 
     @Test fun `normalization is idempotent for random inline content`() {
-        repeat(3000) { seed ->
+        repeat(PropertyBudget.cases(3000)) { seed ->
             val inlines = Gen(seed + 400_000).inlines(0)
             val once = InlineNormalizer.block(inlines)
             assertEquals("seed ${seed + 400_000}", once, InlineNormalizer.block(once))
@@ -90,7 +92,7 @@ class RoundTripPropertyTest {
     }
 
     @Test fun `editing one block of a random document leaves the others byte identical`() {
-        repeat(500) { seed ->
+        repeat(PropertyBudget.cases(500)) { seed ->
             val g = Gen(seed + 500_000)
             val original = MarkdownSerializer.serialize(OpenPadDocument(g.document() + Block.Paragraph(listOf(Inline.Text("tail")))))
             val parsed = MarkdownParser.parse(original)

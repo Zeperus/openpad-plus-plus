@@ -1,5 +1,6 @@
 package io.github.zeperus.openpad.editor
 
+import io.github.zeperus.openpad.PropertyBudget
 import io.github.zeperus.openpad.markdown.BlockNormalizer
 import io.github.zeperus.openpad.markdown.Gen
 import io.github.zeperus.openpad.markdown.HtmlSpans
@@ -102,7 +103,8 @@ class EditorPropertyTest {
     @Test fun `random editing keeps the rows consistent and what is shown equals what is saved`() {
         var failures = 0
         val report = StringBuilder()
-        repeat(1500) { seed ->
+        val cases = PropertyBudget.cases(1500)
+        repeat(cases) { seed ->
             val r = Random(seed)
             val md = MarkdownSerializer.serialize(OpenPadDocument(Gen(seed + 1_000_000).document()))
             val s = EditorSession(EditorDocument.fromMarkdown(md), clock = { now })
@@ -126,11 +128,11 @@ class EditorPropertyTest {
                 }
             }
         }
-        assertEquals("$failures of 1500 editing sessions did not survive saving and reloading:$report", 0, failures)
+        assertEquals("$failures of $cases editing sessions did not survive saving and reloading:$report", 0, failures)
     }
 
     @Test fun `undoing everything restores the original file byte for byte`() {
-        repeat(300) { seed ->
+        repeat(PropertyBudget.cases(300)) { seed ->
             val r = Random(seed + 5_000)
             val md = MarkdownSerializer.serialize(OpenPadDocument(Gen(seed + 2_000_000).document()))
             val s = EditorSession(EditorDocument.fromMarkdown(md), clock = { now })
@@ -142,7 +144,7 @@ class EditorPropertyTest {
     }
 
     @Test fun `redo after undo returns to the last state`() {
-        repeat(200) { seed ->
+        repeat(PropertyBudget.cases(200)) { seed ->
             val r = Random(seed + 9_000)
             val md = MarkdownSerializer.serialize(OpenPadDocument(Gen(seed + 3_000_000).document()))
             val s = EditorSession(EditorDocument.fromMarkdown(md), clock = { now })

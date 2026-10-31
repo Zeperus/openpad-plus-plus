@@ -1,5 +1,6 @@
 package io.github.zeperus.openpad.editor
 
+import io.github.zeperus.openpad.PropertyBudget
 import io.github.zeperus.openpad.markdown.Block
 import io.github.zeperus.openpad.markdown.Gen
 import io.github.zeperus.openpad.markdown.MarkdownParser
@@ -94,7 +95,7 @@ class EditorDocumentTest {
     }
 
     @Test fun `rows turn back into exactly the parsed blocks for random documents`() {
-        repeat(1500) { seed ->
+        repeat(PropertyBudget.cases(1500)) { seed ->
             val md = MarkdownSerializer.serialize(OpenPadDocument(Gen(seed + 700_000).document()))
             assertEquals("seed ${seed + 700_000}:\n$md", MarkdownParser.parseDocument(md).blocks, blocksOf(EditorDocument.fromMarkdown(md)))
         }
@@ -128,7 +129,7 @@ class EditorDocumentTest {
     }
 
     @Test fun `random documents read back the same when fully regenerated from rows`() {
-        repeat(1500) { seed ->
+        repeat(PropertyBudget.cases(1500)) { seed ->
             val md = MarkdownSerializer.serialize(OpenPadDocument(Gen(seed + 800_000).document()))
             val rewritten = touchedEverything(md).toMarkdown()
             val a = rowsOf(md)

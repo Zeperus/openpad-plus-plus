@@ -55,6 +55,10 @@ android {
     testOptions {
         execution = "ANDROIDX_TEST_ORCHESTRATOR"
         animationsDisabled = true
+        // Random/property tests run a fifth of their cases locally and the full count on CI (`-Popenpad.fullProperties=true`).
+        unitTests.all { test ->
+            test.systemProperty("openpad.fullProperties", providers.gradleProperty("openpad.fullProperties").getOrElse("false"))
+        }
     }
 
     lint {
@@ -78,7 +82,6 @@ dependencies {
     implementation(libs.commonmark.tables)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material3.window.size)
     implementation(libs.androidx.compose.material.icons.core)
