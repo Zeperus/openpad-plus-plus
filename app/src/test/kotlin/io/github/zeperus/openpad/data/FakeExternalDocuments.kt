@@ -7,6 +7,7 @@ import io.github.zeperus.openpad.domain.WriteAccess
 import kotlinx.coroutines.delay
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 /** An in-memory document provider for tests. Thread-safe, because blocking tests call it from real I/O threads. */
 class FakeExternalDocuments : ExternalDocuments {
@@ -27,9 +28,15 @@ class FakeExternalDocuments : ExternalDocuments {
     var truncateWritesTo: Int? = null
     /** While set, writing stores only this many bytes and then fails (a write that was interrupted). */
     @Volatile var truncateThenFail: Int? = null
+    /** While set, a write stores the full bytes and then reports a failure (the write landed, but the caller is told otherwise). */
+    @Volatile var failAfterStoring = false
+    /** While set, a failed write (see [truncateThenFail], [failAfterStoring]) also makes every later read fail: the provider is gone. */
+    @Volatile var failReadsAfterWrite = false
     var failWrites = false
     var failReads = false
     var hang = false
+    /** How often [writeAccess] was asked (a write probe). */
+    val accessChecks = AtomicInteger()
 
     /** While set, reads and writes block the calling thread (real blocking I/O, unlike [hang]) until it is counted down. */
     @Volatile var blockThread: java.util.concurrent.CountDownLatch? = null
@@ -66,17 +73,30 @@ class FakeExternalDocuments : ExternalDocuments {
         writes += uri
         truncateThenFail?.let { stored ->
             files[uri] = bytes.copyOf(minOf(stored, bytes.size))
+            failedWrite()
             throw NoteSourceUnavailableException("write interrupted")
+        }
+        if (failAfterStoring) {
+            files[uri] = bytes
+            failedWrite()
+            throw NoteSourceUnavailableException("write reported a failure after storing the text")
         }
         files[uri] = truncateWritesTo?.let { bytes.copyOf(minOf(it, bytes.size)) } ?: bytes
     }
 
+    private fun failedWrite() {
+        if (failReadsAfterWrite) failReads = true
+    }
+
     override suspend fun displayName(uri: String): String? = names[uri]
 
-    override suspend fun writeAccess(uri: String): WriteAccess = when {
-        uri in readOnly -> WriteAccess.ReadOnly(ReadOnlyReason.NoWriteGrant)
-        uri in providerReadOnly -> WriteAccess.ReadOnly(ReadOnlyReason.ProviderRefuses)
-        uri in undetermined -> WriteAccess.ReadOnly(ReadOnlyReason.Unavailable)
-        else -> WriteAccess.Writable
+    override suspend fun writeAccess(uri: String): WriteAccess {
+        accessChecks.incrementAndGet()
+        return when {
+            uri in readOnly -> WriteAccess.ReadOnly(ReadOnlyReason.NoWriteGrant)
+            uri in providerReadOnly -> WriteAccess.ReadOnly(ReadOnlyReason.ProviderRefuses)
+            uri in undetermined -> WriteAccess.ReadOnly(ReadOnlyReason.Unavailable)
+            else -> WriteAccess.Writable
+        }
     }
 }

@@ -2,6 +2,7 @@ package io.github.zeperus.openpad.data
 
 import io.github.zeperus.openpad.domain.ExternalDocuments
 import io.github.zeperus.openpad.domain.ExternalNotSupportedException
+import io.github.zeperus.openpad.domain.ExternalVersion
 import io.github.zeperus.openpad.domain.FolderInfo
 import io.github.zeperus.openpad.domain.FolderNameConflictException
 import io.github.zeperus.openpad.domain.FolderNotEmptyException
@@ -93,6 +94,11 @@ class FileNoteRepository internal constructor(
     /** External note id -> SHA-256 of the bytes last read from or written to its document. In memory only. */
     private val externalBaseline = HashMap<String, String>()
     /**
+     * External note id -> SHA-256 of the bytes of our last write that was not confirmed (it failed, or it may still land after a
+     * timeout). A later check accepts that content as ours. In memory only.
+     */
+    private val externalAttempted = HashMap<String, String>()
+    /**
      * Runs provider calls outside the caller; on timeout the caller is released even if the provider call is stuck in blocking I/O.
      * Stuck calls can occupy at most [PROVIDER_THREADS] threads; internal notes keep using [dispatcher].
      */
@@ -163,12 +169,14 @@ class FileNoteRepository internal constructor(
     override suspend fun openNote(id: NoteId): NoteContent = locked { notes ->
         val entry = notes[id.value] ?: throw NoteNotFoundException(id)
         if (entry.uri != null) return@locked openExternalContent(notes, entry)
-        val text = try {
-            AtomicFiles.readTextStrict(fileOf(entry))
-        } catch (e: CharacterCodingException) {
-            throw NoteUnreadableException(entry.title, e)
-        }
-        NoteContent(entry.toInfo(), text)
+        NoteContent(entry.toInfo(), readInternalText(entry))
+    }
+
+    /** The text for searching. Unlike [openNote] it has no side effects: no index write, no write probe, no baseline change. */
+    override suspend fun peekText(id: NoteId): String = locked { notes ->
+        val entry = notes[id.value] ?: throw NoteNotFoundException(id)
+        val uri = entry.uri ?: return@locked readInternalText(entry)
+        decodeDocumentText(entry.title, ext(uri) { external.read(uri, MAX_EXTERNAL_BYTES) })
     }
 
     override suspend fun saveNote(id: NoteId, text: String): NoteInfo = locked { notes ->
@@ -338,6 +346,7 @@ class FileNoteRepository internal constructor(
         notes.remove(entry.id)
         persist(notes)
         externalBaseline.remove(entry.id)
+        externalAttempted.remove(entry.id)
         backupFile(entry.id).delete()
     }
 
@@ -347,14 +356,21 @@ class FileNoteRepository internal constructor(
         externalBaseline[entry.id] = digest(ext(uri) { external.read(uri, MAX_EXTERNAL_BYTES) })
     }
 
-    override suspend fun checkExternal(id: NoteId): NoteContent? = locked { notes ->
+    override suspend fun checkExternal(id: NoteId): ExternalVersion? = locked { notes ->
         val entry = activeEntry(notes, id).takeIf { it.uri != null } ?: throw NoteNotFoundException(id)
         val uri = entry.uri!!
-        val bytes = ext(uri) { external.read(uri, MAX_EXTERNAL_BYTES) }
+        // nothing to compare with yet: do not read at all
         val baseline = externalBaseline[entry.id] ?: return@locked null
-        if (digest(bytes) == baseline) return@locked null
+        val bytes = ext(uri) { external.read(uri, MAX_EXTERNAL_BYTES) }
+        val token = digest(bytes)
+        if (token == baseline) return@locked null
         // deliberately no baseline update: the next save still compares against what openPad++ last read or wrote
-        NoteContent(entry.toInfo(), decodeDocumentText(entry.title, bytes))
+        ExternalVersion(decodeDocumentText(entry.title, bytes), token)
+    }
+
+    override suspend fun adoptExternal(id: NoteId, version: ExternalVersion): Unit = locked { notes ->
+        val entry = activeEntry(notes, id).takeIf { it.uri != null } ?: throw NoteNotFoundException(id)
+        externalBaseline[entry.id] = version.token
     }
 
     /** Reads an external document, keeping the entry's title and BOM flag in step with what the provider reports. */
@@ -399,6 +415,8 @@ class FileNoteRepository internal constructor(
         backupsDir.mkdirs()
         AtomicFiles.writeText(backupFile(entry.id), text)
         checkNotChangedExternally(entry, uri, bytes)
+        // remembered before the write: if this write reports a failure but lands later, the text is ours, not another app's
+        externalAttempted[entry.id] = digest(bytes)
         val readBack = try {
             ext(uri) { external.write(uri, bytes) }
             ext(uri) { external.read(uri, bytes.size + 16) }
@@ -412,6 +430,7 @@ class FileNoteRepository internal constructor(
             externalBaseline[entry.id] = digest(readBack)
             throw NoteSourceUnavailableException("The document was not written completely")
         }
+        externalAttempted.remove(entry.id)
         externalBaseline[entry.id] = digest(bytes)
         val updated = entry.copy(updatedAt = clock())
         notes[updated.id] = updated
@@ -420,27 +439,30 @@ class FileNoteRepository internal constructor(
     }
 
     /**
-     * After a write that failed with an exception, the document may hold the old text, the new text or a part of it. The
-     * baseline becomes whatever it holds now, so the next save is not reported as a change by another app. If it cannot be
-     * read either, the baseline is dropped (nothing is compared until the document is read again).
+     * After a write that failed with an exception, the document may hold the old text, the new text or a part of it. If it
+     * can be read now, the baseline becomes what it holds, so the next save is not reported as a change by another app. If it
+     * cannot be read (the abandoned write still holds the document, or the provider is gone), the baseline is kept: it is never
+     * dropped, so the next check still compares against the last version known, and our attempted text is accepted through
+     * [externalAttempted].
      */
     private suspend fun rebaselineAfterFailedWrite(entryId: String, uri: String) {
         try {
             externalBaseline[entryId] = digest(ext(uri) { external.read(uri, MAX_EXTERNAL_BYTES) })
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            externalBaseline.remove(entryId)
         }
     }
 
     /**
-     * Throws [NoteChangedExternallyException] if the document differs from what openPad++ last saw of it, unless it
-     * already holds exactly the bytes about to be written. Without a baseline (no read in this session) nothing is checked.
+     * Throws [NoteChangedExternallyException] if the document differs from what openPad++ last saw of it. Accepted as ours: the
+     * last version read or written ([externalBaseline]), the bytes about to be written, and an earlier write that failed but
+     * may have landed ([externalAttempted]). Without a baseline (no read in this session) nothing is checked.
      */
     private suspend fun checkNotChangedExternally(entry: Entry, uri: String, bytes: ByteArray) {
         val baseline = externalBaseline[entry.id] ?: return
         val current = digest(ext(uri) { external.read(uri, MAX_EXTERNAL_BYTES) })
-        if (current != baseline && current != digest(bytes)) throw NoteChangedExternallyException(entry.title)
+        val known = setOfNotNull(baseline, digest(bytes), externalAttempted[entry.id])
+        if (current !in known) throw NoteChangedExternallyException(entry.title)
     }
 
     private fun digest(bytes: ByteArray): String =
@@ -461,17 +483,31 @@ class FileNoteRepository internal constructor(
 
     private fun backupFile(id: String) = File(backupsDir, idToFileName(id).also { requireValidId(id) })
 
+    /** The text of an internal note file; not UTF-8 means [NoteUnreadableException]. */
+    private fun readInternalText(entry: Entry): String = try {
+        AtomicFiles.readTextStrict(fileOf(entry))
+    } catch (e: CharacterCodingException) {
+        throw NoteUnreadableException(entry.title, e)
+    }
+
     /**
      * Provider calls are blocking I/O that coroutine timeouts cannot interrupt. The call therefore runs in its own
      * coroutine: after the timeout the caller is released even if the provider is stuck, and the call is not cancelled.
      * A document has at most one provider call at a time ([busyDocuments]): while an earlier call is still stuck, a new
-     * one fails at once instead of queueing, so no stale write can run later.
+     * one fails at once instead of queueing, so no stale write can run later. Any other failure of the provider (not a
+     * [NoteStorageException]) is reported as [NoteSourceUnavailableException] instead of crashing the app.
      */
     private suspend fun <T> ext(uri: String, block: suspend () -> T): T {
         if (!busyDocuments.add(uri)) throw NoteSourceUnavailableException("The document provider is still busy with an earlier request")
         val call = providerScope.async {
             try {
                 block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: NoteStorageException) {
+                throw e
+            } catch (e: Exception) {
+                throw NoteSourceUnavailableException(e.message ?: "The document provider failed", e)
             } finally {
                 busyDocuments.remove(uri)
             }

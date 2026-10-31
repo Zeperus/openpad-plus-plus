@@ -1,5 +1,6 @@
 package io.github.zeperus.openpad.data
 
+import io.github.zeperus.openpad.domain.ExternalDocuments
 import io.github.zeperus.openpad.domain.NoteChangedExternallyException
 import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteNotFoundException
@@ -10,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -21,6 +23,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Data safety of the storage layer: failed deletes, providers that block, documents changed by another app. */
 class FileNoteRepositorySafetyTest {
@@ -32,13 +35,17 @@ class FileNoteRepositorySafetyTest {
     private var ids = 0L
     private val uri = "content://docs/doc/safety"
 
-    private fun repo(deleteFile: (File) -> Boolean = File::delete, externalTimeoutMs: Long = 15_000L) = FileNoteRepository(
+    private fun repo(
+        deleteFile: (File) -> Boolean = File::delete,
+        externalTimeoutMs: Long = 15_000L,
+        external: ExternalDocuments = provider,
+    ) = FileNoteRepository(
         root = root,
         clock = { now++ },
         dispatcher = Dispatchers.IO,
         newId = { UUID(0, ++ids).toString() },
         indexWriter = AtomicFiles::writeText,
-        external = provider,
+        external = external,
         externalTimeoutMs = externalTimeoutMs,
         deleteFile = deleteFile,
     )
@@ -228,6 +235,111 @@ class FileNoteRepositorySafetyTest {
         // the baseline still is the original: saving is still refused
         try { r.saveNote(id, "our text"); fail("expected a conflict") } catch (_: NoteChangedExternallyException) {}
         assertEquals("changed elsewhere", provider.text(uri))
+    }
+
+    @Test fun `checkExternal without a baseline reads nothing`() = runBlocking {
+        provider.put(uri, "outside", name = "Doc.md")
+        val r = repo()
+        val id = r.openExternal(uri, persistent = true).id // nothing has been read yet, so there is nothing to compare with
+        val reads = AtomicInteger()
+        provider.onRead = { reads.incrementAndGet() }
+        try {
+            assertNull(r.checkExternal(id))
+        } finally {
+            provider.onRead = null
+        }
+        assertEquals(0, reads.get())
+    }
+
+    @Test fun `a version changed elsewhere is offered once and only adopting it lets the next save through`() = runBlocking {
+        provider.put(uri, "original", name = "Doc.md")
+        val r = repo()
+        val id = r.openExternal(uri, persistent = true).id
+        r.openNote(id)
+        provider.put(uri, "changed elsewhere")
+        val version = checkNotNull(r.checkExternal(id))
+        assertEquals("changed elsewhere", version.text)
+        try { r.saveNote(id, "our text"); fail("expected a conflict") } catch (_: NoteChangedExternallyException) {}
+        r.adoptExternal(id, version)
+        assertNull(r.checkExternal(id))
+        r.saveNote(id, "our text")
+        assertEquals("our text", provider.text(uri))
+    }
+
+    @Test fun `a failed write whose re-read also fails keeps the baseline so an outside change is still detected`() = runBlocking {
+        provider.put(uri, "old text", name = "Doc.md")
+        val r = repo()
+        val id = r.openExternal(uri, persistent = true).id
+        r.openNote(id)
+        provider.truncateThenFail = 3
+        provider.failReadsAfterWrite = true
+        try { r.saveNote(id, "new text"); fail("expected the failed write to be reported") } catch (_: NoteSourceUnavailableException) {}
+        provider.truncateThenFail = null
+        provider.failReadsAfterWrite = false
+        provider.failReads = false
+        provider.put(uri, "changed elsewhere")
+        try { r.saveNote(id, "our text"); fail("expected a conflict") } catch (_: NoteChangedExternallyException) {}
+        assertEquals("changed elsewhere", provider.text(uri))
+    }
+
+    @Test fun `our own write that reports a failure but lands later is not a conflict on the retry`() = runBlocking {
+        provider.put(uri, "old text", name = "Doc.md")
+        val r = repo()
+        val id = r.openExternal(uri, persistent = true).id
+        r.openNote(id)
+        provider.failAfterStoring = true
+        provider.failReadsAfterWrite = true
+        try { r.saveNote(id, "first attempt"); fail("expected the failed write to be reported") } catch (_: NoteSourceUnavailableException) {}
+        provider.failAfterStoring = false
+        provider.failReadsAfterWrite = false
+        provider.failReads = false
+        // the document holds our first attempt, which the earlier failed write left there: it is ours, not a change by another app
+        r.saveNote(id, "other text")
+        assertEquals("other text", provider.text(uri))
+    }
+
+    @Test fun `peekText reads an external document without moving the baseline or writing the index`() = runBlocking {
+        provider.put(uri, "original", name = "Doc.md")
+        val r = repo()
+        val id = r.openExternal(uri, persistent = true).id
+        r.openNote(id)
+        provider.put(uri, "changed elsewhere")
+        val index = File(root, "index.json")
+        val indexBefore = index.readBytes()
+        val modifiedBefore = index.lastModified()
+        val probesBefore = provider.accessChecks.get()
+        assertEquals("changed elsewhere", r.peekText(id))
+        assertArrayEquals(indexBefore, index.readBytes())
+        assertEquals(modifiedBefore, index.lastModified())
+        assertEquals(probesBefore, provider.accessChecks.get())
+        // the baseline did not move: saving still detects the outside change
+        try { r.saveNote(id, "our text"); fail("expected a conflict") } catch (_: NoteChangedExternallyException) {}
+        assertEquals("changed elsewhere", provider.text(uri))
+    }
+
+    @Test fun `peekText returns the text of an internal note`() = runBlocking {
+        val r = repo()
+        val info = r.createNote("internal text")
+        assertEquals("internal text", r.peekText(info.id))
+    }
+
+    @Test fun `a provider exception that is not a storage exception is reported as an unavailable document`() = runBlocking {
+        provider.put(uri, "text", name = "Doc.md")
+        var broken = true
+        val flaky = object : ExternalDocuments by provider {
+            override suspend fun read(uri: String, maxBytes: Int): ByteArray =
+                if (broken) throw IllegalStateException("provider broke") else provider.read(uri, maxBytes)
+        }
+        val r = repo(external = flaky)
+        val id = r.openExternal(uri, persistent = true).id
+        try {
+            r.openNote(id)
+            fail("expected the provider failure to be reported as unavailable")
+        } catch (e: NoteSourceUnavailableException) {
+            assertEquals("provider broke", e.message)
+        }
+        broken = false
+        assertEquals("text", r.openNote(id).text) // the failed call released the document
     }
 
     /** Retries [block] until the document accepts calls again: a stuck call releases it only when it returns. */

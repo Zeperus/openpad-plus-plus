@@ -83,10 +83,13 @@ app's storage.
   exactly the new text) the save is refused with `NoteChangedExternallyException` and the user is asked: *Reload* shows the other
   app's version and keeps the editor's text as a separate internal note "<title> (my version)", *Keep mine* overwrites it. Dismissing
   the question leaves a "Not saved" bar until it is answered. If one of our own writes fails half-way, what the document holds afterwards
-  becomes the comparison state (if it cannot be read, none), so a retry is not mistaken for a change by another app. A version another
+  becomes the comparison state (if it cannot be read, the previous one is kept and our own attempted text is also accepted), so a retry
+  is not mistaken for a change by another app and an outside change is still noticed. A version another
   app wrote that is not valid UTF-8 is reported and never becomes the comparison state. When the app comes back to the
-  foreground, an external document without unsaved edits is re-read and shown anew if it changed; if the user types while it is
-  being read, the question is asked instead. Remaining gap: providers offer
+  foreground, an external document without unsaved edits is re-read once and shown anew if it changed (that version then becomes
+  the comparison state); if the user types while it is being read, the question is asked instead and nothing is overwritten.
+  Search reads documents without side effects (no index write, no write probe, no change of the comparison state). A provider
+  that throws an unexpected exception counts as unavailable instead of crashing the app. Remaining gap: providers offer
   no compare-and-swap, so a change made in the instant between this check and the write is not detected; without a read in the
   running process (nothing opened yet) there is nothing to compare with.
 - **Read-only:** detected when the document is opened (see "Write access" below); it is shown as `Name · Read only` with a banner that says

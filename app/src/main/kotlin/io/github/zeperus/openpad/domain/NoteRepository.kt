@@ -60,8 +60,17 @@ interface NoteRepository {
     /** Allows the next save of the external note [id] to overwrite the document although it was changed outside the app (the user chose to keep their version). */
     suspend fun overrideExternalChange(id: NoteId)
 
-    /** For an external note: its current content if it differs from what openPad++ last read or wrote, else null. Does not change what later saves compare against. */
-    suspend fun checkExternal(id: NoteId): NoteContent?
+    /**
+     * For an external note: the document's current version if it differs from what openPad++ last read or wrote, else null
+     * (also null when there is nothing to compare with yet - then nothing is read). Never changes what later saves compare against.
+     */
+    suspend fun checkExternal(id: NoteId): ExternalVersion?
+
+    /** The editor now shows [version]: later saves compare against it. */
+    suspend fun adoptExternal(id: NoteId, version: ExternalVersion)
+
+    /** The note's text for searching: no side effects (no index write, no write probe, no change of the comparison state). */
+    suspend fun peekText(id: NoteId): String
 
     suspend fun moveToTrash(id: NoteId): NoteInfo
 
@@ -70,6 +79,9 @@ interface NoteRepository {
     /** Only notes that are already in the Trash can be deleted permanently. */
     suspend fun deletePermanently(id: NoteId)
 }
+
+/** A version of an external document read by checkExternal: its text and an opaque token for adoptExternal. */
+class ExternalVersion(val text: String, val token: String)
 
 open class NoteStorageException(message: String, cause: Throwable? = null) : IOException(message, cause)
 

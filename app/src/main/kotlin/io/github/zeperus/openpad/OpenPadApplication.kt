@@ -27,7 +27,11 @@ class OpenPadApplication : Application() {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     val repository: NoteRepository by lazy {
-        FileNoteRepository(File(filesDir, "openpad"), external = ContentResolverDocuments(this))
+        // Provider calls block; at most 4 of them may hold a thread at once, so a stuck provider cannot take the whole IO pool.
+        FileNoteRepository(
+            File(filesDir, "openpad"),
+            external = ContentResolverDocuments(this, dispatcher = Dispatchers.IO.limitedParallelism(4)),
+        )
     }
 
     /** The open-document session: its own small file, separate from the notes and their index. */
