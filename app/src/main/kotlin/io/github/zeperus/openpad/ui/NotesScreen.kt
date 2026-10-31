@@ -9,6 +9,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
@@ -82,6 +83,40 @@ private sealed interface Dialog {
     data class Purge(val note: NoteInfo) : Dialog
 }
 
+/**
+ * Keeps the open dialog across a rotation as a short string. A folder or note is looked up again on restore;
+ * one that no longer exists restores as null, so the dialog simply closes.
+ */
+private fun dialogSaver(vm: NotesViewModel): Saver<Dialog?, String> = Saver(
+    save = { dialog ->
+        when (dialog) {
+            null -> null
+            Dialog.Rename -> "rename"
+            Dialog.MoveToFolder -> "move"
+            Dialog.NewFolder -> "newFolder"
+            is Dialog.RenameFolder -> "renameFolder:${dialog.folder.id}"
+            is Dialog.DeleteFolder -> "deleteFolder:${dialog.folder.id}"
+            Dialog.Clear -> "clear"
+            Dialog.Delete -> "delete"
+            is Dialog.Purge -> "purge:${dialog.note.id.value}"
+        }
+    },
+    restore = { saved ->
+        val id = saved.substringAfter(':', missingDelimiterValue = "")
+        when (saved.substringBefore(':')) {
+            "rename" -> Dialog.Rename
+            "move" -> Dialog.MoveToFolder
+            "newFolder" -> Dialog.NewFolder
+            "clear" -> Dialog.Clear
+            "delete" -> Dialog.Delete
+            "renameFolder" -> vm.folders.firstOrNull { it.id == id }?.let { Dialog.RenameFolder(it) }
+            "deleteFolder" -> vm.folders.firstOrNull { it.id == id }?.let { Dialog.DeleteFolder(it) }
+            "purge" -> vm.trash.firstOrNull { it.id.value == id }?.let { Dialog.Purge(it) }
+            else -> null
+        }
+    },
+)
+
 @Composable
 fun NotesScreen(vm: NotesViewModel) {
     var showSettings by rememberSaveable { mutableStateOf(false) }
@@ -110,9 +145,11 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
-    var dialog by remember { mutableStateOf<Dialog?>(null) }
-    var menuOpen by remember { mutableStateOf(false) }
-    var editPage by remember { mutableStateOf(false) } // the overflow menu's second page: select / copy / paste
+    // the open dialog, the overflow menu and its second page survive a rotation
+    val dialogStateSaver = remember(vm) { dialogSaver(vm) }
+    var dialog by rememberSaveable(stateSaver = dialogStateSaver) { mutableStateOf<Dialog?>(null) }
+    var menuOpen by rememberSaveable { mutableStateOf(false) }
+    var editPage by rememberSaveable { mutableStateOf(false) } // the overflow menu's second page: select / copy / paste
     val context = LocalContext.current
     val clipboard = io.github.zeperus.openpad.ui.editor.rememberAppClipboard()
     // The system file picker: the document stays where it is and is edited in place.

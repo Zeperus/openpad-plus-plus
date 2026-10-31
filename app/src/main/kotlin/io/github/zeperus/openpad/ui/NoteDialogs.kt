@@ -39,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -123,8 +124,11 @@ internal fun NameDialog(
     onDismiss: () -> Unit,
     fileNameHint: Boolean = false,
 ) {
-    var name by remember { mutableStateOf(TextFieldValue(initial, selection = TextRange(0, initial.length))) }
-    var error by remember { mutableStateOf<RenameResult?>(null) }
+    // the typed text, its selection and the error survive a rotation; a running submission does not (its scope ends with the composition)
+    var name by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(initial, selection = TextRange(0, initial.length)))
+    }
+    var error by rememberSaveable { mutableStateOf<RenameResult?>(null) }
     var submitting by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
@@ -182,9 +186,9 @@ internal fun NameDialog(
 /** "Move to folder": the folders as a choice (plus "No folder"), and a way to start a new one. */
 @Composable
 internal fun MoveToFolderDialog(vm: NotesViewModel, onDismiss: () -> Unit) {
-    var creating by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<RenameResult?>(null) }
+    var creating by rememberSaveable { mutableStateOf(false) }
+    var name by rememberSaveable { mutableStateOf("") }
+    var error by rememberSaveable { mutableStateOf<RenameResult?>(null) }
     val scope = rememberCoroutineScope()
     val currentFolder = vm.current?.folderId
     AlertDialog(
