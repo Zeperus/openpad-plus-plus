@@ -145,10 +145,9 @@ fun SearchScreen(vm: NotesViewModel, onBack: () -> Unit, onOpen: (SearchHit) -> 
 fun FindBar(vm: NotesViewModel, modifier: Modifier = Modifier) {
     val find = vm.find ?: return
     // Back closes the bar instead of leaving the app
-    BackHandler { vm.closeFind() }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
-    Surface(tonalElevation = 2.dp, modifier = modifier.fillMaxWidth().testTag("find-bar")) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = modifier.fillMaxWidth().testTag("find-bar")) {
         Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             TextField(
                 value = find.query,

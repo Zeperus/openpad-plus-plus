@@ -22,6 +22,12 @@ jobs:
           SDKMANAGER="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
           yes | "$SDKMANAGER" --licenses > /dev/null || true
           "$SDKMANAGER" "platforms;android-37.0" "build-tools;36.0.0" "platform-tools"
+      - name: ktlint (imports, indentation, line length - see .editorconfig)
+        run: |
+          curl -sSL --max-time 180 -o ktlint https://github.com/pinterest/ktlint/releases/download/1.8.0/ktlint
+          echo "a3fd620207d5c40da6ca789b95e7f823c54e854b7fade7f613e91096a3706d75  ktlint" | sha256sum -c -
+          chmod +x ktlint
+          ./ktlint "app/src/**/*.kt"
       - uses: gradle/actions/setup-gradle@v4
       - name: Build, unit tests and lint
         # assembleAlpha: the minified build testers install must at least build (R8) on every push
@@ -33,4 +39,3 @@ jobs:
           path: |
             app/build/reports/
             app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/alpha/*.apk

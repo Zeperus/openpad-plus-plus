@@ -44,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -479,7 +480,8 @@ internal fun SegmentField(
     val sourceNow by rememberUpdatedState(sourceRows)
     val controller = remember { SegmentController(vm, { sourceNow }, segment) }
     val state = remember {
-        val c = vm.ui.cursor
+        // read without observing: the field must not recompose because vm.ui was replaced (a caret move), see cursorEpoch below
+        val c = Snapshot.withoutReadObservation { vm.ui.cursor }
         val a = c?.let { segment.absolute(DocumentPosition(it.rowId, it.start)) }
         val b = c?.let { if (it.start != it.end) segment.absolute(DocumentPosition(it.rowId, it.end)) else a }
         TextFieldState(fieldTextOf(segment), if (a != null && b != null) TextRange(a + 1, b + 1) else TextRange(segment.text.length + 1))
@@ -534,7 +536,7 @@ internal fun SegmentField(
     }
 
     val input = remember(controller) { SegmentInput(controller) }
-    val output = remember(controller, styles, colors) { SegmentOutput(controller.decoration, styles, colors.secondaryContainer, colors.tertiaryContainer) }
+    val output = remember(controller, styles, colors) { SegmentOutput(controller.decoration, styles, colors.secondaryContainer, colors.primaryContainer) }
     val textStyle = TextStyle(
         color = colors.onBackground, fontSize = typography.body.sp, lineHeight = typography.bodyLineHeight.sp,
         lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Bottom, LineHeightStyle.Trim.None),

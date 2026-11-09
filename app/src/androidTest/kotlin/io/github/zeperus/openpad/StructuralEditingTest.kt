@@ -3,7 +3,9 @@ package io.github.zeperus.openpad
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -84,6 +86,12 @@ class StructuralEditingTest {
     private fun overflow(item: String) {
         rule.onNodeWithContentDescription("More options").performClick()
         rule.onNodeWithText(item).performScrollTo().performClick()
+    }
+
+    /** The menu item is found in its "Off" state, so the test fails here (not later) if the note already was a smart checklist. */
+    private fun turnSmartChecklistOn() {
+        rule.onNodeWithContentDescription("More options").performClick()
+        rule.onNode(hasText("Smart checklist") and hasStateDescription("Off")).performScrollTo().performClick()
     }
 
     private val disposed get() = EditorDiagnostics.fieldsDisposed
@@ -187,7 +195,7 @@ class StructuralEditingTest {
         val file = seed("- [ ] A\n- [ ] B\n- [ ] C\n")
         launch()
         waitForRows(listOf("A", "B", "C"))
-        overflow("Smart checklist")
+        turnSmartChecklistOn()
         rule.waitForIdle()
         return file
     }
@@ -234,7 +242,7 @@ class StructuralEditingTest {
         seed("- [ ] A\n- [ ] B\n- [ ] C\n")
         launch()
         waitForRows(listOf("A", "B", "C"))
-        overflow("Smart checklist")
+        turnSmartChecklistOn()
         rule.placeCaret(0, 1) // caret in "A"; the field is the one that must keep it
         rule.field().requestFocus()
         rule.onAllNodes(hasTestTag("checkbox"))[1].performClick() // B moves down

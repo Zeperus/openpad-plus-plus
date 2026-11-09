@@ -10,6 +10,9 @@ OUT=$2
 PKG=io.github.zeperus.openpad
 
 mkdir -p "$OUT"
+adb shell svc power stayon true
+adb shell input keyevent KEYCODE_WAKEUP
+adb shell wm dismiss-keyguard
 adb uninstall "$PKG" >/dev/null 2>&1
 adb install -r "$APK" || exit 0
 adb shell cmd uimode night no

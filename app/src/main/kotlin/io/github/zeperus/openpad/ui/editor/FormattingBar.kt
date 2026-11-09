@@ -7,6 +7,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -34,7 +35,6 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
-import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,8 +69,6 @@ import io.github.zeperus.openpad.ui.NotesViewModel
 import io.github.zeperus.openpad.ui.icons.AppIcons
 import kotlinx.coroutines.launch
 
-private val BarElevation = 3.dp
-
 /**
  * The compact formatting bar above the keyboard: paragraph style, inline styles, lists, indentation, rule, undo/redo. One
  * thin scrolling row of small buttons; it only exists while a document that can be changed is open. The buttons act on
@@ -85,9 +83,11 @@ fun FormattingBar(vm: NotesViewModel, modifier: Modifier = Modifier) {
     val inlineOk = ui.cursor != null && kind != RowKind.Rule && kind !is RowKind.Code && kind != RowKind.Raw
     val listKind = kind as? RowKind.ListItem
 
-    Surface(tonalElevation = BarElevation, modifier = modifier.fillMaxWidth().testTag("formatting-bar")) {
+    // a container colour of the scheme, not a tonal elevation: the elevation overlay would tint the bar with the (blue) primary
+    val barColor = MaterialTheme.colorScheme.surfaceContainer
+    Surface(color = barColor, modifier = modifier.fillMaxWidth().testTag("formatting-bar")) {
         val scroll = rememberScrollState()
-        val fadeColor = MaterialTheme.colorScheme.surfaceColorAtElevation(BarElevation)
+        val fadeColor = barColor
         Row(
             Modifier.horizontalScroll(scroll).padding(horizontal = 4.dp, vertical = 2.dp).scrollFades(scroll, fadeColor),
             verticalAlignment = Alignment.CenterVertically,
@@ -256,7 +256,7 @@ private fun LinkDialog(ui: EditorUi, onApply: (String) -> Unit, onRemove: () -> 
             }
         },
         dismissButton = {
-            FlowRow {
+            FlowRow(horizontalArrangement = Arrangement.End) {
                 if (ui.link != null) {
                     TextButton(onClick = { openLink(context, ui.link.href.orEmpty()) }) { Text(stringResource(R.string.link_open)) }
                     TextButton(onClick = { onRemove(); onDismiss() }) { Text(stringResource(R.string.link_remove)) }
