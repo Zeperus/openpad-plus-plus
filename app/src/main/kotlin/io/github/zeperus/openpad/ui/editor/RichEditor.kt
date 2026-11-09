@@ -2,6 +2,7 @@ package io.github.zeperus.openpad.ui.editor
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +16,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
@@ -23,6 +25,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.runtime.remember
@@ -52,7 +55,8 @@ import io.github.zeperus.openpad.ui.NotesViewModel
  * Keeps the view where it is while the text changes under it. Ticking a task in a Smart Checklist moves the item to the bottom of the
  * list - a change of the text, which makes the text field scroll its caret into view (the caret is wherever the user left it, often at
  * the end), and the user, who is looking at the top of the list, is thrown to the bottom. [hold] remembers the scroll position and puts
- * it back whenever something else moves it during the next moments.
+ * it back whenever something else moves it during the next moments - until the user scrolls the list themselves: a drag of the list
+ * ends the hold at once, so whoever ticks a box and scrolls right away is not pulled back.
  */
 internal class ScrollHold(private val state: LazyListState, private val scope: CoroutineScope) {
     private var job: Job? = null
@@ -63,9 +67,14 @@ internal class ScrollHold(private val state: LazyListState, private val scope: C
         job?.cancel()
         job = scope.launch {
             withTimeoutOrNull(HOLD_MILLIS) {
-                snapshotFlow { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset }.collect { (i, o) ->
-                    if (i != index || o != offset) state.scrollToItem(index, offset)
+                val restore = launch {
+                    snapshotFlow { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset }.collect { (i, o) ->
+                        if (i != index || o != offset) state.scrollToItem(index, offset)
+                    }
                 }
+                // the list's own drags (the user's finger) are reported here; a scroll into view by the text field is not a drag
+                state.interactionSource.interactions.first { it is DragInteraction.Start }
+                restore.cancel()
             }
         }
     }
@@ -86,13 +95,17 @@ fun RichEditor(vm: NotesViewModel, modifier: Modifier = Modifier) {
 @Composable
 private fun RichEditorContent(vm: NotesViewModel, modifier: Modifier = Modifier) {
     key(vm.epoch) {
-        val ui = vm.ui
+        // Only the document is read from vm.ui: a caret or selection move publishes a new EditorUi with the same document, and that
+        // must not recompose the editor (documents are immutable and compared by instance). A field learns of the model's caret moves
+        // through vm.cursorEpoch (see SegmentField).
+        val doc = remember { derivedStateOf { vm.ui.doc } }.value
         val readOnly = vm.readOnly
         val listState = rememberLazyListState()
         val sourceRows = remember { mutableStateListOf<Long>() } // raw blocks currently opened as text
-        val source = sourceRows.toSet()
+        // one Set instance until the rows opened as source change: the fields compare it by instance
+        val source = remember { derivedStateOf { sourceRows.toSet() } }.value
         val keys = remember { SegmentKeys() }
-        val items = remember(ui.doc, source) { Segments.splitFor(ui.doc, source) }
+        val items = remember(doc, source) { Segments.splitFor(doc, source) }
         val segmentKeys = remember(items) { keys.assign(items.filterIsInstance<DocItem.Text>().map { it.segment.ids }) }
         // how many text segments come before each item: the index of its key in segmentKeys, computed once per list
         val textIndexBefore = remember(items) {
@@ -110,7 +123,7 @@ private fun RichEditorContent(vm: NotesViewModel, modifier: Modifier = Modifier)
             find?.matches?.groupBy({ it.rowId }, { it.start until it.end }) ?: emptyMap()
         }
         val currentMatch = find?.currentMatch
-        val hint = ui.doc.rows.size == 1 && ui.doc.rows[0].kind == RowKind.Paragraph && ui.doc.rows[0].text.isEmpty && !readOnly
+        val hint = doc.rows.size == 1 && doc.rows[0].kind == RowKind.Paragraph && doc.rows[0].text.isEmpty && !readOnly
 
         // where each item sits in the lazy list, and the key of each text segment
         val itemKeys = remember(items, segmentKeys) {
@@ -131,6 +144,7 @@ private fun RichEditorContent(vm: NotesViewModel, modifier: Modifier = Modifier)
         }
         // coming back to a tab: show the row the caret was in
         LaunchedEffect(Unit) {
+            val ui = vm.ui
             val c = ui.cursor ?: return@LaunchedEffect
             if (ui.doc.indexOf(c.rowId) > 0) {
                 kotlinx.coroutines.delay(50) // the first layout
@@ -149,14 +163,18 @@ private fun RichEditorContent(vm: NotesViewModel, modifier: Modifier = Modifier)
                     is DocItem.Text -> {
                         val segment = item.segment
                         val key = segmentKeys[textIndexBefore[index]]
+                        // the same Map instance as long as the segment and the find results are the same ones, so that the field
+                        // can be skipped when nothing it shows has changed
+                        val matches = remember(segment, findByRow) { segment.ids.mapNotNull { id -> findByRow[id]?.let { id to it } }.toMap() }
                         SegmentField(
                             vm = vm,
                             segment = segment,
                             sourceRows = source,
                             readOnly = readOnly,
                             showHint = hint,
-                            matches = segment.ids.mapNotNull { id -> findByRow[id]?.let { id to it } }.toMap(),
-                            currentMatch = currentMatch,
+                            matches = matches,
+                            // only the field that holds the current match draws it (SegmentOutput looks at its own rows only)
+                            currentMatch = currentMatch?.takeIf { segment.indexOf(it.rowId) >= 0 },
                             focusRequest = vm.focusRequest?.takeIf { it.rowId in segment.ids },
                             onLayoutProvider = { provider -> if (provider != null) layouts[key] = provider },
                             onSourceDone = { id -> sourceRows.remove(id) },

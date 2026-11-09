@@ -48,6 +48,12 @@ class NoteSearchController(
     /** Counts the searches started and cancelled; a search publishes only while it is still the latest one. */
     private var generation = 0L
 
+    /**
+     * Texts of internal notes read during the current search session, keyed by note. Only touched on the main thread (from the
+     * search coroutine, [search] with a blank query, and [cancel]), like the fields above. Emptied when the search ends.
+     */
+    private val textCache = HashMap<NoteId, CachedText>()
+
     /** Searches for [query] after a short pause (typing on). Results of an older query are never shown. */
     fun search(query: String) {
         this.query = query
@@ -57,6 +63,7 @@ class NoteSearchController(
         if (query.isBlank()) {
             searching = false
             job = null
+            textCache.clear()
             return
         }
         searching = true
@@ -81,14 +88,30 @@ class NoteSearchController(
         job?.cancel()
         job = null
         searching = false
+        textCache.clear()
     }
 
-    /** Every note with its text: the open note's text as it is on screen, the file otherwise (null when it cannot be read). */
-    private suspend fun readTexts(all: List<NoteInfo>, open: Pair<NoteId, String>?): List<Pair<NoteInfo, String?>> =
-        all.map { note ->
-            val text = if (open != null && note.id == open.first) open.second else readText(note)
+    /**
+     * Every note with its text: the open note's text as it is on screen, the file otherwise (null when it cannot be read).
+     * An internal note whose [NoteInfo.updatedAt] is unchanged since it was cached is not read again. External documents are
+     * always read (another app can change them without the timestamp moving), and failed reads are never cached.
+     */
+    private suspend fun readTexts(all: List<NoteInfo>, open: Pair<NoteId, String>?): List<Pair<NoteInfo, String?>> {
+        val texts = all.map { note ->
+            val text = when {
+                open != null && note.id == open.first -> open.second
+                note.isExternal -> readText(note)
+                else -> cachedText(note) ?: readText(note)?.also { textCache[note.id] = CachedText(note.updatedAt, it) }
+            }
             note to text
         }
+        textCache.keys.retainAll(all.mapTo(HashSet()) { it.id }) // notes that left the list are forgotten
+        return texts
+    }
+
+    /** The cached text of [note] if it has not changed since it was cached, else null. */
+    private fun cachedText(note: NoteInfo): String? =
+        textCache[note.id]?.takeIf { it.updatedAt == note.updatedAt }?.text
 
     /** Side-effect-free read: searching never moves the baseline a later save compares against, and never opens a note. */
     private suspend fun readText(note: NoteInfo): String? = try {
@@ -98,6 +121,9 @@ class NoteSearchController(
     } catch (_: Exception) {
         null // a file that cannot be read is simply not searched
     }
+
+    /** The text of a note as it was when the note had [updatedAt]. */
+    private class CachedText(val updatedAt: Long, val text: String)
 
     private companion object {
         const val DEBOUNCE_MILLIS = 150L

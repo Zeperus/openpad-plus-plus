@@ -31,6 +31,7 @@ class NoteSearchControllerTest {
     private var tick = 1_000L
     private val provider = FakeExternalDocuments()
     private lateinit var repository: NoteRepository
+    private lateinit var counting: CountingRepository // the repository the controller searches through
     private lateinit var controller: NoteSearchController
     private var listed: List<NoteInfo> = emptyList() // what the view model's list would show
     private var openNote: Pair<NoteId, String>? = null // the open note and its text on screen
@@ -38,8 +39,9 @@ class NoteSearchControllerTest {
     private fun TestScope.setUp() {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         repository = FileNoteRepository(File(tmp.root, "store"), clock = { tick++ }, dispatcher = dispatcher, external = provider)
+        counting = CountingRepository(repository)
         controller = NoteSearchController(
-            repository,
+            counting,
             CoroutineScope(backgroundScope.coroutineContext + dispatcher + SupervisorJob()),
             notes = { listed },
             openText = { openNote },
@@ -153,5 +155,73 @@ class NoteSearchControllerTest {
             // expected: the change is still a conflict
         }
         assertEquals("changed elsewhere", provider.text("content://docs/doc/plan"))
+    }
+
+    @Test fun `two queries in a row read each internal note only once`() = runTest {
+        setUp()
+        createNotes("Shopping\nmilk and bread", "Bakery\nbread")
+        val ids = listed.map { it.id }
+        controller.search("milk"); advanceTimeBy(150); runCurrent()
+        assertEquals(listOf(1, 1), ids.map { counting.readsOf(it) })
+
+        controller.search("bread"); advanceTimeBy(150); runCurrent()
+        assertEquals(listOf("Bakery", "Shopping"), controller.results.map { it.note.title }.sorted())
+        assertEquals(listOf(1, 1), ids.map { counting.readsOf(it) })
+    }
+
+    @Test fun `a note changed since the last search is read again`() = runTest {
+        setUp()
+        createNotes("Shopping\nmilk", "Bakery\nbread")
+        val shopping = listed.first { it.title == "Shopping" }.id
+        val bakery = listed.first { it.title == "Bakery" }.id
+        controller.search("milk"); advanceTimeBy(150); runCurrent()
+
+        repository.saveNote(shopping, "Shopping\neggs and milk")
+        listed = repository.listNotes()
+        controller.search("eggs"); advanceTimeBy(150); runCurrent()
+        assertEquals(listOf("Shopping"), controller.results.map { it.note.title })
+        assertEquals(2, counting.readsOf(shopping))
+        assertEquals(1, counting.readsOf(bakery))
+    }
+
+    @Test fun `after clear the next search reads the files again`() = runTest {
+        setUp()
+        createNotes("Shopping\nmilk")
+        val id = listed.single().id
+        controller.search("milk"); advanceTimeBy(150); runCurrent()
+        assertEquals(1, counting.readsOf(id))
+
+        controller.clear()
+        controller.search("milk"); advanceTimeBy(150); runCurrent()
+        assertEquals(listOf("Shopping"), controller.results.map { it.note.title })
+        assertEquals(2, counting.readsOf(id))
+    }
+
+    @Test fun `an external document is read on every search`() = runTest {
+        setUp()
+        provider.put("content://docs/doc/plan", "original", name = "Plan.md")
+        val id = repository.openExternal("content://docs/doc/plan", persistent = true).id
+        listed = repository.listNotes()
+
+        controller.search("original"); advanceTimeBy(150); runCurrent()
+        assertEquals(listOf("Plan"), controller.results.map { it.note.title })
+        assertEquals(1, counting.readsOf(id))
+
+        provider.put("content://docs/doc/plan", "changed elsewhere")
+        controller.search("changed"); advanceTimeBy(150); runCurrent()
+        assertEquals(listOf("Plan"), controller.results.map { it.note.title })
+        assertEquals(2, counting.readsOf(id))
+    }
+}
+
+/** Passes everything to [inner] and counts the [peekText] reads per note, so the tests can see how often files are read. */
+private class CountingRepository(private val inner: NoteRepository) : NoteRepository by inner {
+    private val reads = HashMap<NoteId, Int>()
+
+    fun readsOf(id: NoteId): Int = reads[id] ?: 0
+
+    override suspend fun peekText(id: NoteId): String {
+        reads[id] = readsOf(id) + 1
+        return inner.peekText(id)
     }
 }

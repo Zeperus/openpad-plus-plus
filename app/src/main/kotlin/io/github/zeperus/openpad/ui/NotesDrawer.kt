@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -23,6 +24,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedButton
@@ -40,6 +42,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import android.text.format.DateUtils
 import io.github.zeperus.openpad.R
@@ -48,6 +51,7 @@ import io.github.zeperus.openpad.domain.FolderInfo
 import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteInfo
 import io.github.zeperus.openpad.domain.NoteLists
+import io.github.zeperus.openpad.ui.icons.AppIcons
 import kotlinx.coroutines.delay
 
 @Composable
@@ -167,7 +171,7 @@ internal fun LazyListScope.noteRows(
     notes: List<NoteInfo>,
     selected: NoteId?,
     onOpen: (NoteInfo) -> Unit,
-    indent: androidx.compose.ui.unit.Dp = 0.dp,
+    indent: Dp = 0.dp,
     showDate: Boolean = false,
     now: Long,
 ) {
@@ -193,7 +197,7 @@ internal fun LazyListScope.noteRows(
             selected = note.id == selected,
             onClick = { onOpen(note) },
             badge = if (note.isExternal) {
-                { Text("↗", style = MaterialTheme.typography.labelMedium, modifier = Modifier.semantics { contentDescription = externalLabel }) }
+                { Icon(imageVector = AppIcons.OpenInNew, contentDescription = externalLabel, modifier = Modifier.size(16.dp)) }
             } else null,
             modifier = Modifier.padding(start = 12.dp + indent, end = 12.dp),
         )
@@ -243,7 +247,11 @@ internal fun FolderHeader(folder: FolderInfo, count: Int, open: Boolean, onToggl
                 .testTag("folder"),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(if (open) "\u25BE" else "\u25B8", modifier = Modifier.padding(end = 8.dp))
+            Icon(
+                imageVector = if (open) AppIcons.ExpandMore else AppIcons.ChevronRight,
+                contentDescription = null,
+                modifier = Modifier.padding(end = 8.dp).size(20.dp),
+            )
             Text(folder.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Text(count.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

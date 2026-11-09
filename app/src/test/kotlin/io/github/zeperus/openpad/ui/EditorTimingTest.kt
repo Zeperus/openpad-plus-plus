@@ -2,6 +2,7 @@ package io.github.zeperus.openpad.ui
 
 import io.github.zeperus.openpad.ui.editor.EditorDiagnostics
 import io.github.zeperus.openpad.ui.editor.EditorTiming
+import io.github.zeperus.openpad.ui.editor.FrameTiming
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
@@ -45,5 +46,35 @@ class EditorTimingTest {
         EditorDiagnostics.recordOpen(2_000_000L)
 
         assertEquals(0.0, EditorDiagnostics.timing.avgEditMs, 0.0)
+    }
+
+    @Test
+    fun recordsFrameCountAverageMaxAndSlowFrames() {
+        EditorDiagnostics.recordFrame(10_000_000L)
+        EditorDiagnostics.recordFrame(20_000_000L)
+        EditorDiagnostics.recordFrame(40_000_000L)
+
+        val frames = EditorDiagnostics.frames
+        assertEquals(3, frames.frames)
+        assertEquals(70.0 / 3.0, frames.avgMs, 0.0001)
+        assertEquals(40.0, frames.maxMs, 0.0001)
+        assertEquals(1, frames.slow)
+    }
+
+    @Test
+    fun ignoresNonPositiveFrames() {
+        EditorDiagnostics.recordFrame(0L)
+        EditorDiagnostics.recordFrame(-5_000_000L)
+
+        assertEquals(FrameTiming(0, 0.0, 0.0, 0), EditorDiagnostics.frames)
+    }
+
+    @Test
+    fun resetClearsFrameStatistics() {
+        EditorDiagnostics.recordFrame(50_000_000L)
+
+        EditorDiagnostics.resetTiming()
+
+        assertEquals(FrameTiming(0, 0.0, 0.0, 0), EditorDiagnostics.frames)
     }
 }

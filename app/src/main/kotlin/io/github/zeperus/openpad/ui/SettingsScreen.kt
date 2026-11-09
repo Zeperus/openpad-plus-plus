@@ -1,7 +1,6 @@
 package io.github.zeperus.openpad.ui
 
 import androidx.activity.compose.BackHandler
-import android.content.pm.ApplicationInfo
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.rememberScrollState
@@ -18,6 +17,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
+import io.github.zeperus.openpad.domain.AppLanguage
+import io.github.zeperus.openpad.domain.EditorFontSize
 import io.github.zeperus.openpad.domain.StartupMode
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,7 +26,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,16 +39,27 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.github.zeperus.openpad.BuildConfig
 import io.github.zeperus.openpad.R
+import io.github.zeperus.openpad.editor.EditorTypography
 import io.github.zeperus.openpad.ui.editor.EditorDiagnostics
+import io.github.zeperus.openpad.ui.editor.LocalEditorTypography
+import io.github.zeperus.openpad.ui.icons.AppIcons
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -91,9 +105,9 @@ internal fun SettingsScreen(vm: NotesViewModel, onBack: () -> Unit) {
             }
             SectionHeader(stringResource(R.string.settings_language))
             val languages = listOf(
-                io.github.zeperus.openpad.domain.AppLanguage.System to R.string.language_system,
-                io.github.zeperus.openpad.domain.AppLanguage.German to R.string.language_german,
-                io.github.zeperus.openpad.domain.AppLanguage.English to R.string.language_english,
+                AppLanguage.System to R.string.language_system,
+                AppLanguage.German to R.string.language_german,
+                AppLanguage.English to R.string.language_english,
             )
             Column(Modifier.selectableGroup().testTag("language-options")) {
                 for ((language, label) in languages) {
@@ -125,17 +139,36 @@ internal fun SettingsScreen(vm: NotesViewModel, onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 24.dp).testTag("version"),
             )
-            if ((context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) { // debug builds only: the measured editor timing
-                val t = EditorDiagnostics.timing
-                Text(
-                    text = stringResource(
-                        R.string.settings_timing,
-                        t.lastEditMs, t.avgEditMs, t.maxEditMs, t.edits, t.lastOpenMs, t.maxOpenMs,
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp).testTag("editor-timing"),
-                )
+            // bumped by the reset button: EditorDiagnostics is plain state, so the texts read it again on recomposition
+            var refresh by remember { mutableIntStateOf(0) }
+            if (BuildConfig.DIAGNOSTICS) { // test builds only: the measured editor and frame timing
+                SectionHeader(stringResource(R.string.settings_diagnostics))
+                key(refresh) {
+                    val t = EditorDiagnostics.timing
+                    Text(
+                        text = stringResource(
+                            R.string.settings_timing,
+                            t.lastEditMs, t.avgEditMs, t.maxEditMs, t.edits, t.lastOpenMs, t.maxOpenMs,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp).testTag("editor-timing"),
+                    )
+                    val f = EditorDiagnostics.frames
+                    Text(
+                        text = stringResource(R.string.settings_frames, f.frames, f.avgMs, f.maxMs, f.slow),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp).testTag("editor-frames"),
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        EditorDiagnostics.resetTiming()
+                        refresh++
+                    },
+                    modifier = Modifier.padding(horizontal = 16.dp).testTag("timing-reset"),
+                ) { Text(stringResource(R.string.settings_timing_reset)) }
             }
         }
     }
@@ -145,7 +178,7 @@ internal fun SettingsScreen(vm: NotesViewModel, onBack: () -> Unit) {
 @Composable
 internal fun EditorTextSizeSetting(vm: NotesViewModel) {
     val size = vm.preferences.editorFontSize
-    val typography = remember(size) { io.github.zeperus.openpad.editor.EditorTypography(size.toFloat()) }
+    val typography = remember(size) { EditorTypography(size.toFloat()) }
     val decreaseLabel = stringResource(R.string.font_size_decrease)
     val increaseLabel = stringResource(R.string.font_size_increase)
     Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
@@ -153,9 +186,9 @@ internal fun EditorTextSizeSetting(vm: NotesViewModel) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(
                 onClick = { vm.preferences.decreaseEditorFontSize() },
-                enabled = size > io.github.zeperus.openpad.domain.EditorFontSize.MIN,
+                enabled = size > EditorFontSize.MIN,
                 modifier = Modifier.testTag("font-size-minus").semantics { contentDescription = decreaseLabel },
-            ) { Text("\u2212", style = MaterialTheme.typography.headlineSmall) }
+            ) { Icon(AppIcons.Remove, contentDescription = null) }
             Text(
                 text = stringResource(R.string.font_size_value, size),
                 style = MaterialTheme.typography.titleMedium,
@@ -163,33 +196,33 @@ internal fun EditorTextSizeSetting(vm: NotesViewModel) {
             )
             IconButton(
                 onClick = { vm.preferences.increaseEditorFontSize() },
-                enabled = size < io.github.zeperus.openpad.domain.EditorFontSize.MAX,
+                enabled = size < EditorFontSize.MAX,
                 modifier = Modifier.testTag("font-size-plus").semantics { contentDescription = increaseLabel },
-            ) { Text("+", style = MaterialTheme.typography.headlineSmall) }
+            ) { Icon(Icons.Default.Add, contentDescription = null) }
         }
-        androidx.compose.runtime.CompositionLocalProvider(io.github.zeperus.openpad.ui.editor.LocalEditorTypography provides typography) {
+        CompositionLocalProvider(LocalEditorTypography provides typography) {
             Column(Modifier.padding(top = 8.dp).testTag("font-size-preview")) {
                 Text(
                     stringResource(R.string.font_preview_text),
-                    style = androidx.compose.ui.text.TextStyle(fontSize = typography.body.sp, lineHeight = typography.bodyLineHeight.sp),
+                    style = TextStyle(fontSize = typography.body.sp, lineHeight = typography.bodyLineHeight.sp),
                     modifier = Modifier.testTag("font-preview-body"),
                 )
                 Text(
                     stringResource(R.string.font_preview_heading),
-                    style = androidx.compose.ui.text.TextStyle(
-                        fontSize = typography.headingSize(2).sp, lineHeight = typography.headingLineHeight(2).sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    style = TextStyle(
+                        fontSize = typography.headingSize(2).sp, lineHeight = typography.headingLineHeight(2).sp, fontWeight = FontWeight.Bold,
                     ),
                     modifier = Modifier.testTag("font-preview-heading"),
                 )
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("font-preview-task")) {
-                    androidx.compose.material3.Checkbox(
+                    Checkbox(
                         checked = false,
                         onCheckedChange = null,
                         modifier = Modifier.graphicsLayer(scaleX = typography.checkboxScale, scaleY = typography.checkboxScale),
                     )
                     Text(
                         stringResource(R.string.font_preview_task),
-                        style = androidx.compose.ui.text.TextStyle(fontSize = typography.body.sp, lineHeight = typography.bodyLineHeight.sp),
+                        style = TextStyle(fontSize = typography.body.sp, lineHeight = typography.bodyLineHeight.sp),
                         modifier = Modifier.padding(start = (8 * typography.checkboxScale).dp),
                     )
                 }

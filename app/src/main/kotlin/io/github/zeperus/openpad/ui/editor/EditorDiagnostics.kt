@@ -13,6 +13,14 @@ data class EditorTiming(
     val maxOpenMs: Double,
 )
 
+/** Frame statistics in milliseconds: [frames] counted, [slow] of them took longer than 32 ms. */
+data class FrameTiming(
+    val frames: Int,
+    val avgMs: Double,
+    val maxMs: Double,
+    val slow: Int,
+)
+
 /**
  * Counts how many row text fields were created and disposed. A structural edit (list <-> paragraph, Enter, Backspace, ticking
  * a checkbox) must not dispose the field the user is typing in - that is what used to close and reopen the keyboard - so the
@@ -36,6 +44,10 @@ object EditorDiagnostics {
     private var opens = 0
     private var lastOpenNanos = 0L
     private var maxOpenNanos = 0L
+    private var frameCount = 0
+    private var totalFrameNanos = 0L
+    private var maxFrameNanos = 0L
+    private var slowFrameCount = 0
 
     /** One editing operation (model + Markdown + publish) took [nanos]. */
     fun recordEdit(nanos: Long) {
@@ -55,6 +67,27 @@ object EditorDiagnostics {
             maxOpenNanos = maxOf(maxOpenNanos, nanos)
         }
     }
+
+    /** One rendered frame (total duration from the frame metrics) took [nanos]. Non-positive values are ignored. */
+    fun recordFrame(nanos: Long) {
+        if (nanos <= 0L) return
+        synchronized(this) {
+            frameCount++
+            totalFrameNanos += nanos
+            maxFrameNanos = maxOf(maxFrameNanos, nanos)
+            if (nanos > SLOW_FRAME_NANOS) slowFrameCount++
+        }
+    }
+
+    val frames: FrameTiming
+        get() = synchronized(this) {
+            FrameTiming(
+                frames = frameCount,
+                avgMs = if (frameCount == 0) 0.0 else totalFrameNanos / NANOS_PER_MS / frameCount,
+                maxMs = maxFrameNanos / NANOS_PER_MS,
+                slow = slowFrameCount,
+            )
+        }
 
     val timing: EditorTiming
         get() = synchronized(this) {
@@ -78,8 +111,13 @@ object EditorDiagnostics {
             opens = 0
             lastOpenNanos = 0L
             maxOpenNanos = 0L
+            frameCount = 0
+            totalFrameNanos = 0L
+            maxFrameNanos = 0L
+            slowFrameCount = 0
         }
     }
 
     private const val NANOS_PER_MS = 1_000_000.0
+    private const val SLOW_FRAME_NANOS = 32_000_000L
 }

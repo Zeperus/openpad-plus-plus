@@ -144,6 +144,8 @@ fun SearchScreen(vm: NotesViewModel, onBack: () -> Unit, onOpen: (SearchHit) -> 
 @Composable
 fun FindBar(vm: NotesViewModel, modifier: Modifier = Modifier) {
     val find = vm.find ?: return
+    // Back closes the bar instead of leaving the app
+    BackHandler { vm.closeFind() }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     Surface(tonalElevation = 2.dp, modifier = modifier.fillMaxWidth().testTag("find-bar")) {

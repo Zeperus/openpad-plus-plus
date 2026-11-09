@@ -2,6 +2,7 @@ package io.github.zeperus.openpad
 
 import android.app.Application
 import android.os.Build
+import android.util.Log
 import io.github.zeperus.openpad.data.AppCompatLocaleApplier
 import io.github.zeperus.openpad.domain.LanguageManager
 import io.github.zeperus.openpad.data.ContentResolverDocuments
@@ -9,6 +10,7 @@ import io.github.zeperus.openpad.data.DataStoreSettingsStore
 import io.github.zeperus.openpad.data.FileEditorStateStore
 import io.github.zeperus.openpad.data.FileNoteRepository
 import io.github.zeperus.openpad.data.FileSessionStore
+import io.github.zeperus.openpad.domain.AppLog
 import io.github.zeperus.openpad.domain.EditorStateStore
 import io.github.zeperus.openpad.domain.NoteRepository
 import io.github.zeperus.openpad.domain.SessionStore
@@ -25,6 +27,12 @@ class OpenPadApplication : Application() {
      * it publishes Compose state; the repository moves file I/O to a background dispatcher itself.
      */
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    override fun onCreate() {
+        super.onCreate()
+        // Errors go to logcat (nowhere else). The callers pass fixed messages only, never note text or titles.
+        AppLog.sink = { tag, message, error -> Log.e(tag, message, error) }
+    }
 
     val repository: NoteRepository by lazy {
         // Provider calls block; at most 4 of them may hold a thread at once, so a stuck provider cannot take the whole IO pool.
