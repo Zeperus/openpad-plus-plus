@@ -36,8 +36,8 @@
     <string name="read_only_banner">Read-only: this file cannot be changed.</string>
     <string name="external_file">External file</string>
     <string name="action_smart_checklist">Smart checklist</string>
-    <string name="state_on">On</string>
-    <string name="state_off">Off</string>
+    <string name="smart_checklist_on">On</string>
+    <string name="smart_checklist_off">Off</string>
     <string name="action_rename">Rename…</string>
     <string name="action_clear">Clear note…</string>
     <string name="action_delete">Move to Trash…</string>

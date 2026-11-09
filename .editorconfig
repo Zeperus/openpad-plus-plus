@@ -35,3 +35,4 @@ ktlint_standard_spacing-between-declarations-with-comments = disabled
 ktlint_standard_spacing-between-declarations-with-annotations = disabled
 ktlint_standard_string-template = disabled
 ktlint_standard_mixed-condition-operators = disabled
+ktlint_standard_filename = disabled

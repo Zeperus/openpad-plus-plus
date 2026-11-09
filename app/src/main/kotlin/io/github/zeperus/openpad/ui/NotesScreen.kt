@@ -240,7 +240,11 @@ private fun NotesContent(
         if (uri != null) vm.upgradeExternal(uri.toString(), ExternalAccess.takePersistable(context.contentResolver, uri))
     }
 
-    BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
+    // Back closes what is on top: the open drawer first, then the find bar. One handler, so the order does not depend on which
+    // composable registered last.
+    BackHandler(enabled = drawerState.isOpen || vm.find != null) {
+        if (drawerState.isOpen) scope.launch { drawerState.close() } else vm.closeFind()
+    }
 
     // A wide window (tablet, unfolded foldable, desktop mode) keeps the navigation visible next to the editor; a phone slides it in.
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -345,8 +349,8 @@ private fun NotesContent(
                                 onClick = { menuOpen = false; vm.toggleFavorite() },
                             )
                             val smartChecked = vm.current?.smartChecklist == true
-                            val stateOn = stringResource(R.string.state_on)
-                            val stateOff = stringResource(R.string.state_off)
+                            val stateOn = stringResource(R.string.smart_checklist_on)
+                            val stateOff = stringResource(R.string.smart_checklist_off)
                             DropdownMenuItem(
                                 text = {
                                     Text(

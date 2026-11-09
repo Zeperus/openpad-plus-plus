@@ -10,6 +10,10 @@ PKG=io.github.zeperus.openpad
 APK=app/build/outputs/apk/alpha/app-alpha.apk
 
 ./gradlew assembleAlpha
+# the emulator has been idle while Gradle ran: make sure the screen is on and unlocked, or the taps go to the lock screen
+adb shell svc power stayon true || true
+adb shell input keyevent KEYCODE_WAKEUP || true
+adb shell wm dismiss-keyguard || true
 adb uninstall "$PKG" >/dev/null 2>&1 || true
 adb install -r "$APK"
 adb logcat -b crash -c || true
@@ -32,8 +36,19 @@ fail() {
     exit 1
 }
 
-adb shell pidof "$PKG" >/dev/null || fail "the app is not running any more"
-if adb logcat -d -b crash | grep -q "Process: $PKG"; then fail "the app crashed"; fi
+check_alive() {
+    adb shell pidof "$PKG" >/dev/null || fail "the app is not running any more ($1)"
+    if adb logcat -d -b crash | grep -q "Process: $PKG"; then fail "the app crashed ($1)"; fi
+}
+check_alive "first start"
+
+# Second start: now index.json, session.json and editor-state.json exist, so the shrunk build also has to *read* them
+# (kotlinx.serialization decoding, session restore) - a fresh install never does.
+sleep 2 # the autosave has written the note
+adb shell am force-stop "$PKG"
+adb shell am start -W -n "$PKG/.MainActivity"
+sleep 8
+check_alive "second start"
 if adb shell dumpsys package "$PKG" | grep -E "^\s*(pkgFlags|flags)=" | grep -q DEBUGGABLE; then fail "the alpha build is debuggable"; fi
 
 # informational only (the accessibility dump is not reliable enough on CI to fail the build on it)
@@ -46,6 +61,8 @@ echo "alpha smoke test passed"
 
 # pictures of this build and of the previous release, for comparing them (never fails the build)
 if [ -n "${PREVIOUS_APK_URL:-}" ]; then
-    (curl -sSL --max-time 120 -o app/build/previous.apk "$PREVIOUS_APK_URL" && sh scripts/ci-screenshots.sh app/build/previous.apk app/build/screenshots/previous) || true
+    (curl -sSL --max-time 120 -o app/build/previous.apk "$PREVIOUS_APK_URL" &&
+        { [ -z "${PREVIOUS_APK_SHA256:-}" ] || echo "$PREVIOUS_APK_SHA256  app/build/previous.apk" | sha256sum -c -; } &&
+        sh scripts/ci-screenshots.sh app/build/previous.apk app/build/screenshots/previous) || true
 fi
 sh scripts/ci-screenshots.sh "$APK" app/build/screenshots/current || true

@@ -33,8 +33,8 @@
     <string name="read_only_banner">Schreibgeschützt: Diese Datei kann nicht geändert werden.</string>
     <string name="external_file">Externe Datei</string>
     <string name="action_smart_checklist">Intelligente Checkliste</string>
-    <string name="state_on">An</string>
-    <string name="state_off">Aus</string>
+    <string name="smart_checklist_on">An</string>
+    <string name="smart_checklist_off">Aus</string>
     <string name="action_rename">Umbenennen…</string>
     <string name="action_clear">Notiz leeren…</string>
     <string name="action_delete">In den Papierkorb…</string>

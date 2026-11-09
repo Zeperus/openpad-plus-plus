@@ -25,7 +25,7 @@ concurrency:
 jobs:
   android-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -48,6 +48,7 @@ jobs:
         env:
           # the release the screenshots of this build are compared with (see scripts/ci-alpha-smoke.sh)
           PREVIOUS_APK_URL: https://github.com/Zeperus/openpad-plus-plus/releases/download/v0.1.0-alpha.9/openpad-plus-plus-0.1.0-alpha.9.apk
+          PREVIOUS_APK_SHA256: 27a2f0b67e117390b21131413103af5eb3e9f6f1e25256c45964c45ecc2d15fe
         with:
           api-level: 36
           target: default

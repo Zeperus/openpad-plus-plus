@@ -30,8 +30,9 @@ class OpenPadApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // Errors go to logcat (nowhere else). The callers pass fixed messages only, never note text or titles.
-        AppLog.sink = { tag, message, error -> Log.e(tag, message, error) }
+        // Errors go to logcat (nowhere else): a fixed message plus the exception's class and stack frames, never its message
+        // (which could contain a document's name) and never note text.
+        AppLog.sink = { tag, message, error -> Log.e(tag, if (error == null) message else message + "\n" + AppLog.describe(error)) }
     }
 
     val repository: NoteRepository by lazy {

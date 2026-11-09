@@ -2,7 +2,6 @@ package io.github.zeperus.openpad.ui.editor
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,11 +24,14 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -55,8 +57,8 @@ import io.github.zeperus.openpad.ui.NotesViewModel
  * Keeps the view where it is while the text changes under it. Ticking a task in a Smart Checklist moves the item to the bottom of the
  * list - a change of the text, which makes the text field scroll its caret into view (the caret is wherever the user left it, often at
  * the end), and the user, who is looking at the top of the list, is thrown to the bottom. [hold] remembers the scroll position and puts
- * it back whenever something else moves it during the next moments - until the user scrolls the list themselves: a drag of the list
- * ends the hold at once, so whoever ticks a box and scrolls right away is not pulled back.
+ * it back whenever something else moves it during the next moments - until the user scrolls themselves: a drag
+ * anywhere in the editor ends the hold at once ([endHoldOnDrag]), so whoever ticks a box and scrolls right away is not pulled back.
  */
 internal class ScrollHold(private val state: LazyListState, private val scope: CoroutineScope) {
     private var job: Job? = null
@@ -67,20 +69,46 @@ internal class ScrollHold(private val state: LazyListState, private val scope: C
         job?.cancel()
         job = scope.launch {
             withTimeoutOrNull(HOLD_MILLIS) {
-                val restore = launch {
-                    snapshotFlow { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset }.collect { (i, o) ->
-                        if (i != index || o != offset) state.scrollToItem(index, offset)
-                    }
+                snapshotFlow { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset }.collect { (i, o) ->
+                    if (i != index || o != offset) state.scrollToItem(index, offset)
                 }
-                // the list's own drags (the user's finger) are reported here; a scroll into view by the text field is not a drag
-                state.interactionSource.interactions.first { it is DragInteraction.Start }
-                restore.cancel()
             }
         }
     }
 
+    /** Ends the hold: the user is scrolling themselves (see [endHoldOnDrag]). */
+    fun release() {
+        job?.cancel()
+        job = null
+    }
+
     private companion object {
         const val HOLD_MILLIS = 800L
+    }
+}
+
+/**
+ * Ends [hold] as soon as a finger is dragged over the editor. The touches are only watched (Initial pass, never consumed), so it
+ * does not matter who handles the drag: a drag that starts on text is taken by the text field, not by the list, and the list's own
+ * interaction source never hears of it. A tap (the tick itself) stays below the touch slop and does not end the hold.
+ */
+private fun Modifier.endHoldOnDrag(hold: ScrollHold): Modifier = pointerInput(hold) {
+    awaitPointerEventScope {
+        var down: Offset? = null
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val change = event.changes.firstOrNull() ?: continue
+            when (event.type) {
+                PointerEventType.Press -> down = change.position
+                PointerEventType.Move -> down?.let { start ->
+                    if (change.pressed && (change.position - start).getDistance() > viewConfiguration.touchSlop) {
+                        hold.release()
+                        down = null // released once per gesture
+                    }
+                }
+                PointerEventType.Release -> down = null
+            }
+        }
     }
 }
 
@@ -157,7 +185,7 @@ private fun RichEditorContent(vm: NotesViewModel, modifier: Modifier = Modifier)
         val hold = remember(listState) { ScrollHold(listState, scrollScope) }
         val continueLabel = stringResource(R.string.editor_continue_at_end)
         androidx.compose.runtime.CompositionLocalProvider(LocalScrollHold provides hold) {
-        LazyColumn(state = listState, modifier = modifier.fillMaxSize().testTag("editor")) {
+        LazyColumn(state = listState, modifier = modifier.fillMaxSize().endHoldOnDrag(hold).testTag("editor")) {
             items(items.size, key = { itemKeys[it] }) { index ->
                 when (val item = items[index]) {
                     is DocItem.Text -> {

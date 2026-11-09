@@ -634,8 +634,19 @@ class NotesViewModel(
             copy = createCopy(mine, copyTitle)
             copied = mine
         }
-        val content = repository.openNote(id)
-        val next = NoteEditor(repository, NoteContent(content.info, content.text, content.readOnly, content.readOnlyReason))
+        // Like [onAppResumed]: one read that does not move the baseline. Until the editor really shows the other version, a save
+        // of the text still on screen (the autosave is queued behind this action) must keep seeing the conflict - also when a
+        // step below fails. Null means the file is again what openPad++ last saw (or nothing was ever compared): then an ordinary
+        // read moves nothing.
+        val before = editor
+        val info = before.info ?: return@act
+        val version = repository.checkExternal(id)
+        val next = if (version != null) {
+            NoteEditor(repository, NoteContent(info, version.text, before.readOnly, before.readOnlyReason))
+        } else {
+            val content = repository.openNote(id)
+            NoteEditor(repository, NoteContent(content.info, content.text, content.readOnly, content.readOnlyReason))
+        }
         val prepared = prepareSession(next, reuseKept = false)
         // The document stayed editable while it was read: what was typed meanwhile is the user's version too, so the copy gets it.
         // The last comparison and the replacement below have no suspension point between them.
@@ -651,6 +662,8 @@ class NotesViewModel(
         }
         sessions.remove(id)
         switchTo(next, prepared)
+        // Only now, with the editor showing the other version, the baseline moves (no save can run before this: it waits for [actions]).
+        if (version != null) repository.adoptExternal(id, version)
         clearConflict()
         saveFailed = false
         refreshLists()
@@ -1199,8 +1212,9 @@ class NotesViewModel(
                 while (editor.hasUnsavedChanges) {
                     val leaving = editor
                     val wasDraft = leaving.isDraft
-                    // A save that writes nothing while changes are pending cannot happen ([NoteEditor.save]); never spin on it.
-                    if (!saveNow()) break
+                    // A save that writes nothing while changes are pending cannot happen ([NoteEditor.save]). If it ever did, the
+                    // editor must stay (its text is not on disk) and the loop must not spin: the action fails instead.
+                    if (!saveNow()) throw NoteStorageException("Pending text could not be saved")
                     // A blank page typed into while another tab was being opened is a note now: the blank page's tab becomes its
                     // tab (when the blank page was the active tab, [saveNow] did that already and no blank page is left).
                     val created = leaving.info
