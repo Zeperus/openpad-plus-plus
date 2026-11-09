@@ -2,6 +2,7 @@ package io.github.zeperus.openpad.data
 
 import io.github.zeperus.openpad.domain.EditorStateStore
 import io.github.zeperus.openpad.editor.PersistedEditorState
+import java.io.File
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -10,7 +11,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
-import java.io.File
 
 /**
  * `editor-state.json`: caret and recent undo history per open note. Disposable like the session: a damaged or unreadable file

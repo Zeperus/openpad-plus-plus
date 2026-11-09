@@ -1,9 +1,9 @@
 package io.github.zeperus.openpad.editor
 
+import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.random.Random
 
 /**
  * Markdown the editor does not edit (tables, HTML, images, reference definitions, odd code fences) must survive any amount of

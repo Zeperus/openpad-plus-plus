@@ -6,6 +6,7 @@ import io.github.zeperus.openpad.domain.NoteChangedExternallyException
 import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteInfo
 import io.github.zeperus.openpad.domain.NoteRepository
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -21,7 +22,6 @@ import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.File
 
 /** The global note search on its own: debounce, stale results, clearing, the open note's unsaved text and the searching flag. */
 @OptIn(ExperimentalCoroutinesApi::class)

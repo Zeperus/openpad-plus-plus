@@ -1,11 +1,11 @@
 package io.github.zeperus.openpad.domain
 
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Debounces saves: [save] runs [idleMillis] after the last change, but at the latest [maxWaitMillis] after the

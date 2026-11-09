@@ -19,14 +19,10 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -46,13 +42,11 @@ import io.github.zeperus.openpad.editor.RowKind
 import io.github.zeperus.openpad.editor.SegmentKeys
 import io.github.zeperus.openpad.editor.Segments
 import io.github.zeperus.openpad.ui.NotesViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
-/**
- * The formatted editor. The note is a list of **text segments** and **blocks**: consecutive paragraphs, headings, list items,
- * quotes and code lines share one text field (so a selection can run from one into the next with the system's own handles, see
- * [SegmentField]); a rule, a table, an image or simple HTML is a block of its own between two fields. Everything the user does
- * is turned into a document operation; the Markdown is written from the document, never read back from the screen.
- */
 /**
  * Keeps the view where it is while the text changes under it. Ticking a task in a Smart Checklist moves the item to the bottom of the
  * list - a change of the text, which makes the text field scroll its caret into view (the caret is wherever the user left it, often at
@@ -114,6 +108,12 @@ private fun Modifier.endHoldOnDrag(hold: ScrollHold): Modifier = pointerInput(ho
 
 internal val LocalScrollHold = staticCompositionLocalOf<ScrollHold?> { null }
 
+/**
+ * The formatted editor. The note is a list of **text segments** and **blocks**: consecutive paragraphs, headings, list items,
+ * quotes and code lines share one text field (so a selection can run from one into the next with the system's own handles, see
+ * [SegmentField]); a rule, a table, an image or simple HTML is a block of its own between two fields. Everything the user does
+ * is turned into a document operation; the Markdown is written from the document, never read back from the screen.
+ */
 @Composable
 fun RichEditor(vm: NotesViewModel, modifier: Modifier = Modifier) {
     val typography = androidx.compose.runtime.remember(vm.preferences.editorFontSize) { io.github.zeperus.openpad.editor.EditorTypography(vm.preferences.editorFontSize.toFloat()) }
@@ -185,49 +185,49 @@ private fun RichEditorContent(vm: NotesViewModel, modifier: Modifier = Modifier)
         val hold = remember(listState) { ScrollHold(listState, scrollScope) }
         val continueLabel = stringResource(R.string.editor_continue_at_end)
         androidx.compose.runtime.CompositionLocalProvider(LocalScrollHold provides hold) {
-        LazyColumn(state = listState, modifier = modifier.fillMaxSize().endHoldOnDrag(hold).testTag("editor")) {
-            items(items.size, key = { itemKeys[it] }) { index ->
-                when (val item = items[index]) {
-                    is DocItem.Text -> {
-                        val segment = item.segment
-                        val key = segmentKeys[textIndexBefore[index]]
-                        // the same Map instance as long as the segment and the find results are the same ones, so that the field
-                        // can be skipped when nothing it shows has changed
-                        val matches = remember(segment, findByRow) { segment.ids.mapNotNull { id -> findByRow[id]?.let { id to it } }.toMap() }
-                        SegmentField(
-                            vm = vm,
-                            segment = segment,
-                            sourceRows = source,
+            LazyColumn(state = listState, modifier = modifier.fillMaxSize().endHoldOnDrag(hold).testTag("editor")) {
+                items(items.size, key = { itemKeys[it] }) { index ->
+                    when (val item = items[index]) {
+                        is DocItem.Text -> {
+                            val segment = item.segment
+                            val key = segmentKeys[textIndexBefore[index]]
+                            // the same Map instance as long as the segment and the find results are the same ones, so that the field
+                            // can be skipped when nothing it shows has changed
+                            val matches = remember(segment, findByRow) { segment.ids.mapNotNull { id -> findByRow[id]?.let { id to it } }.toMap() }
+                            SegmentField(
+                                vm = vm,
+                                segment = segment,
+                                sourceRows = source,
+                                readOnly = readOnly,
+                                showHint = hint,
+                                matches = matches,
+                                // only the field that holds the current match draws it (SegmentOutput looks at its own rows only)
+                                currentMatch = currentMatch?.takeIf { segment.indexOf(it.rowId) >= 0 },
+                                focusRequest = vm.focusRequest?.takeIf { it.rowId in segment.ids },
+                                onLayoutProvider = { provider -> if (provider != null) layouts[key] = provider },
+                                onSourceDone = { id -> sourceRows.remove(id) },
+                            )
+                        }
+                        is DocItem.Block -> BlockView(
+                            row = item.row,
                             readOnly = readOnly,
-                            showHint = hint,
-                            matches = matches,
-                            // only the field that holds the current match draws it (SegmentOutput looks at its own rows only)
-                            currentMatch = currentMatch?.takeIf { segment.indexOf(it.rowId) >= 0 },
-                            focusRequest = vm.focusRequest?.takeIf { it.rowId in segment.ids },
-                            onLayoutProvider = { provider -> if (provider != null) layouts[key] = provider },
-                            onSourceDone = { id -> sourceRows.remove(id) },
+                            onEditSource = { sourceRows.add(item.row.id); vm.focusRow(item.row.id) },
                         )
                     }
-                    is DocItem.Block -> BlockView(
-                        row = item.row,
-                        readOnly = readOnly,
-                        onEditSource = { sourceRows.add(item.row.id); vm.focusRow(item.row.id) },
-                    )
+                }
+                item(key = "end") {
+                    // a tap below the last row puts the caret at the end of the note. In an editable note the area is a button whose
+                    // action TalkBack announces (onClickLabel); a read-only note has no such action, so the area carries no semantics at all
+                    val endInteraction = remember { MutableInteractionSource() }
+                    val endTap = if (readOnly) Modifier else Modifier.clickable(
+                        interactionSource = endInteraction,
+                        indication = null,
+                        onClickLabel = continueLabel,
+                        role = Role.Button,
+                    ) { vm.focusEnd() }
+                    Box(Modifier.fillMaxWidth().height(160.dp).then(endTap))
                 }
             }
-            item(key = "end") {
-                // a tap below the last row puts the caret at the end of the note. In an editable note the area is a button whose
-                // action TalkBack announces (onClickLabel); a read-only note has no such action, so the area carries no semantics at all
-                val endInteraction = remember { MutableInteractionSource() }
-                val endTap = if (readOnly) Modifier else Modifier.clickable(
-                    interactionSource = endInteraction,
-                    indication = null,
-                    onClickLabel = continueLabel,
-                    role = Role.Button,
-                ) { vm.focusEnd() }
-                Box(Modifier.fillMaxWidth().height(160.dp).then(endTap))
-            }
-        }
         }
     }
 }

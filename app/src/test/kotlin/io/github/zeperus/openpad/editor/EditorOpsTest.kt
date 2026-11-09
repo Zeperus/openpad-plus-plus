@@ -137,8 +137,8 @@ class EditorOpsTest {
 
     @Test fun `enter on an empty list item leaves the list`() {
         val s = session("- a\n- b")
-        s.enterAt(1, 1)  // new empty item after b
-        s.enterAt(2, 0)  // enter on the empty item
+        s.enterAt(1, 1) // new empty item after b
+        s.enterAt(2, 0) // enter on the empty item
         assertEquals(RowKind.Paragraph, s.doc.rows[2].kind)
         s.type(2, "after")
         assertEquals("- a\n- b\n\nafter\n", s.markdown())

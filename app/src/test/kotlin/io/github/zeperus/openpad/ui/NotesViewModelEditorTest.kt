@@ -7,6 +7,7 @@ import io.github.zeperus.openpad.domain.SettingsStore
 import io.github.zeperus.openpad.domain.StartupMode
 import io.github.zeperus.openpad.editor.RowKind
 import io.github.zeperus.openpad.editor.SpanKind
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -23,7 +24,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.File
 
 /**
  * The rich editor inside the view model: what the keyboard and the formatting bar do ends up as Markdown on disk, per tab

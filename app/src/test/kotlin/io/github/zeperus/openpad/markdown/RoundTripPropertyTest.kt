@@ -1,10 +1,10 @@
 package io.github.zeperus.openpad.markdown
 
 import io.github.zeperus.openpad.PropertyBudget
+import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.random.Random
 
 /**
  * Property tests: random documents built from every supported construct, with text drawn from an adversarial

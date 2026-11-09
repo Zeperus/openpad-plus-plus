@@ -4,7 +4,6 @@ import android.app.Application
 import android.os.Build
 import android.util.Log
 import io.github.zeperus.openpad.data.AppCompatLocaleApplier
-import io.github.zeperus.openpad.domain.LanguageManager
 import io.github.zeperus.openpad.data.ContentResolverDocuments
 import io.github.zeperus.openpad.data.DataStoreSettingsStore
 import io.github.zeperus.openpad.data.FileEditorStateStore
@@ -12,13 +11,14 @@ import io.github.zeperus.openpad.data.FileNoteRepository
 import io.github.zeperus.openpad.data.FileSessionStore
 import io.github.zeperus.openpad.domain.AppLog
 import io.github.zeperus.openpad.domain.EditorStateStore
+import io.github.zeperus.openpad.domain.LanguageManager
 import io.github.zeperus.openpad.domain.NoteRepository
 import io.github.zeperus.openpad.domain.SessionStore
 import io.github.zeperus.openpad.domain.SettingsStore
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import java.io.File
 
 /** Hand-wired dependencies; small enough that a DI framework would be pure overhead. */
 class OpenPadApplication : Application() {

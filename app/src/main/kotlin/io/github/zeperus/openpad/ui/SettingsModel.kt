@@ -10,9 +10,9 @@ import io.github.zeperus.openpad.domain.FilesSort
 import io.github.zeperus.openpad.domain.LanguageManager
 import io.github.zeperus.openpad.domain.SettingsStore
 import io.github.zeperus.openpad.domain.StartupMode
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import kotlin.coroutines.cancellation.CancellationException
 
 /** The app preferences shown in Settings (startup mode, language, editor text size). Independent of notes; never touches a note. */
 class SettingsModel(

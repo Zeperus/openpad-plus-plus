@@ -172,7 +172,8 @@ class MarkdownSerializerTest {
     }
 
     @Test fun `text that looks like a block start is neutralized`() {
-        for (text in listOf("# h", "## h", "###### h", "#", "> q", ">q", "- a", "+ a", "-", "1. a", "12) a", "---", "- - -", "===", "=", "***", "___", "```", "~~~", "    code", "[ ] x", "[x] x", "<div>", "<!-- c -->", "| a | b |", "a  ", "\\")) {
+        for (text in listOf("# h", "## h", "###### h", "#", "> q", ">q", "- a", "+ a", "-", "1. a", "12) a", "---", "- - -",
+            "===", "=", "***", "___", "```", "~~~", "    code", "[ ] x", "[x] x", "<div>", "<!-- c -->", "| a | b |", "a  ", "\\")) {
             assertTextSurvives(text.trim().ifEmpty { text })
         }
     }

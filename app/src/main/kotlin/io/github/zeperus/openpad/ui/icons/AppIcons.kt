@@ -53,7 +53,7 @@ internal object AppIcons {
 
     val FormatListBulleted: ImageVector by lazy {
         materialIcon(name = "AutoMirrored.Filled.FormatListBulleted",
-                autoMirror = true) {
+            autoMirror = true) {
             materialPath {
                 moveTo(4.0f, 10.5f)
                 curveToRelative(-0.83f, 0.0f, -1.5f, 0.67f, -1.5f, 1.5f)
@@ -97,7 +97,7 @@ internal object AppIcons {
 
     val FormatIndentDecrease: ImageVector by lazy {
         materialIcon(name = "AutoMirrored.Filled.FormatIndentDecrease",
-                autoMirror = true) {
+            autoMirror = true) {
             materialPath {
                 moveTo(11.0f, 17.0f)
                 horizontalLineToRelative(10.0f)
@@ -140,7 +140,7 @@ internal object AppIcons {
 
     val FormatIndentIncrease: ImageVector by lazy {
         materialIcon(name = "AutoMirrored.Filled.FormatIndentIncrease",
-                autoMirror = true) {
+            autoMirror = true) {
             materialPath {
                 moveTo(3.0f, 21.0f)
                 horizontalLineToRelative(18.0f)

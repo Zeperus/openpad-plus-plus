@@ -7,6 +7,10 @@ import io.github.zeperus.openpad.domain.NoteNotFoundException
 import io.github.zeperus.openpad.domain.NoteSourceUnavailableException
 import io.github.zeperus.openpad.domain.NoteStorageException
 import io.github.zeperus.openpad.domain.NoteUnreadableException
+import java.io.File
+import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -20,10 +24,6 @@ import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.File
-import java.util.UUID
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.atomic.AtomicInteger
 
 /** Data safety of the storage layer: failed deletes, providers that block, documents changed by another app. */
 class FileNoteRepositorySafetyTest {
@@ -90,7 +90,8 @@ class FileNoteRepositorySafetyTest {
 
     // ---- Provider that blocks --------------------------------------------------------------------------------
 
-    @Test(timeout = 20_000) fun `a provider that blocks forever does not block other notes and its abandoned save never runs`() = runBlocking {
+    @Test(timeout = 20_000)
+    fun `a provider that blocks forever does not block other notes and its abandoned save never runs`() = runBlocking {
         provider.put(uri, "stuck", name = "Stuck.md")
         val r = repo(externalTimeoutMs = 300)
         val id = r.openExternal(uri, persistent = true).id
@@ -194,7 +195,8 @@ class FileNoteRepositorySafetyTest {
 
     // ---- Concurrency of provider calls -----------------------------------------------------------------------
 
-    @Test(timeout = 20_000) fun `a document with a stuck call fails fast on the next call while other documents keep working`() = runBlocking {
+    @Test(timeout = 20_000)
+    fun `a document with a stuck call fails fast on the next call while other documents keep working`() = runBlocking {
         val other = "content://docs/doc/other"
         provider.put(uri, "one", name = "One.md")
         provider.put(other, "two", name = "Two.md")

@@ -6,6 +6,7 @@ import io.github.zeperus.openpad.data.FileSessionStore
 import io.github.zeperus.openpad.domain.DocumentTab
 import io.github.zeperus.openpad.domain.SettingsStore
 import io.github.zeperus.openpad.domain.StartupMode
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -22,7 +23,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.File
 
 /** External documents (file picker / "Open with") inside the tab model. */
 @OptIn(ExperimentalCoroutinesApi::class)

@@ -15,10 +15,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -126,7 +126,8 @@ fun FormattingBar(vm: NotesViewModel, modifier: Modifier = Modifier) {
             FormatButton("", stringResource(R.string.format_bold), SpanKind.Bold in ui.active, inlineOk, icon = AppIcons.FormatBold) { vm.toggleStyle(SpanKind.Bold) }
             FormatButton("", stringResource(R.string.format_italic), SpanKind.Italic in ui.active, inlineOk, icon = AppIcons.FormatItalic) { vm.toggleStyle(SpanKind.Italic) }
             Divider()
-            FormatButton("", stringResource(R.string.format_bullets), listKind != null && !listKind.list.ordered && listKind.checked == null, ui.cursor != null, icon = AppIcons.FormatListBulleted) { vm.toggleList(false) }
+            val inBullets = listKind != null && !listKind.list.ordered && listKind.checked == null
+            FormatButton("", stringResource(R.string.format_bullets), inBullets, ui.cursor != null, icon = AppIcons.FormatListBulleted) { vm.toggleList(false) }
             FormatButton("", stringResource(R.string.format_numbers), listKind != null && listKind.list.ordered, ui.cursor != null, icon = AppIcons.FormatListNumbered) { vm.toggleList(true) }
             FormatButton("", stringResource(R.string.format_tasks), listKind?.checked != null, ui.cursor != null, icon = AppIcons.CheckBox) { vm.toggleTask() }
             Divider()

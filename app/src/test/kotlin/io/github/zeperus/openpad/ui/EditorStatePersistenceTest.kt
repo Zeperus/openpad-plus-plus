@@ -6,6 +6,7 @@ import io.github.zeperus.openpad.editor.EditorDocument
 import io.github.zeperus.openpad.editor.EditorSession
 import io.github.zeperus.openpad.editor.EditorStateCodec
 import io.github.zeperus.openpad.editor.PersistedEditorState
+import java.io.IOException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -18,7 +19,6 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.IOException
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class EditorStatePersistenceTest {

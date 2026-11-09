@@ -1,6 +1,5 @@
 package io.github.zeperus.openpad.editor
 
-
 /** The caret or selection: [start]..[end] within the text of row [rowId]. */
 data class Cursor(val rowId: Long, val start: Int, val end: Int = start) {
     val isCollapsed: Boolean get() = start == end

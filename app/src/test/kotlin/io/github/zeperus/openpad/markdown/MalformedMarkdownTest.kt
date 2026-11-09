@@ -1,9 +1,9 @@
 package io.github.zeperus.openpad.markdown
 
+import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.random.Random
 
 /** Opening a strange `.md` file must never crash the app or lose its content. */
 class MalformedMarkdownTest {
@@ -26,7 +26,8 @@ class MalformedMarkdownTest {
     }
 
     @Test fun `random markup soup never crashes`() {
-        val atoms = listOf("*", "**", "_", "__", "`", "```", "~~~", "~~", "[", "]", "(", ")", "<", ">", "&", "#", "-", "+", "1.", "\n", "\n\n", " ", "  ", "\t", "|", ":", "!", "\\", "\r\n", "\r", "<div>", "</div>", "- [ ] ", "- [x] ", "> ", "---", "===", "http://x", "😀", "ä", "\u0000", "﻿", " ")
+        val atoms = listOf("*", "**", "_", "__", "`", "```", "~~~", "~~", "[", "]", "(", ")", "<", ">", "&", "#", "-", "+", "1.", "\n", "\n\n", " ",
+            "  ", "\t", "|", ":", "!", "\\", "\r\n", "\r", "<div>", "</div>", "- [ ] ", "- [x] ", "> ", "---", "===", "http://x", "😀", "ä", "\u0000", "", " ")
         repeat(3000) { seed ->
             val r = Random(seed)
             val md = buildString { repeat(r.nextInt(1, 60)) { append(atoms[r.nextInt(atoms.size)]) } }
@@ -64,7 +65,8 @@ class MalformedMarkdownTest {
     }
 
     @Test fun `unbalanced and unterminated constructs`() {
-        for (md in listOf("**bold", "*it", "_x", "`code", "```\nfence", "[link](", "[link](url", "![img](", "<div>\nunclosed", "<!-- never closed", "> quote\n>> deeper\n> back", "- [ ", "- [x", "1. \n2.", "|a|b|\n|---", "~~strike", "[a]: ", "[a]:\n", "\\")) {
+        for (md in listOf("**bold", "*it", "_x", "`code", "```\nfence", "[link](", "[link](url", "![img](", "<div>\nunclosed",
+            "<!-- never closed", "> quote\n>> deeper\n> back", "- [ ", "- [x", "1. \n2.", "|a|b|\n|---", "~~strike", "[a]: ", "[a]:\n", "\\")) {
             val (parsed, written) = parseAndWrite(md)
             // the written version must parse again without trouble
             MarkdownParser.parse(written)

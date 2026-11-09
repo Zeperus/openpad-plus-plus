@@ -7,10 +7,10 @@ import io.github.zeperus.openpad.markdown.HtmlSpans
 import io.github.zeperus.openpad.markdown.MarkdownParser
 import io.github.zeperus.openpad.markdown.MarkdownSerializer
 import io.github.zeperus.openpad.markdown.OpenPadDocument
+import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.random.Random
 
 /**
  * Random sequences of editing operations on random (adversarial) documents. After every operation:
@@ -122,7 +122,9 @@ class EditorPropertyTest {
                     failures++
                     if (failures <= 4) {
                         val i = a.indices.firstOrNull { a[it] != b.getOrNull(it) } ?: 0
-                        report.append("\n--- seed $seed step $n block $i\n ROWS: ${s.doc.rows.joinToString(" | ") { r -> (r.kind as? RowKind.ListItem)?.let { "L${it.list.id}${it.list.marker}d${r.depth}" } ?: r.kind.toString().take(6) }}  ORIGINS ${s.doc.toBlocks().second}\n MD: ${s.markdown().take(500).replace("\n", "⏎")}\n ${diff(a.getOrNull(i).toString(), b.getOrNull(i).toString())}\n")
+                        val rows = s.doc.rows.joinToString(" | ") { r -> (r.kind as? RowKind.ListItem)?.let { "L${it.list.id}${it.list.marker}d${r.depth}" } ?: r.kind.toString().take(6) }
+                        val md = s.markdown().take(500).replace("\n", "⏎")
+                        report.append("\n--- seed $seed step $n block $i\n ROWS: $rows  ORIGINS ${s.doc.toBlocks().second}\n MD: $md\n ${diff(a.getOrNull(i).toString(), b.getOrNull(i).toString())}\n")
                     }
                     break
                 }

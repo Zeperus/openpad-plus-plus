@@ -3,6 +3,7 @@ package io.github.zeperus.openpad.data
 import io.github.zeperus.openpad.editor.PersistedCursor
 import io.github.zeperus.openpad.editor.PersistedEditorState
 import io.github.zeperus.openpad.editor.PersistedStep
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -11,7 +12,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.File
 
 class FileEditorStateStoreTest {
     @get:Rule val tmp = TemporaryFolder()

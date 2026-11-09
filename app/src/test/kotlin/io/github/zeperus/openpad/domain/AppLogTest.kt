@@ -1,10 +1,10 @@
 package io.github.zeperus.openpad.domain
 
+import java.io.IOException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.IOException
 
 class AppLogTest {
     @Test fun `an error is described by its classes and frames, never by its message`() {

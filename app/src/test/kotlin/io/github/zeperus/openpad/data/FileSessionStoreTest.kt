@@ -6,6 +6,8 @@ import io.github.zeperus.openpad.domain.OpenDocuments
 import io.github.zeperus.openpad.domain.PersistedSession
 import io.github.zeperus.openpad.domain.StartupMode
 import io.github.zeperus.openpad.domain.StartupPlanner
+import java.io.File
+import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -14,8 +16,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.File
-import java.util.UUID
 
 class FileSessionStoreTest {
     @get:Rule val tmp = TemporaryFolder()

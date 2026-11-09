@@ -1,16 +1,14 @@
 package io.github.zeperus.openpad.ui.editor
 
+import android.os.SystemClock
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import android.os.SystemClock
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.contextmenu.builder.item
@@ -24,10 +22,6 @@ import androidx.compose.foundation.text.input.TextFieldDecorator
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.selectAll
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.ui.layout.layout
-import androidx.compose.ui.graphics.graphicsLayer
-import io.github.zeperus.openpad.editor.EditorTypography
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
@@ -36,8 +30,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,7 +48,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -62,12 +58,16 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.editableText
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.ParagraphStyle
 import androidx.compose.ui.text.SpanStyle
@@ -87,6 +87,7 @@ import androidx.compose.ui.unit.sp
 import io.github.zeperus.openpad.R
 import io.github.zeperus.openpad.editor.DocumentPosition
 import io.github.zeperus.openpad.editor.EditorRow
+import io.github.zeperus.openpad.editor.EditorTypography
 import io.github.zeperus.openpad.editor.FindMatch
 import io.github.zeperus.openpad.editor.Numbering
 import io.github.zeperus.openpad.editor.RawBlocks
@@ -101,20 +102,12 @@ import io.github.zeperus.openpad.ui.NotesViewModel
 import kotlin.math.max
 import kotlin.math.min
 
-/**
- * One text field for a run of consecutive rows (paragraphs, headings, list items, quotes, code): their texts joined by line
- * breaks. This is what makes the selection native across blocks - the handles, the magnifier and the system toolbar are those of
- * an ordinary Android text field, and a long press can be dragged from one paragraph into the next.
- *
- * The **document model stays the single truth**. The field only holds text:
- *  - what the user does in the field (typing, Enter, Backspace at the start of a list item, deleting across paragraphs) is turned
- *    into a document operation *before it is committed* ([SegmentInput]); if the model decided something other than the plain
- *    text change (Enter on an empty bullet leaves the list), the field is made to show the model's text instead;
- *  - what the model does on its own (Undo, the formatting bar, a ticked checkbox that moves an item) is written into the field as
- *    a minimal text change ([SegmentController.syncFromModel]), the caret following its row;
- *  - formatting, list markers, checkboxes, quote bars and code backgrounds are *drawn* from the rows ([SegmentOutput], the
- *    overlays) - none of it is text in the field, so no Markdown punctuation is ever visible.
- */
+/** The system context-menu entries that the editor replaces with its own (see the menu built in [SegmentField]). */
+private val replacedMenuKeys = setOf(TextContextMenuKeys.CutKey, TextContextMenuKeys.CopyKey, TextContextMenuKeys.PasteKey, TextContextMenuKeys.SelectAllKey)
+
+/** A caret that appears this soon after a touch on the field comes from that touch. */
+private const val TAP_WINDOW_MS = 400L
+
 /**
  * Invisible first character of every field. With the caret at the very start of the field there is nothing before it to delete, so a
  * soft keyboard reports nothing when Backspace is pressed there - yet that is exactly "Backspace at the start of the first row"
@@ -122,11 +115,6 @@ import kotlin.math.min
  * press is noticed. (The same trick as in Alpha 2, proven on a real phone; rows after the first have their line break instead.)
  * All offsets in the field are one more than the segment's; the caret never stays in front of it.
  */
-private val replacedMenuKeys = setOf(TextContextMenuKeys.CutKey, TextContextMenuKeys.CopyKey, TextContextMenuKeys.PasteKey, TextContextMenuKeys.SelectAllKey)
-
-/** A caret that appears this soon after a touch on the field comes from that touch. */
-private const val TAP_WINDOW_MS = 400L
-
 internal const val FIELD_PREFIX = "\u200B"
 
 internal fun fieldTextOf(segment: Segment) = FIELD_PREFIX + segment.text
@@ -403,7 +391,12 @@ internal class RowStyles(
 }
 
 /** The formatting of the rows, drawn as styles over the field's text. */
-internal class SegmentOutput(private val input: State<DecorationInput?>, private val styles: RowStyles, private val paletteMatch: androidx.compose.ui.graphics.Color, private val paletteCurrent: androidx.compose.ui.graphics.Color) : OutputTransformation {
+internal class SegmentOutput(
+    private val input: State<DecorationInput?>,
+    private val styles: RowStyles,
+    private val paletteMatch: Color,
+    private val paletteCurrent: Color,
+) : OutputTransformation {
     override fun TextFieldBuffer.transformOutput() {
         val d = input.value ?: return
         val seg = d.segment
@@ -461,6 +454,20 @@ private fun shortcut(event: androidx.compose.ui.input.key.KeyEvent, vm: NotesVie
     return false
 }
 
+/**
+ * One text field for a run of consecutive rows (paragraphs, headings, list items, quotes, code): their texts joined by line
+ * breaks. This is what makes the selection native across blocks - the handles, the magnifier and the system toolbar are those of
+ * an ordinary Android text field, and a long press can be dragged from one paragraph into the next.
+ *
+ * The **document model stays the single truth**. The field only holds text:
+ *  - what the user does in the field (typing, Enter, Backspace at the start of a list item, deleting across paragraphs) is turned
+ *    into a document operation *before it is committed* ([SegmentInput]); if the model decided something other than the plain
+ *    text change (Enter on an empty bullet leaves the list), the field is made to show the model's text instead;
+ *  - what the model does on its own (Undo, the formatting bar, a ticked checkbox that moves an item) is written into the field as
+ *    a minimal text change ([SegmentController.syncFromModel]), the caret following its row;
+ *  - formatting, list markers, checkboxes, quote bars and code backgrounds are *drawn* from the rows ([SegmentOutput], the
+ *    overlays) - none of it is text in the field, so no Markdown punctuation is ever visible.
+ */
 @Composable
 internal fun SegmentField(
     vm: NotesViewModel,

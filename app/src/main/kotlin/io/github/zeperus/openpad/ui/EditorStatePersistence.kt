@@ -7,13 +7,13 @@ import io.github.zeperus.openpad.editor.EditorSession
 import io.github.zeperus.openpad.editor.EditorStateCodec
 import io.github.zeperus.openpad.editor.EditorStateSnapshot
 import io.github.zeperus.openpad.editor.PersistedEditorState
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Remembers caret and recent undo steps of the open notes in editor-state.json (disposable, never inside the notes).

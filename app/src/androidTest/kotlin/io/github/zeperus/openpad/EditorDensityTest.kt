@@ -116,7 +116,7 @@ class EditorDensityTest {
         rule.waitForRowTexts(listOf(first, ""))
         rule.field().assertIsFocused()
         assertEquals("the caret is at the start of the new item's text", TextRange(first.length + 1), rule.selectionRange())
-        val rowStart = first.length + 1 /* marker */ + 1 /* line break */
+        val rowStart = first.length + 1 + 1 // the invisible marker and the line break
         val before = layout().getCursorRect(rowStart)
         rule.typeInLastRow(next)
         rule.waitForRowTexts(listOf(first, next))

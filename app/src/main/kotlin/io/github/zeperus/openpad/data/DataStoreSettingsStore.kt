@@ -6,18 +6,18 @@ import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import io.github.zeperus.openpad.domain.AppLanguage
 import io.github.zeperus.openpad.domain.EditorFontSize
 import io.github.zeperus.openpad.domain.FilesSort
 import io.github.zeperus.openpad.domain.SettingsStore
 import io.github.zeperus.openpad.domain.StartupMode
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
-import java.io.File
 
 /** Simple app settings in Jetpack DataStore (preferences). Unusable stored values fall back to the defaults. */
 class DataStoreSettingsStore(private val dataStore: DataStore<Preferences>) : SettingsStore {
