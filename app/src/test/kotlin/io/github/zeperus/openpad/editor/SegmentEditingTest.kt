@@ -3,12 +3,12 @@ package io.github.zeperus.openpad.editor
 import io.github.zeperus.openpad.markdown.Gen
 import io.github.zeperus.openpad.markdown.MarkdownSerializer
 import io.github.zeperus.openpad.markdown.OpenPadDocument
+import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.random.Random
 
 /** The unified text field: what the model makes of changes in the joined text of several rows. */
 class SegmentEditingTest {

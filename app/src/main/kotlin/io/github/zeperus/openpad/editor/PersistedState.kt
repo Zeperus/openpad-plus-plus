@@ -1,7 +1,7 @@
 package io.github.zeperus.openpad.editor
 
-import kotlinx.serialization.Serializable
 import java.security.MessageDigest
+import kotlinx.serialization.Serializable
 
 /** A caret/selection as it can be stored: the index of the row (ids are not stable across loads) and the offsets in it. */
 @Serializable

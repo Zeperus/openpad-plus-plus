@@ -8,6 +8,9 @@ import io.github.zeperus.openpad.domain.NoteNotFoundException
 import io.github.zeperus.openpad.domain.NoteNotInTrashException
 import io.github.zeperus.openpad.domain.NoteStorageException
 import io.github.zeperus.openpad.domain.NoteUnreadableException
+import java.io.File
+import java.io.IOException
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -25,9 +28,6 @@ import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.File
-import java.io.IOException
-import java.util.UUID
 
 class FileNoteRepositoryTest {
     @get:Rule val tmp = TemporaryFolder()

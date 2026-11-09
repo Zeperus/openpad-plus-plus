@@ -1,24 +1,21 @@
 package io.github.zeperus.openpad.ui
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.compose.ui.platform.LocalContext
-import io.github.zeperus.openpad.ShareHelper
-import io.github.zeperus.openpad.data.ExternalAccess
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.runtime.saveable.Saver
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Menu
@@ -30,58 +27,61 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.PermanentDrawerSheet
 import androidx.compose.material3.PermanentNavigationDrawer
-import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
-import androidx.compose.material3.windowsizeclass.WindowSizeClass
-import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.width
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import io.github.zeperus.openpad.R
-import io.github.zeperus.openpad.ui.editor.FormattingBar
-import io.github.zeperus.openpad.ui.editor.RichEditor
+import io.github.zeperus.openpad.ShareHelper
+import io.github.zeperus.openpad.data.ExternalAccess
 import io.github.zeperus.openpad.data.OpenWritableDocument
 import io.github.zeperus.openpad.domain.FolderInfo
 import io.github.zeperus.openpad.domain.NoteInfo
 import io.github.zeperus.openpad.domain.ReadOnlyReason
+import io.github.zeperus.openpad.ui.editor.FormattingBar
+import io.github.zeperus.openpad.ui.editor.RichEditor
 import io.github.zeperus.openpad.ui.editor.rememberAppClipboard
-import android.net.Uri
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.unit.Dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -248,273 +248,273 @@ private fun NotesContent(
 
     // A wide window (tablet, unfolded foldable, desktop mode) keeps the navigation visible next to the editor; a phone slides it in.
     BoxWithConstraints(Modifier.fillMaxSize()) {
-    val wide = WindowSizeClass.calculateFromSize(DpSize(maxWidth, maxHeight)).widthSizeClass == WindowWidthSizeClass.Expanded
-    val drawerBody: @Composable () -> Unit = {
-        DrawerContent(
-            vm = vm,
-            onNewNote = { vm.newNote(); scope.launch { drawerState.close() } },
-            onNewChecklist = { vm.newChecklist(); scope.launch { drawerState.close() } },
-            onOpenFile = { scope.launch { drawerState.close() }; openFile.launch(arrayOf("*/*")) },
-            onOpen = { vm.openNote(it.id); scope.launch { drawerState.close() } },
-            onPurge = { dialog = Dialog.Purge(it) },
-            onNewFolder = { dialog = Dialog.NewFolder },
-            onRenameFolder = { dialog = Dialog.RenameFolder(it) },
-            onDeleteFolder = { dialog = Dialog.DeleteFolder(it) },
-        )
-    }
-    val content: @Composable () -> Unit = {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = {
-                        val renameLabel = stringResource(R.string.dialog_rename_title)
-                        // An automatic title (the first line, or "Untitled") is renamed by a tap; a title the user chose only by a
-                        // long press, so that it is not changed by accident. External documents keep their file name.
-                        val canRename = vm.canRename
-                        // A title the user chose has no tap action: no ripple and no "rename" tap label, only the long press.
-                        val titleClicks = when {
-                            !canRename -> Modifier
-                            vm.hasExplicitTitle -> Modifier
-                                .pointerInput(Unit) { detectTapGestures(onLongPress = { dialog = Dialog.Rename }) }
-                                .semantics { onLongClick(label = renameLabel) { dialog = Dialog.Rename; true } }
-                            else -> Modifier.combinedClickable(
-                                onClickLabel = renameLabel,
-                                onLongClickLabel = renameLabel,
-                                onClick = { dialog = Dialog.Rename },
-                                onLongClick = { dialog = Dialog.Rename },
-                            )
-                        }
-                        Text(
-                            text = (vm.current?.title ?: stringResource(R.string.untitled)) +
-                                if (vm.readOnly) " \u00B7 " + stringResource(R.string.read_only_short) else "",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = titleClicks.testTag("title"),
-                        )
-                    },
-                    navigationIcon = {
-                        if (!wide) {
-                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.open_drawer))
+        val wide = WindowSizeClass.calculateFromSize(DpSize(maxWidth, maxHeight)).widthSizeClass == WindowWidthSizeClass.Expanded
+        val drawerBody: @Composable () -> Unit = {
+            DrawerContent(
+                vm = vm,
+                onNewNote = { vm.newNote(); scope.launch { drawerState.close() } },
+                onNewChecklist = { vm.newChecklist(); scope.launch { drawerState.close() } },
+                onOpenFile = { scope.launch { drawerState.close() }; openFile.launch(arrayOf("*/*")) },
+                onOpen = { vm.openNote(it.id); scope.launch { drawerState.close() } },
+                onPurge = { dialog = Dialog.Purge(it) },
+                onNewFolder = { dialog = Dialog.NewFolder },
+                onRenameFolder = { dialog = Dialog.RenameFolder(it) },
+                onDeleteFolder = { dialog = Dialog.DeleteFolder(it) },
+            )
+        }
+        val content: @Composable () -> Unit = {
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = {
+                            val renameLabel = stringResource(R.string.dialog_rename_title)
+                            // An automatic title (the first line, or "Untitled") is renamed by a tap; a title the user chose only by a
+                            // long press, so that it is not changed by accident. External documents keep their file name.
+                            val canRename = vm.canRename
+                            // A title the user chose has no tap action: no ripple and no "rename" tap label, only the long press.
+                            val titleClicks = when {
+                                !canRename -> Modifier
+                                vm.hasExplicitTitle -> Modifier
+                                    .pointerInput(Unit) { detectTapGestures(onLongPress = { dialog = Dialog.Rename }) }
+                                    .semantics { onLongClick(label = renameLabel) { dialog = Dialog.Rename; true } }
+                                else -> Modifier.combinedClickable(
+                                    onClickLabel = renameLabel,
+                                    onLongClickLabel = renameLabel,
+                                    onClick = { dialog = Dialog.Rename },
+                                    onLongClick = { dialog = Dialog.Rename },
+                                )
                             }
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = onOpenSearch) {
-                            Icon(Icons.Default.Search, contentDescription = stringResource(R.string.action_search))
-                        }
-                        IconButton(onClick = { menuOpen = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more_options))
-                        }
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false; editPage = false }) {
-                            if (editPage) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.selection_copy_markdown)) },
-                                onClick = {
-                                    menuOpen = false
-                                    editPage = false
-                                    // the selection, or - without one - the whole note
-                                    vm.markdownToCopy()?.let { clipboard.copy("Markdown", it) }
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_paste_markdown)) },
-                                enabled = !vm.readOnly,
-                                onClick = { menuOpen = false; editPage = false; clipboard.text()?.let { vm.pasteMarkdown(it) } },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_paste_checklist)) },
-                                enabled = !vm.readOnly,
-                                onClick = { menuOpen = false; editPage = false; clipboard.text()?.let { vm.pasteAsChecklist(it) } },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.menu_back)) },
-                                onClick = { editPage = false },
-                            )
-                            } else {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_find)) },
-                                onClick = { menuOpen = false; vm.startFind() },
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        stringResource(
-                                            if (vm.current?.favorite == true) R.string.action_unfavorite
-                                            else R.string.action_favorite,
-                                        ),
-                                    )
-                                },
-                                enabled = vm.hasNote,
-                                onClick = { menuOpen = false; vm.toggleFavorite() },
-                            )
-                            val smartChecked = vm.current?.smartChecklist == true
-                            val stateOn = stringResource(R.string.smart_checklist_on)
-                            val stateOff = stringResource(R.string.smart_checklist_off)
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        stringResource(R.string.action_smart_checklist),
-                                    )
-                                },
-                                enabled = vm.hasNote && !vm.readOnly,
-                                onClick = { menuOpen = false; vm.toggleSmartChecklist() },
-                                trailingIcon = { if (smartChecked) Icon(Icons.Default.Check, contentDescription = null) },
-                                modifier = Modifier.semantics { stateDescription = if (smartChecked) stateOn else stateOff },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_move_to_folder)) },
-                                enabled = vm.hasNote && vm.current?.isExternal != true,
-                                onClick = { menuOpen = false; dialog = Dialog.MoveToFolder },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_rename)) },
-                                enabled = vm.canRename,
-                                onClick = { menuOpen = false; dialog = Dialog.Rename },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_clear)) },
-                                enabled = vm.text.isNotEmpty() && !vm.readOnly,
-                                onClick = { menuOpen = false; dialog = Dialog.Clear },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_close)) },
-                                onClick = { menuOpen = false; vm.closeCurrent() },
-                            )
-                            // the same actions as the long-press menu of a tab (TabStrip)
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_close_others)) },
-                                enabled = vm.tabs.size > 1,
-                                onClick = { menuOpen = false; vm.closeOthers(vm.session.active) },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_close_all)) },
-                                enabled = vm.tabs.size > 1,
-                                onClick = { menuOpen = false; vm.closeAll() },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_edit_menu)) },
-                                onClick = { editPage = true },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_share)) },
-                                enabled = vm.hasNote,
-                                onClick = {
-                                    menuOpen = false
-                                    vm.share { title, markdown ->
-                                        // the share file is written off the main thread; only the intent is started here
-                                        scope.launch {
-                                            try {
-                                                val intent = withContext(Dispatchers.IO) { ShareHelper.createIntent(context, title, markdown) }
-                                                context.startActivity(intent)
-                                            } catch (e: CancellationException) {
-                                                throw e
-                                            } catch (e: Exception) {
-                                                vm.reportShareFailed()
-                                            }
-                                        }
-                                    }
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        stringResource(
-                                            if (vm.current?.isExternal == true) R.string.action_remove_external else R.string.action_delete,
-                                        ),
-                                    )
-                                },
-                                enabled = vm.hasNote,
-                                onClick = { menuOpen = false; dialog = Dialog.Delete },
-                            )
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_settings)) },
-                                onClick = { menuOpen = false; onOpenSettings() },
-                            )
-                            }
-                        }
-                    },
-                )
-            },
-        ) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding).imePadding(), contentAlignment = Alignment.TopCenter) {
-                // the writing area stays a comfortable width on a big screen
-                Column(Modifier.fillMaxHeight().widthIn(max = 920.dp)) {
-                if (vm.ready) {
-                    TabStrip(vm)
-                    FindBar(vm)
-                    if (vm.readOnly) {
-                        val reason = when (vm.readOnlyReason) {
-                            ReadOnlyReason.NoWriteGrant -> R.string.read_only_reason_no_grant
-                            ReadOnlyReason.ProviderRefuses -> R.string.read_only_reason_provider
-                            ReadOnlyReason.Unavailable -> R.string.read_only_reason_unknown
-                            null -> R.string.read_only_banner
-                        }
-                        NoticeBar(MaterialTheme.colorScheme.secondaryContainer, "read-only-banner") {
                             Text(
-                                text = stringResource(reason),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.weight(1f).padding(vertical = 6.dp),
+                                text = (vm.current?.title ?: stringResource(R.string.untitled)) +
+                                    if (vm.readOnly) " \u00B7 " + stringResource(R.string.read_only_short) else "",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = titleClicks.testTag("title"),
                             )
-                            if (vm.current?.isExternal == true && vm.readOnlyReason != ReadOnlyReason.ProviderRefuses) {
-                                TextButton(onClick = { openWritable.launch(arrayOf("*/*")) }, modifier = Modifier.testTag("open-writable")) {
-                                    Text(stringResource(R.string.action_open_writable))
+                        },
+                        navigationIcon = {
+                            if (!wide) {
+                                IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                    Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.open_drawer))
                                 }
                             }
-                        }
-                    }
-                    // a save that failed stays visible until a retry succeeds; the text is kept
-                    if (vm.saveFailed) {
-                        NoticeBar(MaterialTheme.colorScheme.errorContainer, "save-failed-banner") {
-                            Text(
-                                text = stringResource(R.string.save_failed_banner),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.weight(1f).padding(vertical = 6.dp),
-                            )
-                            TextButton(onClick = { vm.retrySave() }, modifier = Modifier.testTag("save-retry")) {
-                                Text(stringResource(R.string.save_retry))
+                        },
+                        actions = {
+                            IconButton(onClick = onOpenSearch) {
+                                Icon(Icons.Default.Search, contentDescription = stringResource(R.string.action_search))
                             }
-                        }
-                    }
-                    // the dialog was dismissed: the conflict stays until the user decides
-                    val conflict = vm.externalConflict
-                    if (conflict != null && !vm.conflictDialogVisible) {
-                        NoticeBar(MaterialTheme.colorScheme.errorContainer, "external-conflict-banner") {
-                            Text(
-                                text = stringResource(R.string.external_conflict_banner, conflict),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.weight(1f).padding(vertical = 6.dp),
-                            )
-                            TextButton(onClick = { vm.showConflictDialog() }, modifier = Modifier.testTag("external-conflict-decide")) {
-                                Text(stringResource(R.string.external_conflict_decide))
+                            IconButton(onClick = { menuOpen = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more_options))
                             }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false; editPage = false }) {
+                                if (editPage) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.selection_copy_markdown)) },
+                                        onClick = {
+                                            menuOpen = false
+                                            editPage = false
+                                            // the selection, or - without one - the whole note
+                                            vm.markdownToCopy()?.let { clipboard.copy("Markdown", it) }
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.action_paste_markdown)) },
+                                        enabled = !vm.readOnly,
+                                        onClick = { menuOpen = false; editPage = false; clipboard.text()?.let { vm.pasteMarkdown(it) } },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.action_paste_checklist)) },
+                                        enabled = !vm.readOnly,
+                                        onClick = { menuOpen = false; editPage = false; clipboard.text()?.let { vm.pasteAsChecklist(it) } },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.menu_back)) },
+                                        onClick = { editPage = false },
+                                    )
+                                } else {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.action_find)) },
+                                        onClick = { menuOpen = false; vm.startFind() },
+                                    )
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                stringResource(
+                                                    if (vm.current?.favorite == true) R.string.action_unfavorite
+                                                    else R.string.action_favorite,
+                                                ),
+                                            )
+                                        },
+                                        enabled = vm.hasNote,
+                                        onClick = { menuOpen = false; vm.toggleFavorite() },
+                                    )
+                                    val smartChecked = vm.current?.smartChecklist == true
+                                    val stateOn = stringResource(R.string.smart_checklist_on)
+                                    val stateOff = stringResource(R.string.smart_checklist_off)
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                stringResource(R.string.action_smart_checklist),
+                                            )
+                                        },
+                                        enabled = vm.hasNote && !vm.readOnly,
+                                        onClick = { menuOpen = false; vm.toggleSmartChecklist() },
+                                        trailingIcon = { if (smartChecked) Icon(Icons.Default.Check, contentDescription = null) },
+                                        modifier = Modifier.semantics { stateDescription = if (smartChecked) stateOn else stateOff },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.action_move_to_folder)) },
+                                        enabled = vm.hasNote && vm.current?.isExternal != true,
+                                        onClick = { menuOpen = false; dialog = Dialog.MoveToFolder },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.action_rename)) },
+                                        enabled = vm.canRename,
+                                        onClick = { menuOpen = false; dialog = Dialog.Rename },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.action_clear)) },
+                                        enabled = vm.text.isNotEmpty() && !vm.readOnly,
+                                        onClick = { menuOpen = false; dialog = Dialog.Clear },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.action_close)) },
+                                        onClick = { menuOpen = false; vm.closeCurrent() },
+                                    )
+                                    // the same actions as the long-press menu of a tab (TabStrip)
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.action_close_others)) },
+                                        enabled = vm.tabs.size > 1,
+                                        onClick = { menuOpen = false; vm.closeOthers(vm.session.active) },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.action_close_all)) },
+                                        enabled = vm.tabs.size > 1,
+                                        onClick = { menuOpen = false; vm.closeAll() },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.action_edit_menu)) },
+                                        onClick = { editPage = true },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.action_share)) },
+                                        enabled = vm.hasNote,
+                                        onClick = {
+                                            menuOpen = false
+                                            vm.share { title, markdown ->
+                                                // the share file is written off the main thread; only the intent is started here
+                                                scope.launch {
+                                                    try {
+                                                        val intent = withContext(Dispatchers.IO) { ShareHelper.createIntent(context, title, markdown) }
+                                                        context.startActivity(intent)
+                                                    } catch (e: CancellationException) {
+                                                        throw e
+                                                    } catch (e: Exception) {
+                                                        vm.reportShareFailed()
+                                                    }
+                                                }
+                                            }
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                stringResource(
+                                                    if (vm.current?.isExternal == true) R.string.action_remove_external else R.string.action_delete,
+                                                ),
+                                            )
+                                        },
+                                        enabled = vm.hasNote,
+                                        onClick = { menuOpen = false; dialog = Dialog.Delete },
+                                    )
+                                    HorizontalDivider()
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.action_settings)) },
+                                        onClick = { menuOpen = false; onOpenSettings() },
+                                    )
+                                }
+                            }
+                        },
+                    )
+                },
+            ) { padding ->
+                Box(Modifier.fillMaxSize().padding(padding).imePadding(), contentAlignment = Alignment.TopCenter) {
+                    // the writing area stays a comfortable width on a big screen
+                    Column(Modifier.fillMaxHeight().widthIn(max = 920.dp)) {
+                        if (vm.ready) {
+                            TabStrip(vm)
+                            FindBar(vm)
+                            if (vm.readOnly) {
+                                val reason = when (vm.readOnlyReason) {
+                                    ReadOnlyReason.NoWriteGrant -> R.string.read_only_reason_no_grant
+                                    ReadOnlyReason.ProviderRefuses -> R.string.read_only_reason_provider
+                                    ReadOnlyReason.Unavailable -> R.string.read_only_reason_unknown
+                                    null -> R.string.read_only_banner
+                                }
+                                NoticeBar(MaterialTheme.colorScheme.secondaryContainer, "read-only-banner") {
+                                    Text(
+                                        text = stringResource(reason),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.weight(1f).padding(vertical = 6.dp),
+                                    )
+                                    if (vm.current?.isExternal == true && vm.readOnlyReason != ReadOnlyReason.ProviderRefuses) {
+                                        TextButton(onClick = { openWritable.launch(arrayOf("*/*")) }, modifier = Modifier.testTag("open-writable")) {
+                                            Text(stringResource(R.string.action_open_writable))
+                                        }
+                                    }
+                                }
+                            }
+                            // a save that failed stays visible until a retry succeeds; the text is kept
+                            if (vm.saveFailed) {
+                                NoticeBar(MaterialTheme.colorScheme.errorContainer, "save-failed-banner") {
+                                    Text(
+                                        text = stringResource(R.string.save_failed_banner),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.weight(1f).padding(vertical = 6.dp),
+                                    )
+                                    TextButton(onClick = { vm.retrySave() }, modifier = Modifier.testTag("save-retry")) {
+                                        Text(stringResource(R.string.save_retry))
+                                    }
+                                }
+                            }
+                            // the dialog was dismissed: the conflict stays until the user decides
+                            val conflict = vm.externalConflict
+                            if (conflict != null && !vm.conflictDialogVisible) {
+                                NoticeBar(MaterialTheme.colorScheme.errorContainer, "external-conflict-banner") {
+                                    Text(
+                                        text = stringResource(R.string.external_conflict_banner, conflict),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.weight(1f).padding(vertical = 6.dp),
+                                    )
+                                    TextButton(onClick = { vm.showConflictDialog() }, modifier = Modifier.testTag("external-conflict-decide")) {
+                                        Text(stringResource(R.string.external_conflict_decide))
+                                    }
+                                }
+                            }
+                            RichEditor(vm, Modifier.fillMaxWidth().weight(1f))
+                            if (!vm.readOnly) FormattingBar(vm, Modifier.onSizeChanged { onFormattingBarHeight(with(density) { it.height.toDp() }) })
                         }
                     }
-                    RichEditor(vm, Modifier.fillMaxWidth().weight(1f))
-                    if (!vm.readOnly) FormattingBar(vm, Modifier.onSizeChanged { onFormattingBarHeight(with(density) { it.height.toDp() }) })
+                    // drawn over the editor, so it does not move the layout
+                    if (vm.busy) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("busy").semantics { contentDescription = working })
                 }
-                }
-                // drawn over the editor, so it does not move the layout
-                if (vm.busy) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("busy").semantics { contentDescription = working })
             }
         }
-    }
-    if (wide) {
-        PermanentNavigationDrawer(
-            drawerContent = { PermanentDrawerSheet(Modifier.width(320.dp).testTag("sidebar")) { drawerBody() } },
-            content = content,
-        )
-    } else {
-        ModalNavigationDrawer(
-            drawerState = drawerState,
-            drawerContent = { ModalDrawerSheet { drawerBody() } },
-            content = content,
-        )
-    }
+        if (wide) {
+            PermanentNavigationDrawer(
+                drawerContent = { PermanentDrawerSheet(Modifier.width(320.dp).testTag("sidebar")) { drawerBody() } },
+                content = content,
+            )
+        } else {
+            ModalNavigationDrawer(
+                drawerState = drawerState,
+                drawerContent = { ModalDrawerSheet { drawerBody() } },
+                content = content,
+            )
+        }
     }
 
     when (val d = dialog) {

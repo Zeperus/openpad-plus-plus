@@ -8,6 +8,8 @@ import io.github.zeperus.openpad.domain.NoteNotInTrashException
 import io.github.zeperus.openpad.domain.NoteSourceUnavailableException
 import io.github.zeperus.openpad.domain.NoteStorageException
 import io.github.zeperus.openpad.domain.NoteUnreadableException
+import java.io.File
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -19,8 +21,6 @@ import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.File
-import java.util.UUID
 
 /** External documents (Storage Access Framework): edited in place, never copied, never deleted by openPad++. */
 class ExternalDocumentsTest {
@@ -141,7 +141,8 @@ class ExternalDocumentsTest {
         assertEquals("second try", provider.text(uri))
     }
 
-    @Test(timeout = 20_000) fun `a hanging provider times out instead of freezing the repository`() = runBlocking {
+    @Test(timeout = 20_000)
+    fun `a hanging provider times out instead of freezing the repository`() = runBlocking {
         provider.put(uri, "t", name = "A.md")
         val r = FileNoteRepository(root, clock = { now++ }, newId = { UUID(0, ++ids).toString() }, external = provider, externalTimeoutMs = 150)
         val id = r.openExternal(uri, true).id

@@ -7,6 +7,8 @@ import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.PersistedSession
 import io.github.zeperus.openpad.domain.SettingsStore
 import io.github.zeperus.openpad.domain.StartupMode
+import java.io.File
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -25,8 +27,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.File
-import java.util.UUID
 
 /** Open documents, sessions and startup behaviour of the view model, on real files. */
 @OptIn(ExperimentalCoroutinesApi::class)

@@ -30,6 +30,7 @@ import io.github.zeperus.openpad.domain.StartupMode
 import io.github.zeperus.openpad.ui.NotesScreen
 import io.github.zeperus.openpad.ui.NotesViewModel
 import io.github.zeperus.openpad.ui.theme.OpenPadTheme
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -38,7 +39,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
 
 /**
  * Search notes by title and content, and find in note: counting the matches and stepping through them.

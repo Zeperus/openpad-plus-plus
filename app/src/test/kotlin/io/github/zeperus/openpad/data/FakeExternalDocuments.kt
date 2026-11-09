@@ -4,10 +4,10 @@ import io.github.zeperus.openpad.domain.ExternalDocuments
 import io.github.zeperus.openpad.domain.NoteSourceUnavailableException
 import io.github.zeperus.openpad.domain.ReadOnlyReason
 import io.github.zeperus.openpad.domain.WriteAccess
-import kotlinx.coroutines.delay
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.delay
 
 /** An in-memory document provider for tests. Thread-safe, because blocking tests call it from real I/O threads. */
 class FakeExternalDocuments : ExternalDocuments {

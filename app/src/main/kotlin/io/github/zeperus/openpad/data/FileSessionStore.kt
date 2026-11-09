@@ -2,6 +2,7 @@ package io.github.zeperus.openpad.data
 
 import io.github.zeperus.openpad.domain.PersistedSession
 import io.github.zeperus.openpad.domain.SessionStore
+import java.io.File
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -15,7 +16,6 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
-import java.io.File
 
 /**
  * The open-document session in its own small file (`session.json`), deliberately separate from `index.json` and

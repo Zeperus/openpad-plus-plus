@@ -31,8 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -58,9 +58,9 @@ import io.github.zeperus.openpad.editor.RichText
 import io.github.zeperus.openpad.markdown.Block
 import io.github.zeperus.openpad.markdown.MarkdownParser
 import io.github.zeperus.openpad.ui.icons.AppIcons
+import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.net.URI
 
 /** True for the raw blocks that are drawn as formatted content (the rest is shown as its Markdown source). */
 internal fun RawBlock.isRendered(): Boolean = this is RawBlock.Table || this is RawBlock.Image || (this is RawBlock.Html && simple != null)

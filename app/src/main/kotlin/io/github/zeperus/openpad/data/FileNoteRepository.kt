@@ -11,9 +11,6 @@ import io.github.zeperus.openpad.domain.InvalidFolderNameException
 import io.github.zeperus.openpad.domain.InvalidNoteNameException
 import io.github.zeperus.openpad.domain.NoExternalDocuments
 import io.github.zeperus.openpad.domain.NoteChangedExternallyException
-import io.github.zeperus.openpad.domain.ReadOnlyReason
-import io.github.zeperus.openpad.domain.WriteAccess
-import io.github.zeperus.openpad.domain.NoteSourceUnavailableException
 import io.github.zeperus.openpad.domain.NoteContent
 import io.github.zeperus.openpad.domain.NoteFileName
 import io.github.zeperus.openpad.domain.NoteId
@@ -23,26 +20,29 @@ import io.github.zeperus.openpad.domain.NoteNameConflictException
 import io.github.zeperus.openpad.domain.NoteNotFoundException
 import io.github.zeperus.openpad.domain.NoteNotInTrashException
 import io.github.zeperus.openpad.domain.NoteRepository
+import io.github.zeperus.openpad.domain.NoteSourceUnavailableException
 import io.github.zeperus.openpad.domain.NoteStorageException
 import io.github.zeperus.openpad.domain.NoteTitles
 import io.github.zeperus.openpad.domain.NoteUnreadableException
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlin.coroutines.cancellation.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
+import io.github.zeperus.openpad.domain.ReadOnlyReason
+import io.github.zeperus.openpad.domain.WriteAccess
 import java.io.File
 import java.nio.charset.CharacterCodingException
 import java.security.MessageDigest
 import java.util.UUID
+import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 /**
  * Notes as real `.md` files below [root]. **The file name is the note's id**, so a file can always be tied back
@@ -567,7 +567,7 @@ class FileNoteRepository internal constructor(
         title == base || (
             title.length > base.length + 1 && title.startsWith(base) && title[base.length] == ' ' &&
                 title.substring(base.length + 1).all { it in '0'..'9' }
-        )
+            )
 
     private suspend fun <T> locked(block: suspend (MutableMap<String, Entry>) -> T): T = withContext(dispatcher) {
         mutex.withLock {

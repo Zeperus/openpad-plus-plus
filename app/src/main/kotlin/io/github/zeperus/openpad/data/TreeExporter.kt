@@ -5,13 +5,13 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import io.github.zeperus.openpad.domain.ExportTarget
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.OutputStream
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Writes exported notes as new documents into a folder the user picked (ACTION_OPEN_DOCUMENT_TREE). Never overwrites: providers

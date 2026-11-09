@@ -5,6 +5,7 @@ import io.github.zeperus.openpad.data.FileSessionStore
 import io.github.zeperus.openpad.domain.SettingsStore
 import io.github.zeperus.openpad.domain.StartupMode
 import io.github.zeperus.openpad.editor.RowKind
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -20,7 +21,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.File
 
 /**
  * Destructive actions can be taken back: Clear is one undo step, and a note moved to the Trash can be brought back. The smart

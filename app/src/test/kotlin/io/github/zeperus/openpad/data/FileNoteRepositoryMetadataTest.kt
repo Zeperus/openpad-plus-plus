@@ -3,6 +3,8 @@ package io.github.zeperus.openpad.data
 import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteLists
 import io.github.zeperus.openpad.domain.NoteNotFoundException
+import java.io.File
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -18,8 +20,6 @@ import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.File
-import java.util.UUID
 
 /** Favorite and last-opened metadata: persistence, interaction with rename/trash, and index migration. */
 class FileNoteRepositoryMetadataTest {

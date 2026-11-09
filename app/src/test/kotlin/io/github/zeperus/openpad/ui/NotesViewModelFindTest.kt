@@ -4,6 +4,7 @@ import io.github.zeperus.openpad.data.FileNoteRepository
 import io.github.zeperus.openpad.data.FileSessionStore
 import io.github.zeperus.openpad.domain.SettingsStore
 import io.github.zeperus.openpad.domain.StartupMode
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -17,7 +18,6 @@ import org.junit.Assert.assertSame
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.File
 
 /** Find in note: the matches are searched again only when the document or the query changes, not on every caret move. */
 @OptIn(ExperimentalCoroutinesApi::class)

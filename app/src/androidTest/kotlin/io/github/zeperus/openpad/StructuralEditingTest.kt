@@ -6,13 +6,13 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.text.TextRange
 import androidx.test.core.app.ActivityScenario
@@ -21,13 +21,13 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.zeperus.openpad.domain.PersistedSession
 import io.github.zeperus.openpad.domain.StartupMode
 import io.github.zeperus.openpad.ui.editor.EditorDiagnostics
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
 
 /**
  * Regression tests for the real-device bug: a structural edit (paragraph <-> list item, leaving a list, Enter, Backspace,

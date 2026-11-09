@@ -1,8 +1,8 @@
 package io.github.zeperus.openpad.editor
 
 import io.github.zeperus.openpad.markdown.Block
-import io.github.zeperus.openpad.markdown.Inline
 import io.github.zeperus.openpad.markdown.CodeStyle
+import io.github.zeperus.openpad.markdown.Inline
 import io.github.zeperus.openpad.markdown.ListItem
 import io.github.zeperus.openpad.markdown.ListKind
 import io.github.zeperus.openpad.markdown.MarkdownParser
@@ -121,7 +121,7 @@ class EditorDocument internal constructor(
                 val firstOrigin = rows[start].origin?.block
                 while (i < rows.size && rows[i].kind == RowKind.Quote &&
                     (rows[i].origin == null || firstOrigin == null || rows[i].origin?.block == firstOrigin)
-                ) i++
+                    ) i++
             }
             is RowKind.ListItem -> {
                 // a top-level list: all following list rows up to the first row of a different list at depth 0
