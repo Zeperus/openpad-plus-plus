@@ -12,15 +12,17 @@ android {
         applicationId = "io.github.zeperus.openpad"
         minSdk = 28
         targetSdk = 37
-        versionCode = 9
-        versionName = "0.1.0-alpha.9"
+        versionCode = 10
+        versionName = "0.1.0-alpha.10"
         testInstrumentationRunner = "io.github.zeperus.openpad.OpenPadTestRunner"
         // Each instrumented test gets a fresh process and cleared app data, so "cold start" tests are real.
         testInstrumentationRunnerArguments["clearPackageData"] = "true"
+        // Test builds (debug, alpha) show measured editor timings in Settings; a final release does not.
+        buildConfigField("boolean", "DIAGNOSTICS", "false")
     }
 
     // The Alpha line is signed with ONE stable certificate (the one of v0.1.0-alpha.1/2). Its keystore lives outside the repository
-    // (~/.openpad-signing, see docs/storage.md "Signing"): when OPENPAD_KEYSTORE is set the debug build uses it, otherwise
+    // (~/.openpad-signing, see docs/storage.md "Signing"): when OPENPAD_KEYSTORE is set the debug and alpha builds use it, otherwise
     // Gradle falls back to its default debug key (fine for development and CI, but such APKs cannot update an Alpha install).
     val alphaKeystore: String? = providers.environmentVariable("OPENPAD_KEYSTORE").orNull
     if (alphaKeystore != null) {
@@ -35,11 +37,20 @@ android {
     buildTypes {
         debug {
             if (alphaKeystore != null) signingConfig = signingConfigs.getByName("alpha")
+            buildConfigField("boolean", "DIAGNOSTICS", "true")
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        // What testers install since Alpha 10: optimized and shrunk like a release and not debuggable (a debuggable build runs
+        // Compose several times slower and lets anyone with USB access read the notes), but still with the measured timings.
+        create("alpha") {
+            initWith(getByName("release"))
+            matchingFallbacks += "release"
+            signingConfig = signingConfigs.getByName(if (alphaKeystore != null) "alpha" else "debug")
+            buildConfigField("boolean", "DIAGNOSTICS", "true")
         }
     }
 
@@ -50,6 +61,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     testOptions {

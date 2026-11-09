@@ -32,8 +32,9 @@
     <string name="action_remove_external">Aus openPad++ entfernen…</string>
     <string name="read_only_banner">Schreibgeschützt: Diese Datei kann nicht geändert werden.</string>
     <string name="external_file">Externe Datei</string>
-    <string name="action_smart_checklist_on">Intelligente Checkliste: aus (einschalten)</string>
-    <string name="action_smart_checklist_off">Intelligente Checkliste: an (ausschalten)</string>
+    <string name="action_smart_checklist">Intelligente Checkliste</string>
+    <string name="state_on">An</string>
+    <string name="state_off">Aus</string>
     <string name="action_rename">Umbenennen…</string>
     <string name="action_clear">Notiz leeren…</string>
     <string name="action_delete">In den Papierkorb…</string>
@@ -189,4 +190,9 @@
     <string name="export_done_skipped">Übersprungene externe Dateien: %1$d</string>
     <string name="export_done_failed">Nicht exportiert: %1$s</string>
     <string name="export_done_more">" und %1$d weitere"</string>
+
+    <string name="working">Einen Moment…</string>
+    <string name="settings_diagnostics">Diagnose (Testversion)</string>
+    <string name="settings_frames">Bilder: %1$d · Ø %2$.1f ms · max %3$.1f ms · langsam (über 32 ms): %4$d</string>
+    <string name="settings_timing_reset">Messwerte zurücksetzen</string>
 </resources>

@@ -56,7 +56,7 @@ class LocalizationTest {
         assertEquals("Sitzung fortsetzen", de.getValue("startup_resume_session").text)
         assertEquals("Sitzung + leere Notiz", de.getValue("startup_resume_blank").text)
         assertEquals("Leere Notiz", de.getValue("startup_blank_note").text)
-        assertTrue(de.getValue("action_smart_checklist_on").text.contains("Intelligente Checkliste"))
+        assertTrue(de.getValue("action_smart_checklist").text.contains("Intelligente Checkliste"))
     }
 
     @Test fun `no user-visible text is written into the Compose code`() {
