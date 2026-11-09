@@ -317,10 +317,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                             DropdownMenuItem(
                                 text = {
                                     Text(
-                                        stringResource(
-                                            if (vm.current?.smartChecklist == true) R.string.action_smart_checklist_off
-                                            else R.string.action_smart_checklist_on,
-                                        ),
+                                        stringResource(R.string.action_smart_checklist),
                                     )
                                 },
                                 enabled = vm.hasNote && !vm.readOnly,

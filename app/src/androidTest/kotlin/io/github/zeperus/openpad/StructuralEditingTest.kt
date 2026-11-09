@@ -187,7 +187,7 @@ class StructuralEditingTest {
         val file = seed("- [ ] A\n- [ ] B\n- [ ] C\n")
         launch()
         waitForRows(listOf("A", "B", "C"))
-        overflow("Smart checklist: off (turn on)")
+        overflow("Smart checklist")
         rule.waitForIdle()
         return file
     }
@@ -234,7 +234,7 @@ class StructuralEditingTest {
         seed("- [ ] A\n- [ ] B\n- [ ] C\n")
         launch()
         waitForRows(listOf("A", "B", "C"))
-        overflow("Smart checklist: off (turn on)")
+        overflow("Smart checklist")
         rule.placeCaret(0, 1) // caret in "A"; the field is the one that must keep it
         rule.field().requestFocus()
         rule.onAllNodes(hasTestTag("checkbox"))[1].performClick() // B moves down
