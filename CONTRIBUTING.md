@@ -14,10 +14,11 @@ Please do not add features merely because other note apps have them.
 
 ```sh
 ./gradlew assembleDebug testDebugUnitTest lintDebug   # must pass before every PR
+ktlint "app/src/**/*.kt"                               # ktlint 1.8 with the rules in .editorconfig; `ktlint -F` fixes most findings
 ```
 
 - Small, focused commits using Conventional Commit prefixes (`feat:`, `fix:`, `test:`, `docs:`, `chore:`).
-- Open a pull request against `main`; CI runs build, unit tests and lint.
+- Open a pull request against `main`; CI runs ktlint, build (debug and the minified `alpha` type), unit tests and lint.
 - By contributing you agree your work is licensed GPL-3.0-or-later.
 
 ## Targeted test loops

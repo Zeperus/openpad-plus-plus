@@ -2,7 +2,46 @@
 
 All notable changes are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [Unreleased] - will be 0.1.0-alpha.10 (pre-release / test build)
+
+Follow-up of the design and code review of 2026-11-09.
+
+### Added
+- **The test build is now a real, optimized build** (`alpha` build type): shrunk and optimized like a release and no longer
+  debuggable - 4.6 MB instead of 36.7 MB, noticeably faster (a debuggable build runs the UI several times slower), and the notes
+  can no longer be read over USB debugging. Same certificate as every Alpha, so it installs over Alpha 9.
+- **Frame times in Settings -> Diagnostics** (test builds): next to the measured keystroke time, the number of frames drawn, their
+  average and longest duration and how many took longer than 32 ms, with *Reset measurements*. The keystroke time only covers the
+  document model; the frame times show what a long note really costs on the phone.
+- **Busy line** under the top bar when an action takes longer than about 0.4 s (for example a slow document provider), instead of
+  taps that seem to do nothing.
+- **Back closes the Find in note bar** (it used to leave the app).
+
+### Changed
+- **Own colours:** a colour scheme taken from the app icon (blue, sticky-note yellow, warm paper tones) in light and dark, in place
+  of the stock Material purple; the window background matches, so there is no colour jump at start.
+- **Icons instead of text symbols** in the formatting bar, the drawer (folders, external files), Settings and the image
+  placeholder: they look the same on every phone (text symbols depend on the device font, some came out as colour emoji).
+- **Menu:** *Find in note* is the first entry; *Smart checklist* is one entry with a check mark instead of "off (turn on)".
+- **Moving the caret is cheap:** a caret or selection move no longer rebuilds the editor's fields or copies the note's text
+  (before, it cost almost as much as typing a character); typing computes list numbers once instead of three times.
+- **Opening a note does not block the screen:** the note and its remembered undo history are prepared in the background.
+- **Search notes** reads each note once per search session instead of once per typed character.
+- After ticking a box in a Smart Checklist the view is no longer pulled back when you scroll right away.
+- The buttons of the link dialog wrap instead of being cut off on a narrow screen.
+
+### Fixed
+- **Text typed while another note was being opened could be lost.** Between tapping a tab (or a note, or "Open with") and the
+  other note appearing, the old note was still editable; what was typed in that moment was dropped without notice - up to 15 s
+  with a slow document provider. It is now saved before the editor changes; if that save fails, the note stays open with its text
+  and the "Not saved" bar.
+- "Changed in another app" -> *Reload*: if a step of the reload failed, a later autosave could overwrite the other app's version.
+  The comparison state now only moves once the other version is really shown.
+
+### Development
+- ktlint in CI (imports, indentation, line length; `.editorconfig`), a log of failures in logcat (`AppLog`: class and place of an
+  error, never its message, a title or note text), the `alpha` build on every push, and on the emulator a smoke test of that build
+  (start, type, restart) plus screenshots of it and of the previous release.
 
 ## [0.1.0-alpha.9] - 2026-10-31 (pre-release / test build)
 

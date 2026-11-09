@@ -14,7 +14,7 @@ Inspired by the simplicity of Notepad++, built for Android. Your notes are plain
 
 ## Status
 
-**Alpha (`0.1.0-alpha.9`, test build).** Notes are edited as formatted text (headings, bold/italic/strike, lists,
+**Alpha (`0.1.0-alpha.10` in preparation; latest published test build: `0.1.0-alpha.9`).** Notes are edited as formatted text (headings, bold/italic/strike, lists,
 checklists incl. a Smart Checklist mode, quotes, code, links, tables), native text selection across paragraphs, lists and checklists (drag the system's own handles) with copy / cut / copy as Markdown, search, simple folders, English and German UI (selectable in Settings) and saved as plain Markdown; tabs, Favorites, Recent, Trash, external `.md` files
 (Open with / file picker, protected against overwriting changes made by other apps), Share and *Export all notes* work. Keep backups of important notes while testing, and see
 [docs/alpha-test-checklist.md](docs/alpha-test-checklist.md). See [docs/roadmap.md](docs/roadmap.md) for the milestones and
@@ -27,6 +27,7 @@ Requirements: JDK 17 and the Android SDK (platform 37, build-tools 36). Android 
 ```sh
 export ANDROID_HOME=~/Android/Sdk      # or create local.properties with sdk.dir=...
 ./gradlew assembleDebug                 # debug APK in app/build/outputs/apk/debug/
+./gradlew assembleAlpha                 # the optimized, non-debuggable test build (app/build/outputs/apk/alpha/)
 ./gradlew testDebugUnitTest lintDebug   # unit tests + Android lint
 ```
 
