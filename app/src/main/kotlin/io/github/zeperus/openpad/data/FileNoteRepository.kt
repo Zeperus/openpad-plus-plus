@@ -18,6 +18,7 @@ import io.github.zeperus.openpad.domain.NoteContent
 import io.github.zeperus.openpad.domain.NoteFileName
 import io.github.zeperus.openpad.domain.NoteId
 import io.github.zeperus.openpad.domain.NoteInfo
+import io.github.zeperus.openpad.domain.NoteListsSnapshot
 import io.github.zeperus.openpad.domain.NoteNameConflictException
 import io.github.zeperus.openpad.domain.NoteNotFoundException
 import io.github.zeperus.openpad.domain.NoteNotInTrashException
@@ -156,15 +157,22 @@ class FileNoteRepository internal constructor(
         entry.toInfo()
     }
 
-    override suspend fun listNotes(): List<NoteInfo> = locked { notes ->
-        notes.values.filter { it.trashedAt == null }.map { it.toInfo() }
-            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+    override suspend fun listNotes(): List<NoteInfo> = locked { notes -> activeInfos(notes) }
+
+    override suspend fun listTrash(): List<NoteInfo> = locked { notes -> trashedInfos(notes) }
+
+    /** The three lists from one consistent state, with one dispatcher hop and one lock instead of three. */
+    override suspend fun lists(): NoteListsSnapshot = locked { notes ->
+        NoteListsSnapshot(activeInfos(notes), trashedInfos(notes), folderInfos())
     }
 
-    override suspend fun listTrash(): List<NoteInfo> = locked { notes ->
+    private fun activeInfos(notes: Map<String, Entry>): List<NoteInfo> =
+        notes.values.filter { it.trashedAt == null }.map { it.toInfo() }
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+
+    private fun trashedInfos(notes: Map<String, Entry>): List<NoteInfo> =
         notes.values.filter { it.trashedAt != null }.map { it.toInfo() }
             .sortedByDescending { it.trashedAt }
-    }
 
     override suspend fun openNote(id: NoteId): NoteContent = locked { notes ->
         val entry = notes[id.value] ?: throw NoteNotFoundException(id)
@@ -231,9 +239,11 @@ class FileNoteRepository internal constructor(
 
     // ---- Folders (metadata only) -----------------------------------------------------------------------------
 
-    override suspend fun listFolders(): List<FolderInfo> = locked {
+    override suspend fun listFolders(): List<FolderInfo> = locked { folderInfos() }
+
+    /** Call under the lock: [folders] is (re)loaded together with the entries. */
+    private fun folderInfos(): List<FolderInfo> =
         folders.values.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }).map { FolderInfo(it.id, it.name) }
-    }
 
     override suspend fun createFolder(name: String): FolderInfo = locked { notes ->
         val clean = cleanFolderName(name)

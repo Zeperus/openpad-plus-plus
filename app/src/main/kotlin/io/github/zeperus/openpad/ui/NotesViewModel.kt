@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import io.github.zeperus.openpad.domain.AppLog
 import io.github.zeperus.openpad.domain.Autosaver
 import io.github.zeperus.openpad.domain.EditorStateStore
 import io.github.zeperus.openpad.domain.DocumentTab
@@ -46,6 +47,7 @@ import io.github.zeperus.openpad.editor.DocumentSelection
 import io.github.zeperus.openpad.editor.DocumentSelections
 import io.github.zeperus.openpad.editor.EditorDocument
 import io.github.zeperus.openpad.editor.EditorRow
+import io.github.zeperus.openpad.editor.EditorStateCodec
 import io.github.zeperus.openpad.editor.RichText
 import io.github.zeperus.openpad.editor.Segment
 import io.github.zeperus.openpad.editor.Snapshot
@@ -58,9 +60,11 @@ import io.github.zeperus.openpad.editor.SpanKind
 import io.github.zeperus.openpad.ui.editor.EditorDiagnostics
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Find in note: the text searched for, where it occurs in the open note, and which occurrence is the current one. */
@@ -82,11 +86,15 @@ enum class RenameResult { Ok, InvalidName, NameTaken, Failed }
  *
  * There is exactly one live [NoteEditor] - the active tab's. Switching tabs saves it and loads the other note
  * from the repository, so unsaved text only ever exists in the active editor. Every state change runs under
- * [actions] (including autosave), so draft materialization can never interleave with a tab operation.
+ * [actions] (including autosave), so draft materialization can never interleave with a tab operation. Typing does not
+ * wait for [actions]: while an action waits for the disk or a provider, the old note is still on screen and editable, so
+ * what was typed meanwhile is written right before its editor is replaced (see [replaceEditor]).
  *
  * The text the user edits is an [EditorSession] (rows, caret, undo history) on top of that Markdown: every edit goes
  * keyboard -> operation -> document model -> Markdown -> [NoteEditor] -> autosave. Each open tab keeps its session, so
  * caret and undo history survive switching tabs; a session is only reused if its Markdown is exactly what is on disk.
+ * Preparing the session of a note that is opened (parsing it, applying remembered history) happens off the main thread
+ * (see [prepareSession]).
  */
 class NotesViewModel(
     private val repository: NoteRepository,
@@ -98,7 +106,10 @@ class NotesViewModel(
     private val exportTarget: ExportTarget? = null,
     /** Where the global search computes its hits (tests pass a test dispatcher). */
     private val searchDispatcher: CoroutineDispatcher = Dispatchers.Default,
-    /** Where the remembered editor state is encoded for the file (tests pass a test dispatcher). */
+    /**
+     * Where the remembered editor state is encoded for the file, and where the session of a note that is opened is prepared
+     * (parsed, history applied) - never the main thread in the app (tests pass a test dispatcher).
+     */
     private val editorStateDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
     private val actions = Mutex() // user actions and autosave run one at a time, in order
@@ -125,7 +136,11 @@ class NotesViewModel(
     var ui by mutableStateOf(snapshot())
         private set
 
-    /** A selection that spans rows (the native text selection only works inside one row); null when there is none. */
+    /**
+     * The text selected in the editor, as positions in the document (set by [onFieldSelection]). A text field holds several rows,
+     * so the native selection can reach across rows: paragraphs, headings and list items. Copy, Cut, Paste and the formatting and
+     * list buttons work on it. Null when nothing is selected.
+     */
     var docSelection by mutableStateOf<DocumentSelection?>(null)
         private set
 
@@ -234,6 +249,17 @@ class NotesViewModel(
     var exportResult by mutableStateOf<ExportResult?>(null)
         private set
 
+    /**
+     * True while an action has been waiting for its turn or running for longer than [BUSY_AFTER_MILLIS] (a slow document provider,
+     * a long note): the UI shows that the app is working, so a tap that seems to do nothing is explained. Quick actions never set
+     * it, so nothing flickers. False again as soon as no slow action is left, however the action ended.
+     */
+    var busy by mutableStateOf(false)
+        private set
+
+    /** Actions that are slow in the sense of [busy] and have not ended yet. Main thread only. */
+    private var slowActions = 0
+
     /** The tab strip. The draft's title is empty here; the UI shows its own "New note" label for it. */
     val tabs: List<TabItem> get() = session.items(notes, draftTitle = "")
 
@@ -257,8 +283,8 @@ class NotesViewModel(
                     sessionStore.save(persisted)
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: Exception) {
-                    // ignore
+                } catch (e: Exception) {
+                    AppLog.e(LOG_TAG, "The open tabs could not be saved", e) // the next change writes them again
                 }
             }
         }
@@ -270,6 +296,7 @@ class NotesViewModel(
             if (e is NoteChangedExternallyException) {
                 raiseConflict(e.title)
             } else {
+                AppLog.e(LOG_TAG, "Autosave failed", e)
                 message = UserMessage.SaveFailed
                 saveFailed = true
             }
@@ -376,19 +403,13 @@ class NotesViewModel(
     /** Opens a search result from [noteSearch] and shows where the text is (Find in note, prefilled with the query). */
     fun openFromSearch(id: NoteId, query: String) = act {
         openNoteInternal(id)
-        if (!readOnlyOrBlank()) find = computeFind(query, 0)
+        if (ready) find = computeFind(query, 0)
     }
-
-    private fun readOnlyOrBlank() = !ready
 
     // ---- Selections that span rows -----------------------------------------------------------------------------
 
     /** What "Copy as Markdown" from the menu copies: the selection, or - without one - the whole note. */
     fun markdownToCopy(): String? = selectedText(markdown = true) ?: text.trimEnd('\n').takeIf { it.isNotEmpty() }
-
-    fun clearSelection() {
-        docSelection = null
-    }
 
     /** What Copy puts on the clipboard: the cross-row selection, else the native selection in the row; null if nothing is selected. */
     fun selectedText(markdown: Boolean): String? {
@@ -405,12 +426,6 @@ class NotesViewModel(
         edit { it.deleteSelection(selection) }
         docSelection = null
         return text
-    }
-
-    fun deleteSelection() {
-        val selection = currentSelection() ?: return
-        edit { it.deleteSelection(selection) }
-        docSelection = null
     }
 
     /** Paste: replaces the selection (if any) with [text], as plain text. Without a selection it is inserted at the caret. */
@@ -445,7 +460,8 @@ class NotesViewModel(
         if (!ready || readOnly || ListImport.checklistItems(text).isEmpty()) return@act
         val blank = rich.doc.rows.all { it.kind == RowKind.Paragraph && it.text.isEmpty }
         if (blank && !rich.smartChecklist) {
-            if (editor.isDraft) switchTo(NoteEditor(repository, smartOnCreate = true)) // a blank page: the note will be created as a smart checklist
+            // a blank page: the note will be created as a smart checklist (a draft that holds text is never replaced, it becomes the note)
+            if (editor.isDraft && !editor.hasUnsavedChanges) switchTo(NoteEditor(repository, smartOnCreate = true))
             else if (editor.setSmartChecklist(true)) { rich.smartChecklist = true; afterEditorChanged() }
         }
         val selection = currentSelection()
@@ -522,6 +538,7 @@ class NotesViewModel(
         val changed = try {
             operation(rich)
         } catch (e: Exception) {
+            AppLog.e(LOG_TAG, "An editing operation failed", e)
             message = UserMessage.ActionFailed
             false
         }
@@ -538,6 +555,7 @@ class NotesViewModel(
         val markdown = try {
             rich.markdown()
         } catch (e: Exception) {
+            AppLog.e(LOG_TAG, "The document could not be turned into Markdown", e)
             message = UserMessage.SaveFailed // the previous Markdown stays in the editor and on disk
             return
         }
@@ -601,31 +619,55 @@ class NotesViewModel(
 
     /**
      * Conflict answer "use the other app's version": the open external document shows what the file holds now. The text the user
-     * had is not lost: if it differs from the file, it is kept as a new internal note titled [copyTitle] (it shows in FILES).
+     * had is not lost: if it differs from the file, it is kept as a new internal note titled [copyTitle] (it shows in FILES). Text
+     * typed while the document is being read goes into that copy too.
      */
     fun reloadExternal(copyTitle: String) = act {
         if (externalConflict == null) return@act // a second tap: the first answer already resolved the conflict
         val id = editor.info?.id ?: return@act
         if (conflictNoteId != null && conflictNoteId != id) { clearConflict(); return@act }
-        val mine = editor.text
         // The copy comes first: if it cannot be made, the conflict and the baseline stay as they are.
+        var copy: NoteId? = null
+        var copied = ""
+        val mine = editor.text
         if (mine.isNotBlank()) {
-            val copy = repository.createNote(mine)
-            val wanted = NoteFileName.sanitizeOrNull(copyTitle)
-            if (wanted != null) {
-                try {
-                    repository.renameNote(copy.id, NoteFileName.uniqueTitle(wanted, notes.map { it.title }))
-                } catch (e: NoteStorageException) {
-                    // the copy keeps its automatic title
-                }
-            }
+            copy = createCopy(mine, copyTitle)
+            copied = mine
         }
         val content = repository.openNote(id)
+        val next = NoteEditor(repository, NoteContent(content.info, content.text, content.readOnly, content.readOnlyReason))
+        val prepared = prepareSession(next, reuseKept = false)
+        // The document stayed editable while it was read: what was typed meanwhile is the user's version too, so the copy gets it.
+        // The last comparison and the replacement below have no suspension point between them.
+        while (editor.text != copied && (copy != null || editor.text.isNotBlank())) {
+            val latest = editor.text
+            val existing = copy
+            if (existing == null) {
+                copy = createCopy(latest, copyTitle)
+            } else {
+                repository.saveNote(existing, latest)
+            }
+            copied = latest
+        }
         sessions.remove(id)
-        switchTo(NoteEditor(repository, NoteContent(content.info, content.text, content.readOnly, content.readOnlyReason)))
+        switchTo(next, prepared)
         clearConflict()
         saveFailed = false
         refreshLists()
+    }
+
+    /** Keeps [text] as a new internal note, titled [copyTitle] if that is a valid name (made unique), else automatically. */
+    private suspend fun createCopy(text: String, copyTitle: String): NoteId {
+        val copy = repository.createNote(text)
+        val wanted = NoteFileName.sanitizeOrNull(copyTitle)
+        if (wanted != null) {
+            try {
+                repository.renameNote(copy.id, NoteFileName.uniqueTitle(wanted, notes.map { it.title }))
+            } catch (e: NoteStorageException) {
+                // the copy keeps its automatic title
+            }
+        }
+        return copy.id
     }
 
     /** Conflict answer "keep mine": the editor's text overwrites the document, which is allowed once for the current on-disk version. */
@@ -651,8 +693,8 @@ class NotesViewModel(
 
     /**
      * The app is shown again (ON_START). An external document that another app changed meanwhile is reloaded, but only if
-     * the editor holds nothing unsaved. If text is typed while the document is being read, that text is kept and the
-     * conflict is asked instead.
+     * the editor holds nothing unsaved. If text is typed while the document is being read or prepared, that text is kept and
+     * the conflict is asked instead.
      */
     fun onAppResumed() = act {
         if (!ready) return@act
@@ -668,9 +710,12 @@ class NotesViewModel(
         } catch (e: NoteUnreadableException) {
             null
         } ?: return@act // not changed outside, nothing to compare, or the document cannot be read right now
+        val next = NoteEditor(repository, NoteContent(info, version.text, before.readOnly, before.readOnlyReason))
+        val prepared = prepareSession(next, reuseKept = false)
+        // No suspension point between this check and the replacement: nothing typed until now can be replaced unseen.
         if (editor !== before || before.hasUnsavedChanges || before.text != textBefore) { raiseConflict(info.title); return@act }
         sessions.remove(info.id)
-        switchTo(NoteEditor(repository, NoteContent(info, version.text, before.readOnly, before.readOnlyReason)))
+        switchTo(next, prepared)
         // Only now, with the editor showing the other version, the baseline moves. The autosave waits for [actions], so no save runs before this.
         repository.adoptExternal(info.id, version)
     }
@@ -705,6 +750,7 @@ class NotesViewModel(
                 }
                 exportResult = ExportResult(written, failed, skipped)
             } catch (e: NoteStorageException) {
+                AppLog.e(LOG_TAG, "Export failed", e)
                 message = UserMessage.ActionFailed // the notes could not be listed: nothing was exported
             } finally {
                 exporting = false
@@ -723,7 +769,8 @@ class NotesViewModel(
         saveNow()
         commitSession(session.newDraft())
         syncEditor(markOpened = false)
-        if (editor.isDraft && editor.smartOnCreate) switchTo(NoteEditor(repository)) // a blank checklist page becomes a plain one
+        // a blank checklist page becomes a plain one (one that holds text is never replaced)
+        if (editor.isDraft && editor.smartOnCreate && !editor.hasUnsavedChanges) switchTo(NoteEditor(repository))
     }
 
     /**
@@ -734,7 +781,7 @@ class NotesViewModel(
         saveNow()
         commitSession(session.newDraft())
         syncEditor(markOpened = false)
-        if (!editor.isDraft) return@act
+        if (!editor.isDraft || editor.hasUnsavedChanges) return@act // a page that holds text is never replaced
         switchTo(NoteEditor(repository, smartOnCreate = true))
         rich.moveCursor(Cursor(rich.doc.rows.first().id, 0))
         publish()
@@ -961,11 +1008,13 @@ class NotesViewModel(
      */
     fun deleteCurrent() = act {
         val external = current?.takeIf { it.isExternal }
+        // In both cases the note being left is gone from openPad++ before the next one is shown, so there is nothing that text typed
+        // into it after this tap could be written to: syncEditor does not try (it would only fail and keep the removed note open).
         if (external != null) { // an external file is only removed from openPad++, never deleted
             saveNow()
             repository.forgetExternal(external.id)
             commitSession(session.remove(external.id))
-            syncEditor(markOpened = true)
+            syncEditor(markOpened = true, keepTyped = false)
             refreshLists()
             return@act
         }
@@ -975,7 +1024,7 @@ class NotesViewModel(
             message = UserMessage.MovedToTrash
             val s = session
             commitSession(if (s.activeNoteId == null) s.close(DocumentTab.Draft) else s.remove(trashed.id))
-            syncEditor(markOpened = true)
+            syncEditor(markOpened = true, keepTyped = false)
         }
         refreshLists()
     }
@@ -1049,8 +1098,11 @@ class NotesViewModel(
         return if (wasActive) session.active else tab
     }
 
-    /** Writes the active editor if it has pending changes; a draft that just became a note joins the session. */
-    private suspend fun saveNow() {
+    /**
+     * Writes the active editor if it has pending changes; a draft that just became a note joins the session. Returns true if
+     * something was written.
+     */
+    private suspend fun saveNow(): Boolean {
         val saved = editor
         val wasDraft = saved.isDraft
         val wrote = try {
@@ -1071,6 +1123,7 @@ class NotesViewModel(
             }
             refreshLists()
         }
+        return wrote
     }
 
     /** After an editor operation that may also have created the note (rename, favorite): update state. */
@@ -1096,33 +1149,76 @@ class NotesViewModel(
     /**
      * Makes the editor show the active tab. A note that cannot be loaded (deleted meanwhile, not valid UTF-8) is
      * dropped from the session and the next tab is tried; this ends at the latest with a blank page.
+     *
+     * [keepTyped]: text typed into the editor being left while this runs is saved before it is replaced (see [replaceEditor]).
+     * Only false when that editor's note was just removed from openPad++, so there is nothing left to save it to.
      */
-    private suspend fun syncEditor(markOpened: Boolean) {
+    private suspend fun syncEditor(markOpened: Boolean, keepTyped: Boolean = true) {
         while (true) {
             val id = session.activeNoteId
             if (id == null) {
-                if (!editor.isDraft) switchTo(NoteEditor(repository))
+                if (!editor.isDraft) replaceEditor(NoteEditor(repository), null, keepTyped)
                 return
             }
             if (editor.info?.id == id) return
-            try {
+            val next = try {
                 val content = repository.openNote(id)
                 val info = if (markOpened) repository.markOpened(id) else content.info
-                switchTo(NoteEditor(repository, NoteContent(info, content.text, content.readOnly, content.readOnlyReason)))
-                return
+                NoteEditor(repository, NoteContent(info, content.text, content.readOnly, content.readOnlyReason))
             } catch (e: NoteSourceUnavailableException) {
                 message = UserMessage.SourceUnavailable
                 commitSession(session.remove(id))
+                continue
             } catch (e: NoteUnreadableException) {
                 message = UserMessage.NoteUnreadable
                 commitSession(session.remove(id))
+                continue
             } catch (e: NoteNotFoundException) {
                 commitSession(session.remove(id))
+                continue
             }
+            // outside the try: a failure to save the editor being left says nothing about the note being opened
+            replaceEditor(next, prepareSession(next), keepTyped)
+            return
         }
     }
 
-    private fun switchTo(next: NoteEditor) {
+    /**
+     * Replaces the editor by [next] (with its [prepared] session, if any). The editor being left was editable all the time the
+     * action waited - for a save, a file, a document provider, the preparation of [next] - so text typed into it meanwhile is
+     * written first ([keepTyped]). The last check that nothing is pending and the replacement have no suspension point between
+     * them: no typed text can stay behind in an editor that goes away.
+     *
+     * If that save fails, nothing is replaced: the text stays on screen, the failure shows (the "not saved" bar, or the conflict
+     * question for an external document another app changed), and the tab strip shows the editor's own tab as the active one
+     * again, so it agrees with what is on screen (a tab that was being closed comes back, at the end).
+     */
+    private suspend fun replaceEditor(next: NoteEditor, prepared: EditorSession?, keepTyped: Boolean) {
+        if (keepTyped) {
+            try {
+                while (editor.hasUnsavedChanges) {
+                    val leaving = editor
+                    val wasDraft = leaving.isDraft
+                    // A save that writes nothing while changes are pending cannot happen ([NoteEditor.save]); never spin on it.
+                    if (!saveNow()) break
+                    // A blank page typed into while another tab was being opened is a note now: the blank page's tab becomes its
+                    // tab (when the blank page was the active tab, [saveNow] did that already and no blank page is left).
+                    val created = leaving.info
+                    if (wasDraft && created != null && session.draftOpen) commitSession(session.materializeDraft(created.id))
+                }
+            } catch (e: NoteStorageException) {
+                commitSession(editor.info?.id?.let { session.open(it) } ?: session.newDraft())
+                throw e
+            }
+        }
+        switchTo(next, prepared)
+    }
+
+    /**
+     * Shows [next]. Not suspending, so nothing can be typed into the editor being left while this runs. [prepared] is the session
+     * from [prepareSession]; without one (a blank page, or a kept session that changed meanwhile) it is made here.
+     */
+    private fun switchTo(next: NoteEditor, prepared: EditorSession? = null) {
         val started = System.nanoTime()
         markStateDirty() // the tab being left keeps its caret and history for later
         editor = next
@@ -1132,7 +1228,7 @@ class NotesViewModel(
         readOnlyReason = next.readOnlyReason
         docSelection = null
         find = null
-        rich = sessionFor(next)
+        rich = sessionFor(next, prepared)
         rich.smartChecklist = next.info?.smartChecklist ?: next.smartOnCreate
         cursorEpoch++
         if (rich.smartChecklist && !next.readOnly && rich.settleLoaded()) commitMarkdown() // loading puts a smart checklist in order
@@ -1142,38 +1238,90 @@ class NotesViewModel(
         EditorDiagnostics.recordOpen(System.nanoTime() - started)
     }
 
-    /** The open tab's own session if it still matches the file exactly (keeps caret and undo), otherwise a fresh one. */
-    private fun sessionFor(next: NoteEditor): EditorSession {
+    /**
+     * [prepared], or else the open tab's own session if it still matches the file exactly (keeps caret and undo), the remembered
+     * one, or a fresh one. Registers it as the tab's session.
+     */
+    private fun sessionFor(next: NoteEditor, prepared: EditorSession?): EditorSession {
         val id = next.info?.id
-        val kept = id?.let { sessions[it] }?.takeIf { runCatching { it.markdown() == next.text }.getOrDefault(false) }
-        val restored = if (kept == null && id != null) editorStatePersistence.restore(id, next.text) else null
-        val result = kept ?: restored ?: EditorSession(if (id == null && next.smartOnCreate) EditorDocument.emptyChecklist() else EditorDocument.fromMarkdown(next.text))
+        val result = prepared ?: run {
+            val kept = id?.let { sessions[it] }?.takeIf { runCatching { it.markdown() == next.text }.getOrDefault(false) }
+            val restored = if (kept == null && id != null) editorStatePersistence.restore(id, next.text) else null
+            kept ?: restored ?: EditorSession(if (id == null && next.smartOnCreate) EditorDocument.emptyChecklist() else EditorDocument.fromMarkdown(next.text))
+        }
         if (id != null) sessions[id] = result
         sessions.keys.retainAll((session.noteIds + listOfNotNull(id)).toSet())
         return result
     }
 
+    /**
+     * The session for [next], a saved note about to be shown, prepared on [editorStateDispatcher]: comparing the tab's kept
+     * session with the file, applying the remembered caret and undo history (each step a whole document) and parsing the note
+     * can take hundreds of milliseconds for a long note, which must not stall the main thread. Same choice as [sessionFor]:
+     * the kept session if its Markdown is exactly the file ([reuseKept]), else the remembered state for exactly this text, else
+     * a fresh session.
+     *
+     * Only immutable values cross threads: the text, the remembered state, and the kept session's [EditorDocument] (immutable),
+     * read here on the main thread. The kept session itself is never touched off the main thread. Nothing changes it meanwhile
+     * either: it belongs to a tab that is not the active one (the active tab's session is [rich]; [next] is not the active note,
+     * or its kept session was dropped), and only [rich] is ever edited. It is reused only if it is still the tab's session with
+     * that same document when the work is done; otherwise null is returned and [sessionFor] decides on the main thread.
+     * The returned session is new or the kept one; the caller installs it on the main thread.
+     */
+    private suspend fun prepareSession(next: NoteEditor, reuseKept: Boolean = true): EditorSession? {
+        val id = next.info?.id ?: return null // a blank page costs nothing: made in [switchTo]
+        val text = next.text
+        val kept = if (reuseKept) sessions[id] else null
+        val keptDoc = kept?.doc
+        val state = editorStatePersistence.stateOf(id) // an immutable value, read here on the main thread
+        val made = withContext(editorStateDispatcher) {
+            if (keptDoc != null && runCatching { keptDoc.toMarkdown() == text }.getOrDefault(false)) {
+                null // the kept session matches the file
+            } else {
+                state?.let { EditorStateCodec.restore(text, it) } ?: EditorSession(EditorDocument.fromMarkdown(text))
+            }
+        }
+        return made ?: kept?.takeIf { sessions[id] === it && it.doc === keptDoc }
+    }
+
     private suspend fun refreshLists() {
-        val all = repository.listNotes()
-        notes = all
-        favorites = NoteLists.favorites(all)
-        recent = NoteLists.recent(all)
-        trash = repository.listTrash()
-        folders = repository.listFolders()
+        val lists = repository.lists()
+        notes = lists.notes
+        favorites = NoteLists.favorites(lists.notes)
+        recent = NoteLists.recent(lists.notes)
+        trash = lists.trash
+        folders = lists.folders
     }
 
     private fun act(block: suspend () -> Unit) {
         scope.launch {
-            actions.withLock {
-                saveFailedNow = false
-                try {
-                    block()
-                } catch (e: NoteChangedExternallyException) {
-                    raiseConflict(e.title) // asked, not failed: the user decides what happens to the document
-                } catch (e: NoteStorageException) {
-                    // a failed save already says so; anything else is a failed action
-                    message = if (saveFailedNow) UserMessage.SaveFailed else UserMessage.ActionFailed
+            // [busy] is set if this action is still waiting or running after BUSY_AFTER_MILLIS, and reset when it ends however it ends
+            var slow = false
+            val watch = launch {
+                delay(BUSY_AFTER_MILLIS)
+                slow = true
+                slowActions++
+                busy = true
+            }
+            try {
+                actions.withLock {
                     saveFailedNow = false
+                    try {
+                        block()
+                    } catch (e: NoteChangedExternallyException) {
+                        raiseConflict(e.title) // asked, not failed: the user decides what happens to the document
+                    } catch (e: NoteStorageException) {
+                        AppLog.e(LOG_TAG, "An action failed", e)
+                        // a failed save already says so; anything else is a failed action
+                        message = if (saveFailedNow) UserMessage.SaveFailed else UserMessage.ActionFailed
+                        saveFailedNow = false
+                    }
+                }
+            } finally {
+                watch.cancel() // no timer outlives the action
+                if (slow) {
+                    slowActions--
+                    busy = slowActions > 0
                 }
             }
         }
@@ -1195,5 +1343,12 @@ class NotesViewModel(
         externalConflict = null
         conflictNoteId = null
         conflictDialogVisible = false
+    }
+
+    companion object {
+        /** How long an action may wait or run before [busy] says so: long enough that quick actions never make it flicker. */
+        internal const val BUSY_AFTER_MILLIS = 400L
+
+        private const val LOG_TAG = "NotesViewModel"
     }
 }

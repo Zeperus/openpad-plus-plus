@@ -1,5 +1,6 @@
 package io.github.zeperus.openpad.ui.editor
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -14,8 +15,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,6 +34,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -44,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.zeperus.openpad.R
@@ -52,6 +57,7 @@ import io.github.zeperus.openpad.editor.RawBlock
 import io.github.zeperus.openpad.editor.RichText
 import io.github.zeperus.openpad.markdown.Block
 import io.github.zeperus.openpad.markdown.MarkdownParser
+import io.github.zeperus.openpad.ui.icons.AppIcons
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.URI
@@ -105,7 +111,7 @@ private fun TableCell(text: AnnotatedString, align: RawBlock.Align, header: Bool
     Box(
         Modifier
             .background(if (header) colors.surfaceVariant else colors.background)
-            .border(androidx.compose.ui.unit.Dp.Hairline, colors.outline)
+            .border(Dp.Hairline, colors.outline)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         contentAlignment = when (align) {
             RawBlock.Align.Start -> Alignment.TopStart
@@ -208,7 +214,8 @@ private fun ImagePlaceholder(image: RawBlock.Image, remote: Boolean, loading: Bo
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         val typo = LocalEditorTypography.current
-        Text("🖼", style = MaterialTheme.typography.headlineSmall.copy(fontSize = (typo.body * 1.5f).sp, lineHeight = (typo.body * 1.9f).sp))
+        val iconSize = with(LocalDensity.current) { (typo.body * 1.5f).sp.toDp() }
+        Icon(imageVector = AppIcons.Image, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(iconSize))
         Column(Modifier.weight(1f)) {
             Text(name, style = MaterialTheme.typography.bodyLarge.copy(fontSize = typo.body.sp, lineHeight = typo.bodyLineHeight.sp))
             Text(where, style = MaterialTheme.typography.bodySmall.copy(fontSize = typo.caption.sp, lineHeight = (typo.caption * 1.35f).sp), color = colors.onSurfaceVariant)
@@ -223,7 +230,7 @@ private fun ImagePlaceholder(image: RawBlock.Image, remote: Boolean, loading: Bo
 }
 
 /** Decodes a content image at a sensible size. Any failure (no permission, not an image, too large) is just "no image". */
-private fun loadBitmap(context: android.content.Context, uri: Uri): ImageBitmap? = try {
+private fun loadBitmap(context: Context, uri: Uri): ImageBitmap? = try {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
     var sample = 1

@@ -1,5 +1,6 @@
 package io.github.zeperus.openpad.ui.editor
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.ScrollState
@@ -7,12 +8,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +24,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Surface
@@ -44,6 +49,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -52,10 +58,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.zeperus.openpad.R
@@ -64,6 +66,7 @@ import io.github.zeperus.openpad.editor.SpanKind
 import io.github.zeperus.openpad.markdown.CodeStyle
 import io.github.zeperus.openpad.ui.EditorUi
 import io.github.zeperus.openpad.ui.NotesViewModel
+import io.github.zeperus.openpad.ui.icons.AppIcons
 import kotlinx.coroutines.launch
 
 private val BarElevation = 3.dp
@@ -90,11 +93,18 @@ fun FormattingBar(vm: NotesViewModel, modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Order: the most used actions come first, so they are in view on a narrow phone without scrolling.
-            FormatButton("↶", stringResource(R.string.format_undo), false, ui.canUndo) { vm.undo() }
-            FormatButton("↷", stringResource(R.string.format_redo), false, ui.canRedo) { vm.redo() }
+            FormatButton("", stringResource(R.string.format_undo), false, ui.canUndo, icon = AppIcons.Undo) { vm.undo() }
+            FormatButton("", stringResource(R.string.format_redo), false, ui.canRedo, icon = AppIcons.Redo) { vm.redo() }
             Divider()
             Box {
-                FormatButton(paragraphLabel(kind), stringResource(R.string.format_paragraph_style), selected = false, enabled = ui.cursor != null && kind != RowKind.Raw, wide = true) { styleMenu = true }
+                FormatButton(
+                    paragraphLabel(kind),
+                    stringResource(R.string.format_paragraph_style),
+                    selected = false,
+                    enabled = ui.cursor != null && kind != RowKind.Raw,
+                    wide = true,
+                    icon = AppIcons.FormatQuote.takeIf { kind == RowKind.Quote },
+                ) { styleMenu = true }
                 DropdownMenu(expanded = styleMenu, onDismissRequest = { styleMenu = false }) {
                     val items = listOf(
                         R.string.format_text to RowKind.Paragraph,
@@ -113,20 +123,20 @@ fun FormattingBar(vm: NotesViewModel, modifier: Modifier = Modifier) {
                     }
                 }
             }
-            FormatButton("B", stringResource(R.string.format_bold), SpanKind.Bold in ui.active, inlineOk, bold = true) { vm.toggleStyle(SpanKind.Bold) }
-            FormatButton("I", stringResource(R.string.format_italic), SpanKind.Italic in ui.active, inlineOk, italic = true) { vm.toggleStyle(SpanKind.Italic) }
+            FormatButton("", stringResource(R.string.format_bold), SpanKind.Bold in ui.active, inlineOk, icon = AppIcons.FormatBold) { vm.toggleStyle(SpanKind.Bold) }
+            FormatButton("", stringResource(R.string.format_italic), SpanKind.Italic in ui.active, inlineOk, icon = AppIcons.FormatItalic) { vm.toggleStyle(SpanKind.Italic) }
             Divider()
-            FormatButton("•", stringResource(R.string.format_bullets), listKind != null && !listKind.list.ordered && listKind.checked == null, ui.cursor != null) { vm.toggleList(false) }
-            FormatButton("1.", stringResource(R.string.format_numbers), listKind != null && listKind.list.ordered, ui.cursor != null) { vm.toggleList(true) }
-            FormatButton("☑", stringResource(R.string.format_tasks), listKind?.checked != null, ui.cursor != null) { vm.toggleTask() }
+            FormatButton("", stringResource(R.string.format_bullets), listKind != null && !listKind.list.ordered && listKind.checked == null, ui.cursor != null, icon = AppIcons.FormatListBulleted) { vm.toggleList(false) }
+            FormatButton("", stringResource(R.string.format_numbers), listKind != null && listKind.list.ordered, ui.cursor != null, icon = AppIcons.FormatListNumbered) { vm.toggleList(true) }
+            FormatButton("", stringResource(R.string.format_tasks), listKind?.checked != null, ui.cursor != null, icon = AppIcons.CheckBox) { vm.toggleTask() }
             Divider()
-            FormatButton("S", stringResource(R.string.format_strike), SpanKind.Strike in ui.active, inlineOk, strike = true) { vm.toggleStyle(SpanKind.Strike) }
-            FormatButton("</>", stringResource(R.string.format_code), SpanKind.Code in ui.active, inlineOk, mono = true) { vm.toggleStyle(SpanKind.Code) }
-            FormatButton("🔗︎", stringResource(R.string.format_link), ui.link != null, inlineOk) { linkDialog = true }
+            FormatButton("", stringResource(R.string.format_strike), SpanKind.Strike in ui.active, inlineOk, icon = AppIcons.StrikethroughS) { vm.toggleStyle(SpanKind.Strike) }
+            FormatButton("", stringResource(R.string.format_code), SpanKind.Code in ui.active, inlineOk, icon = AppIcons.Code) { vm.toggleStyle(SpanKind.Code) }
+            FormatButton("", stringResource(R.string.format_link), ui.link != null, inlineOk, icon = AppIcons.Link) { linkDialog = true }
             Divider()
-            FormatButton("⇤", stringResource(R.string.format_outdent), false, listKind != null) { vm.outdent() }
-            FormatButton("⇥", stringResource(R.string.format_indent), false, listKind != null) { vm.indent() }
-            FormatButton("―", stringResource(R.string.format_rule), false, ui.cursor != null) { vm.insertRule() }
+            FormatButton("", stringResource(R.string.format_outdent), false, listKind != null, icon = AppIcons.FormatIndentDecrease) { vm.outdent() }
+            FormatButton("", stringResource(R.string.format_indent), false, listKind != null, icon = AppIcons.FormatIndentIncrease) { vm.indent() }
+            FormatButton("", stringResource(R.string.format_rule), false, ui.cursor != null, icon = AppIcons.HorizontalRule) { vm.insertRule() }
         }
     }
 
@@ -136,7 +146,7 @@ fun FormattingBar(vm: NotesViewModel, modifier: Modifier = Modifier) {
 @Composable
 private fun paragraphLabel(kind: RowKind?): String = when (kind) {
     is RowKind.Heading -> "H${kind.level}"
-    RowKind.Quote -> "❝"
+    RowKind.Quote -> "" // drawn as an icon instead
     is RowKind.Code -> "{ }"
     else -> "Aa"
 }
@@ -182,10 +192,7 @@ private fun FormatButton(
     selected: Boolean,
     enabled: Boolean,
     wide: Boolean = false,
-    bold: Boolean = false,
-    italic: Boolean = false,
-    strike: Boolean = false,
-    mono: Boolean = false,
+    icon: ImageVector? = null,
     onClick: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -215,20 +222,18 @@ private fun FormatButton(
                 )
                 .semantics { contentDescription = description; this.selected = selected },
         ) {
-            Text(
-                text = label,
-                fontSize = 16.sp,
-                fontWeight = if (bold) FontWeight.Bold else null,
-                fontStyle = if (italic) FontStyle.Italic else null,
-                fontFamily = if (mono) FontFamily.Monospace else null,
-                textDecoration = if (strike) TextDecoration.LineThrough else null,
-                color = if (enabled) colors.onSurface else colors.onSurface.copy(alpha = 0.38f),
-            )
+            val tint = if (enabled) colors.onSurface else colors.onSurface.copy(alpha = 0.38f)
+            if (icon != null) {
+                Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+            } else {
+                Text(text = label, fontSize = 16.sp, color = tint)
+            }
         }
     }
 }
 
 /** Adds, changes or removes the link at the selection. Opening it is a separate, deliberate button. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LinkDialog(ui: EditorUi, onApply: (String) -> Unit, onRemove: () -> Unit, onDismiss: () -> Unit) {
     var url by remember { mutableStateOf(ui.link?.href.orEmpty()) }
@@ -251,7 +256,7 @@ private fun LinkDialog(ui: EditorUi, onApply: (String) -> Unit, onRemove: () -> 
             }
         },
         dismissButton = {
-            Row {
+            FlowRow {
                 if (ui.link != null) {
                     TextButton(onClick = { openLink(context, ui.link.href.orEmpty()) }) { Text(stringResource(R.string.link_open)) }
                     TextButton(onClick = { onRemove(); onDismiss() }) { Text(stringResource(R.string.link_remove)) }
@@ -262,7 +267,7 @@ private fun LinkDialog(ui: EditorUi, onApply: (String) -> Unit, onRemove: () -> 
     )
 }
 
-private fun openLink(context: android.content.Context, href: String) {
+private fun openLink(context: Context, href: String) {
     val uri = runCatching { Uri.parse(href.trim()) }.getOrNull() ?: return
     if (uri.scheme !in setOf("http", "https", "mailto", "tel")) return
     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }

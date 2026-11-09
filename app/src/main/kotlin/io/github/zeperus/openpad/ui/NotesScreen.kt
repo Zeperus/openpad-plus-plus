@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
@@ -29,6 +30,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,7 +43,6 @@ import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.material3.Scaffold
@@ -71,8 +72,16 @@ import androidx.compose.ui.unit.dp
 import io.github.zeperus.openpad.R
 import io.github.zeperus.openpad.ui.editor.FormattingBar
 import io.github.zeperus.openpad.ui.editor.RichEditor
+import io.github.zeperus.openpad.data.OpenWritableDocument
 import io.github.zeperus.openpad.domain.FolderInfo
 import io.github.zeperus.openpad.domain.NoteInfo
+import io.github.zeperus.openpad.domain.ReadOnlyReason
+import io.github.zeperus.openpad.ui.editor.rememberAppClipboard
+import android.net.Uri
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.unit.Dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -164,6 +173,8 @@ fun NotesScreen(vm: NotesViewModel) {
         }
     }
     val showingEditor = !showSettings && !showSearch
+    // measured height of the formatting bar, so the snackbar sits just above it
+    var barHeight by remember { mutableStateOf(0.dp) }
     Box(Modifier.fillMaxSize()) {
         if (showSettings) {
             SettingsScreen(vm, onBack = { showSettings = false })
@@ -179,20 +190,35 @@ fun NotesScreen(vm: NotesViewModel) {
                 },
             )
         } else {
-            NotesContent(vm, onOpenSettings = { showSettings = true }, onOpenSearch = { showSearch = true })
+            NotesContent(
+                vm,
+                onOpenSettings = { showSettings = true },
+                onOpenSearch = { showSearch = true },
+                onFormattingBarHeight = { barHeight = it },
+            )
         }
         // above the formatting bar while the notes screen shows it, so the bar stays tappable
         SnackbarHost(
             snackbar,
-            Modifier.align(Alignment.BottomCenter).imePadding().navigationBarsPadding().padding(bottom = if (showingEditor) 64.dp else 0.dp),
+            Modifier.align(Alignment.BottomCenter).imePadding().navigationBarsPadding().padding(bottom = if (showingEditor) barHeight + 8.dp else 0.dp),
         )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
-private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenSearch: () -> Unit) {
+private fun NotesContent(
+    vm: NotesViewModel,
+    onOpenSettings: () -> Unit,
+    onOpenSearch: () -> Unit,
+    onFormattingBarHeight: (Dp) -> Unit,
+) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val density = LocalDensity.current
+    val working = stringResource(R.string.working)
+    // no formatting bar (read-only, or not loaded yet): the snackbar must not keep the height of an old bar
+    val formattingBarShown = vm.ready && !vm.readOnly
+    LaunchedEffect(formattingBarShown) { if (!formattingBarShown) onFormattingBarHeight(0.dp) }
     val scope = rememberCoroutineScope()
     // the open dialog, the overflow menu and its second page survive a rotation
     val dialogStateSaver = remember(vm) { dialogSaver(vm) }
@@ -200,16 +226,16 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
     var menuOpen by rememberSaveable { mutableStateOf(false) }
     var editPage by rememberSaveable { mutableStateOf(false) } // the overflow menu's second page: select / copy / paste
     val context = LocalContext.current
-    val clipboard = io.github.zeperus.openpad.ui.editor.rememberAppClipboard()
+    val clipboard = rememberAppClipboard()
     // The system file picker: the document stays where it is and is edited in place.
-    val openFile = rememberLauncherForActivityResult(io.github.zeperus.openpad.data.OpenWritableDocument()) { uri ->
+    val openFile = rememberLauncherForActivityResult(OpenWritableDocument()) { uri ->
         if (uri != null) vm.openExternal(uri.toString(), ExternalAccess.takePersistable(context.contentResolver, uri))
     }
 
     // "Open with write access": pick the same file again, this time asking for write access (the picker opens next to it)
     val currentUri = vm.current?.externalUri
     val openWritable = rememberLauncherForActivityResult(
-        remember(currentUri) { io.github.zeperus.openpad.data.OpenWritableDocument(currentUri?.let { android.net.Uri.parse(it) }) },
+        remember(currentUri) { OpenWritableDocument(currentUri?.let { Uri.parse(it) }) },
     ) { uri ->
         if (uri != null) vm.upgradeExternal(uri.toString(), ExternalAccess.takePersistable(context.contentResolver, uri))
     }
@@ -303,6 +329,10 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                             )
                             } else {
                             DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_find)) },
+                                onClick = { menuOpen = false; vm.startFind() },
+                            )
+                            DropdownMenuItem(
                                 text = {
                                     Text(
                                         stringResource(
@@ -314,6 +344,9 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                                 enabled = vm.hasNote,
                                 onClick = { menuOpen = false; vm.toggleFavorite() },
                             )
+                            val smartChecked = vm.current?.smartChecklist == true
+                            val stateOn = stringResource(R.string.state_on)
+                            val stateOff = stringResource(R.string.state_off)
                             DropdownMenuItem(
                                 text = {
                                     Text(
@@ -322,6 +355,8 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                                 },
                                 enabled = vm.hasNote && !vm.readOnly,
                                 onClick = { menuOpen = false; vm.toggleSmartChecklist() },
+                                trailingIcon = { if (smartChecked) Icon(Icons.Default.Check, contentDescription = null) },
+                                modifier = Modifier.semantics { stateDescription = if (smartChecked) stateOn else stateOff },
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_move_to_folder)) },
@@ -352,10 +387,6 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                                 text = { Text(stringResource(R.string.action_close_all)) },
                                 enabled = vm.tabs.size > 1,
                                 onClick = { menuOpen = false; vm.closeAll() },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_find)) },
-                                onClick = { menuOpen = false; vm.startFind() },
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_edit_menu)) },
@@ -411,9 +442,9 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                     FindBar(vm)
                     if (vm.readOnly) {
                         val reason = when (vm.readOnlyReason) {
-                            io.github.zeperus.openpad.domain.ReadOnlyReason.NoWriteGrant -> R.string.read_only_reason_no_grant
-                            io.github.zeperus.openpad.domain.ReadOnlyReason.ProviderRefuses -> R.string.read_only_reason_provider
-                            io.github.zeperus.openpad.domain.ReadOnlyReason.Unavailable -> R.string.read_only_reason_unknown
+                            ReadOnlyReason.NoWriteGrant -> R.string.read_only_reason_no_grant
+                            ReadOnlyReason.ProviderRefuses -> R.string.read_only_reason_provider
+                            ReadOnlyReason.Unavailable -> R.string.read_only_reason_unknown
                             null -> R.string.read_only_banner
                         }
                         NoticeBar(MaterialTheme.colorScheme.secondaryContainer, "read-only-banner") {
@@ -423,7 +454,7 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                                 modifier = Modifier.weight(1f).padding(vertical = 6.dp),
                             )
-                            if (vm.current?.isExternal == true && vm.readOnlyReason != io.github.zeperus.openpad.domain.ReadOnlyReason.ProviderRefuses) {
+                            if (vm.current?.isExternal == true && vm.readOnlyReason != ReadOnlyReason.ProviderRefuses) {
                                 TextButton(onClick = { openWritable.launch(arrayOf("*/*")) }, modifier = Modifier.testTag("open-writable")) {
                                     Text(stringResource(R.string.action_open_writable))
                                 }
@@ -460,9 +491,11 @@ private fun NotesContent(vm: NotesViewModel, onOpenSettings: () -> Unit, onOpenS
                         }
                     }
                     RichEditor(vm, Modifier.fillMaxWidth().weight(1f))
-                    if (!vm.readOnly) FormattingBar(vm)
+                    if (!vm.readOnly) FormattingBar(vm, Modifier.onSizeChanged { onFormattingBarHeight(with(density) { it.height.toDp() }) })
                 }
                 }
+                // drawn over the editor, so it does not move the layout
+                if (vm.busy) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("busy").semantics { contentDescription = working })
             }
         }
     }

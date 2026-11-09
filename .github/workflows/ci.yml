@@ -24,7 +24,8 @@ jobs:
           "$SDKMANAGER" "platforms;android-37.0" "build-tools;36.0.0" "platform-tools"
       - uses: gradle/actions/setup-gradle@v4
       - name: Build, unit tests and lint
-        run: ./gradlew assembleDebug testDebugUnitTest lintDebug -Popenpad.fullProperties=true
+        # assembleAlpha: the minified build testers install must at least build (R8) on every push
+        run: ./gradlew assembleDebug assembleAlpha testDebugUnitTest lintDebug -Popenpad.fullProperties=true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -32,3 +33,4 @@ jobs:
           path: |
             app/build/reports/
             app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/alpha/*.apk

@@ -34,6 +34,13 @@ interface NoteRepository {
     /** Folders, sorted by name (case-insensitive). */
     suspend fun listFolders(): List<FolderInfo>
 
+    /**
+     * [listNotes], [listTrash] and [listFolders] in one call - what the drawer shows, refreshed after most actions. The lists are
+     * exactly those of the three methods. Implementations should override this to read them in one step; the default simply
+     * calls the three.
+     */
+    suspend fun lists(): NoteListsSnapshot = NoteListsSnapshot(listNotes(), listTrash(), listFolders())
+
     /** Creates a folder. Throws [InvalidFolderNameException] or [FolderNameConflictException]. */
     suspend fun createFolder(name: String): FolderInfo
 
@@ -79,6 +86,9 @@ interface NoteRepository {
     /** Only notes that are already in the Trash can be deleted permanently. */
     suspend fun deletePermanently(id: NoteId)
 }
+
+/** The result of [NoteRepository.lists]: active notes (by title), the Trash (most recently trashed first) and the folders (by name). */
+data class NoteListsSnapshot(val notes: List<NoteInfo>, val trash: List<NoteInfo>, val folders: List<FolderInfo>)
 
 /** A version of an external document read by checkExternal: its text and an opaque token for adoptExternal. */
 class ExternalVersion(val text: String, val token: String)

@@ -61,6 +61,12 @@ class EditorStatePersistence(
     /** The remembered session for exactly this [text] (same fingerprint), or null: nothing remembered, or the note changed since. */
     fun restore(id: NoteId, text: String): EditorSession? = states[id.value]?.let { EditorStateCodec.restore(text, it) }
 
+    /**
+     * The remembered state of a note as a value (null: nothing remembered). For callers that apply it themselves, e.g. off the
+     * main thread; like [restore] it must be called on the main thread, and the state is only valid for the text it was made for.
+     */
+    fun stateOf(id: NoteId): PersistedEditorState? = states[id.value]
+
     /** The caret or undo history of an open note changed: it is written after an idle moment (see [Autosaver]). */
     fun markDirty(id: NoteId) {
         dirty += id

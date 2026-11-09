@@ -130,12 +130,62 @@ internal const val FIELD_PREFIX = "\u200B"
 
 internal fun fieldTextOf(segment: Segment) = FIELD_PREFIX + segment.text
 
+/** True if [field] is exactly `fieldTextOf` a segment whose text is [body] - compared where it is, without building that string. */
+internal fun fieldShows(field: CharSequence, body: CharSequence): Boolean {
+    val p = FIELD_PREFIX.length
+    if (field.length != p + body.length) return false
+    for (i in 0 until p) if (field[i] != FIELD_PREFIX[i]) return false
+    for (i in 0 until body.length) if (field[p + i] != body[i]) return false
+    return true
+}
+
+/** True if [a] and [b] hold the same characters - compared where they are, without copying either. */
+internal fun sameChars(a: CharSequence, b: CharSequence): Boolean {
+    if (a === b) return true
+    if (a.length != b.length) return false
+    if (a is String && b is String) return a == b
+    for (i in 0 until a.length) if (a[i] != b[i]) return false
+    return true
+}
+
+/**
+ * True if [a] and [b] consist of the very same row objects, in the same order. Rows are immutable and an edit shares the rows it does
+ * not touch, so two such segments have the same text, offsets, kinds, spans and numbers: they are drawn exactly alike.
+ */
+internal fun sameRows(a: Segment, b: Segment): Boolean {
+    if (a === b) return true
+    val x = a.rows
+    val y = b.rows
+    if (x.size != y.size) return false
+    for (i in x.indices) if (x[i] !== y[i]) return false
+    return true
+}
+
 internal class DecorationInput(
     val segment: Segment,
     val numbers: Map<Long, Int>,
     val matches: Map<Long, List<IntRange>>,
     val currentMatch: FindMatch?,
-)
+) {
+    /** True if this already draws [segment] with [matches] and [currentMatch]: publishing them again would draw the same thing. */
+    fun drawsSame(segment: Segment, matches: Map<Long, List<IntRange>>, currentMatch: FindMatch?): Boolean =
+        sameRows(this.segment, segment) && this.matches == matches && this.currentMatch == currentMatch
+}
+
+/** The list numbers of a segment ([Numbering.of]), computed once per segment and reused while its rows are the same row objects. */
+internal class SegmentNumbers {
+    private var segment: Segment? = null
+    private var numbers: Map<Long, Int> = emptyMap()
+
+    fun of(segment: Segment): Map<Long, Int> {
+        val last = this.segment
+        if (last == null || !sameRows(last, segment)) {
+            numbers = Numbering.of(segment.rows)
+            this.segment = segment
+        }
+        return numbers
+    }
+}
 
 /** The state one segment field shares between the composition, the input and output transformations and the view model. */
 internal class SegmentController(
@@ -148,6 +198,13 @@ internal class SegmentController(
     var appliedEpoch = -1
     val decoration = mutableStateOf<DecorationInput?>(null)
     var layout by mutableStateOf<(() -> TextLayoutResult?)?>(null)
+
+    /**
+     * Told of every new text layout as it is made (RichEditor keeps it to scroll to a line). A plain field, not state: it is set by
+     * the composition and read during layout, which must not observe it. It no longer waits for the next recomposition, since a
+     * caret move does not recompose the field any more.
+     */
+    var layoutListener: ((() -> TextLayoutResult?)?) -> Unit = {}
 
     /** The last touch on the field (in the field's coordinates) and when it happened: the caret a tap produces is checked against it. */
     var lastTouch: Offset? = null
@@ -183,14 +240,25 @@ internal class SegmentController(
         return Segments.containing(doc, id, sourceRows())
     }
 
+    private val numbering = SegmentNumbers()
+
+    /** The list numbers of [segment], computed once per segment (the overlays, the decoration and the input share them). */
+    fun numbersFor(segment: Segment): Map<Long, Int> = numbering.of(segment)
+
+    /**
+     * Hands the output transformation what to draw. [decoration] is compared by instance, so a new value makes the whole field's
+     * styling run again: when the current one already draws the same thing (same rows, equal matches) it is kept.
+     */
     fun publishDecoration(segment: Segment, matches: Map<Long, List<IntRange>>, currentMatch: FindMatch?) {
-        decoration.value = DecorationInput(segment, Numbering.of(segment.rows), matches, currentMatch)
+        val now = decoration.value
+        if (now != null && now.drawsSame(segment, matches, currentMatch)) return
+        decoration.value = DecorationInput(segment, numbersFor(segment), matches, currentMatch)
     }
 
     /** Writes the model's text into the field if it differs, keeping the caret on the same logical place. */
     fun syncFromModel(state: TextFieldState, segment: Segment, epoch: Int) {
-        val wanted = fieldTextOf(segment)
-        if (state.text.toString() != wanted) {
+        if (!fieldShows(state.text, segment.text)) { // compared in place: no copy of the note's text when nothing changed
+            val wanted = fieldTextOf(segment)
             val logical = lastSegment.let { old -> positionOf(old, state.selection) }
             state.edit {
                 replaceMinimal(this, wanted)
@@ -233,9 +301,9 @@ internal class SegmentController(
 /** Turns every user edit of the field into a document operation, before it is committed. */
 internal class SegmentInput(private val controller: SegmentController) : InputTransformation {
     override fun TextFieldBuffer.transformInput() {
-        val oldField = originalText.toString()
-        val newField = asCharSequence().toString()
-        if (oldField == newField) { // only the caret or the keyboard's composing text moved: the caret never goes in front of the marker
+        // only the caret or the keyboard's composing text moved: the caret never goes in front of the marker (compared in place, the
+        // texts are only copied for a real edit)
+        if (sameChars(originalText, asCharSequence())) {
             if (selection.min < 1) selection = TextRange(max(1, selection.start), max(1, selection.end))
             if (selection.collapsed && selection != originalSelection) { // a tap placed the caret: it belongs to the row that was tapped
                 val fixed = controller.correctedTapOffset(selection.start)
@@ -243,8 +311,10 @@ internal class SegmentInput(private val controller: SegmentController) : InputTr
             }
             return
         }
+        val oldField = originalText.toString()
+        val newField = asCharSequence().toString()
         val segment = controller.current()
-        if (segment == null || oldField != fieldTextOf(segment)) { // the field and the model have drifted apart: show the model's text
+        if (segment == null || !fieldShows(oldField, segment.text)) { // the field and the model have drifted apart: show the model's text
             revertAllChanges()
             return
         }
@@ -269,12 +339,12 @@ internal class SegmentInput(private val controller: SegmentController) : InputTr
         val doc = controller.vm.ui.doc
         val anchor = controller.vm.ui.cursor?.rowId?.takeIf { doc.row(it) != null } ?: segment.ids.first { doc.row(it) != null }
         val next = Segments.containing(doc, anchor, controller.sourceRows()) ?: return
-        val wanted = fieldTextOf(next)
-        if (wanted != asCharSequence().toString()) SegmentController.replaceMinimal(this, wanted)
+        if (!fieldShows(asCharSequence(), next.text)) SegmentController.replaceMinimal(this, fieldTextOf(next))
+        val shown = FIELD_PREFIX.length + next.text.length // the length of fieldTextOf(next), which the field now holds
         val cursor = controller.vm.ui.cursor
         val a = cursor?.let { next.absolute(DocumentPosition(it.rowId, it.start)) }
         val b = cursor?.let { if (it.start != it.end) next.absolute(DocumentPosition(it.rowId, it.end)) else a }
-        selection = if (a != null && b != null) TextRange(a + 1, b + 1) else TextRange(min(max(1, selection.start), wanted.length), min(max(1, selection.end), wanted.length))
+        selection = if (a != null && b != null) TextRange(a + 1, b + 1) else TextRange(min(max(1, selection.start), shown), min(max(1, selection.end), shown))
         controller.lastSegment = next
         controller.publishDecoration(next, controller.decoration.value?.matches.orEmpty(), controller.decoration.value?.currentMatch)
     }
@@ -421,10 +491,17 @@ internal fun SegmentField(
     val scrollHold = LocalScrollHold.current
     val styles = remember(colors, density, typography.base) { RowStyles(colors, density, spanColors, typography) }
 
+    // Read in the composition, so that a caret the model moves (focusEnd, focusRow, an Undo that only moves the caret) recomposes this
+    // field even when nothing else it is given has changed; the SideEffect below applies it. (A caret the user moves changes no
+    // cursorEpoch and recomposes nothing.)
+    @Suppress("UNUSED_VARIABLE")
+    val observedEpoch = vm.cursorEpoch
+
     // the model's text and decorations go into the field before the next frame is drawn
     SideEffect {
         controller.syncFromModel(state, segment, vm.cursorEpoch)
         controller.publishDecoration(segment, matches, currentMatch)
+        controller.layoutListener = onLayoutProvider
         onLayoutProvider(controller.layout)
     }
     DisposableEffect(Unit) {
@@ -465,7 +542,7 @@ internal fun SegmentField(
     val primary = colors.primary
     val codeBackground = colors.surfaceVariant
     val rowsNow by rememberUpdatedState(segment)
-    val numbersNow = remember(segment) { Numbering.of(segment.rows) }
+    val numbersNow = controller.numbersFor(segment)
     val copyLabel = stringResource(R.string.selection_copy)
     val cutLabel = stringResource(R.string.selection_cut)
     val markdownLabel = stringResource(R.string.selection_copy_markdown)
@@ -566,7 +643,11 @@ internal fun SegmentField(
             textStyle = textStyle,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             lineLimits = TextFieldLineLimits.MultiLine(),
-            onTextLayout = { getResult -> controller.layout = getResult },
+            // the layout is handed on at once (the field is no longer recomposed by every caret move, which used to hand it on)
+            onTextLayout = { getResult ->
+                controller.layout = getResult
+                controller.layoutListener(getResult)
+            },
             cursorBrush = SolidColor(colors.primary),
             decorator = TextFieldDecorator { inner ->
                 Box {

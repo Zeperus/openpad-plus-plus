@@ -2,6 +2,10 @@ package io.github.zeperus.openpad
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.FrameMetrics
+import android.view.Window
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -15,11 +19,13 @@ import io.github.zeperus.openpad.data.ExternalAccess
 import io.github.zeperus.openpad.data.TreeExporter
 import io.github.zeperus.openpad.ui.NotesScreen
 import io.github.zeperus.openpad.ui.NotesViewModel
+import io.github.zeperus.openpad.ui.editor.EditorDiagnostics
 import io.github.zeperus.openpad.ui.theme.OpenPadTheme
 
 class MainActivity : AppCompatActivity() {
     private var viewModel: NotesViewModel? = null
     private var pendingIntent: Intent? = null
+    private var frameListener: Window.OnFrameMetricsAvailableListener? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -27,6 +33,14 @@ class MainActivity : AppCompatActivity() {
         val app = application as OpenPadApplication
         // A document handed to us by another app ("Open with"); not re-handled when the screen is merely recreated.
         if (savedInstanceState == null) pendingIntent = intent
+        if (BuildConfig.DIAGNOSTICS) {
+            // real frame times (layout, composition, drawing) for the Settings diagnostics
+            val listener = Window.OnFrameMetricsAvailableListener { _, frameMetrics, _ ->
+                EditorDiagnostics.recordFrame(frameMetrics.getMetric(FrameMetrics.TOTAL_DURATION))
+            }
+            frameListener = listener
+            window.addOnFrameMetricsAvailableListener(listener, Handler(Looper.getMainLooper()))
+        }
         setContent {
             OpenPadTheme {
                 val vm: NotesViewModel = viewModel(
@@ -44,6 +58,18 @@ class MainActivity : AppCompatActivity() {
                 NotesScreen(vm)
             }
         }
+    }
+
+    override fun onDestroy() {
+        frameListener?.let { listener ->
+            try {
+                window.removeOnFrameMetricsAvailableListener(listener)
+            } catch (e: IllegalArgumentException) {
+                // not registered (anymore): nothing to remove
+            }
+        }
+        frameListener = null
+        super.onDestroy()
     }
 
     // singleTask: a second "Open with" arrives here instead of creating another screen (and another session)
