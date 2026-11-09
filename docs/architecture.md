@@ -95,6 +95,29 @@ Operations change rows in place (kind, text, depth) and the focused row survives
 [editor.md](editor.md#identity-and-focus-why-the-keyboard-used-to-flicker)). The smart checklist flag is note metadata
 (`NoteInfo.smartChecklist`, `index.json`), handed to the `EditorSession`; the ordering rules live in `editor/Checklist.kt`.
 
+## Alpha 10 additions (review follow-up)
+
+- **Build types.** `debug` for development and the instrumented tests; `alpha` (initialised from `release`: R8 shrinking and
+  optimization, not debuggable, no renaming) is what testers install; `release` is unused until the first real release.
+  `BuildConfig.DIAGNOSTICS` (debug and alpha) switches on the Settings diagnostics and the frame-time listener in `MainActivity`.
+- **Colours and icons.** `ui/theme/Color.kt` sets every Material 3 colour role (a role left out would show Material's purple
+  default). `ui/icons/AppIcons.kt` holds the handful of Material icons beyond `material-icons-core`, copied as vector data instead
+  of pulling in `material-icons-extended`. Bars use `surfaceContainer`, not a tonal elevation (which would tint them with the primary).
+- **What a caret move costs.** `RichEditorContent` reads only `vm.ui.doc` (through a derived state), so a published editor state
+  with the same document recomposes nothing in the editor. A `SegmentField` gets stable arguments (one `matches` map per segment
+  and find result, one source-row set) and is skipped; it learns of a caret that the *model* moved through `vm.cursorEpoch`, which
+  it reads in composition. `publishDecoration` keeps the current `DecorationInput` when rows, matches and current match are the
+  same, and texts are compared in place instead of being copied. The focused field itself still restyles on a selection change
+  (Compose runs the output transformation whenever the field's state changes).
+- **Opening a note.** `NotesViewModel.prepareSession` builds the `EditorSession` (parse, remembered undo history) on the
+  `editorStateDispatcher` from immutable inputs and installs it on the main thread. Because the note being left stays editable
+  during every suspension of a switch, `replaceEditor` saves it until nothing is pending, with no suspension point between the
+  last check and `switchTo`; a failed save leaves the editor and puts the tab strip back. `reloadExternal` and `onAppResumed` read
+  the other app's version without moving the comparison state and adopt it only after the editor shows it.
+- **Lists in one call** (`NoteRepository.lists()`), a **busy** flag (an action waiting or running for more than 400 ms), the
+  search's **text cache** (internal notes, keyed by `updatedAt`, for one search session), and **`AppLog`** (plain Kotlin; the
+  application points it at logcat; it writes the class and stack frames of an error, never a message).
+
 ## Alpha 9 additions (audit follow-up)
 
 The 2026-10-31 audit asked for changes that stay local. The view model and the screen were cut along ownership, without a framework:

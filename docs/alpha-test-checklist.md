@@ -1,7 +1,23 @@
-# Alpha test checklist (0.1.0-alpha.9)
+# Alpha test checklist (0.1.0-alpha.10)
 
 Short on purpose. Tick what works, note what does not (what you did, what you expected). **Keep backups of important
 notes while testing.** Settings shows the installed version at the bottom.
+
+## Alpha 10 (check these first)
+Install `openpad-plus-plus-0.1.0-alpha.10.apk` over Alpha 9 (same certificate; the notes stay).
+- [ ] The app updates without uninstalling, and all notes, tabs and folders are still there
+- [ ] Colours: blue and sticky-note yellow on warm paper tones, in light and in dark mode; no purple left
+- [ ] The formatting bar, the folder arrows and the external-file mark are drawn icons (no boxes, no colour emoji)
+- [ ] Typing, Enter, Backspace across lists, ticking a checkbox: the keyboard stays, the caret stays where it belongs
+      (the Alpha 2 items below - the editor's inner workings changed, the behaviour must not)
+- [ ] Tap below the last line: the caret goes to the end. Undo/redo put the caret where the change was
+- [ ] Find in note: Back closes the bar; with the drawer open, Back closes the drawer first
+- [ ] Smart checklist: tick an item, then scroll at once - the view follows your finger. Tick without touching anything
+      else - the view stays where it was
+- [ ] Type in one note, tap another tab and keep typing for a moment: nothing typed is missing when you come back
+- [ ] **Measure** (Settings -> Diagnostics): *Reset measurements*, type a few lines in a long note (several screens) and in a
+      checklist with many items, move the caret around, then read the frame line: average, longest, and how many frames were
+      slower than 32 ms. Please note the numbers and the length of the note - they decide whether long notes need more work
 
 ## Startup
 - [ ] App launches
@@ -34,7 +50,7 @@ notes while testing.** Settings shows the installed version at the bottom.
 - [ ] Switching a line between paragraph / bullet / numbered / checklist (bar) keeps the keyboard and the caret
 
 ## Smart checklist (Alpha 2)
-- [ ] Menu: "Smart checklist: off (turn on)" on a note with a checklist
+- [ ] Menu: "Smart checklist" on a note with a checklist (a check mark shows while it is on)
 - [ ] Check a middle item: it moves below all unchecked items and is struck through
 - [ ] Check several items: they keep the order in which you completed them
 - [ ] Uncheck one: it returns to the end of the unchecked group

@@ -159,7 +159,7 @@ passes on the new structure.
 
 ## Smart checklist
 
-A per-note mode (a flag in `index.json`, shown in the overflow menu as "Smart checklist: on/off"; never written into the
+A per-note mode (a flag in `index.json`, shown in the overflow menu as "Smart checklist" with a check mark while it is on; never written into the
 Markdown; off by default and for every external file). Ordinary Markdown task lists are never reordered.
 
 - Checking an item moves it (with its nested rows) to the **bottom** of its sibling group; unchecking moves it to the **end of the

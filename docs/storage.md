@@ -263,11 +263,15 @@ Android only installs an update over an app signed with the **same certificate**
 "Android Debug" certificate that signed `v0.1.0-alpha.1`, `v0.1.0-alpha.2` and every later Alpha (SHA-256 of the certificate
 `7C:2A:FA:95:46:C9:C0:1D:2C:E4:BE:D9:28:83:6E:BA:08:36:15:BF:62:70:4E:3E:A8:61:80:8A:C1:3B:F9:F0`, valid until 2056). The keystore is **not in the
 repository**; it is kept outside it (`~/.openpad-signing/`, mode 700/600) and `app/build.gradle.kts` uses it when `OPENPAD_KEYSTORE` is set
-(otherwise Gradle's default debug key is used - fine for development and CI, but such an APK cannot update an installed Alpha). Releases
-are built locally with that keystore and the certificate fingerprint is compared with the previous release before publishing
+(otherwise Gradle's default debug key is used - fine for development and CI, but such an APK cannot update an installed Alpha). Since
+Alpha 10 the APK for testers is the **`alpha` build type** (`./gradlew assembleAlpha`): shrunk and optimized like a release and not
+debuggable, with the same certificate - so it updates an Alpha 9 install - and with the diagnostics in Settings
+(`BuildConfig.DIAGNOSTICS`). Class names are not renamed (`-dontobfuscate`: the app is open source and a stack trace should be
+readable). Releases are built locally with that keystore and the certificate fingerprint is compared with the previous release before publishing
 (`apksigner verify --print-certs`). Never replace this key during the Alpha line; keep an off-machine copy of the keystore. A production
 signing key (and Play App Signing) is a decision for the first real release and will need a fresh install the first time. No keystore,
-password or key is ever committed; GitHub Actions builds only debug APKs signed with the runner's throw-away key.
+password or key is ever committed; GitHub Actions builds the debug and alpha APKs with the runner's throw-away key (only the debug APK is kept as an artifact; neither can
+update an installed Alpha), and starts the alpha build on the emulator (`scripts/ci-alpha-smoke.sh`).
 
 ## Not implemented yet
 

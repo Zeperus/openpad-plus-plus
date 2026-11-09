@@ -1,14 +1,23 @@
 # Current task
 
-**Alpha 9 (`0.1.0-alpha.9`): audit follow-up (2026-10-31) - data safety (external changes by other apps, export, lasting save errors,
+**Alpha 10 (`0.1.0-alpha.10`, not published yet): follow-up of the design and code review of 2026-11-09 - optimized `alpha` build
+type for testers, own colour scheme and vector icons, cheap caret moves, notes opened off the main thread, text typed during a note
+switch is kept, frame-time diagnostics, busy line, search text cache, ktlint and an alpha smoke test in CI.** Details in CHANGELOG.md
+and docs/architecture.md "Alpha 10 additions". The owner's phone check (docs/alpha-test-checklist.md "Alpha 10") comes next; it
+decides whether long notes need the two deferred editor changes: a cap on the size of one text field, and writing the Markdown at
+save time instead of per keystroke (both change the field structure or the save path, so they wait for measured frame times).
+Not done on purpose: hiding the tab strip with a single tab (the tab strip is part of the app's identity and 17 instrumented tests
+read it), a separate Trash screen / "Empty Trash" (Milestone 9), composables on values + callbacks instead of the view model.
+
+Before that: **Alpha 9 (`0.1.0-alpha.9`): audit follow-up (2026-10-31) - data safety (external changes by other apps, export, lasting save errors,
 permanent delete, hung providers), faster editing in long notes, UX quick wins (formatting bar, drawer, tabs, dialogs, undo for Clear and
 Trash, sort/dates in FILES), view model/screen split (SettingsModel, NoteSearchController, EditorStatePersistence, screen files),
 accessibility, feature-grouped UI tests.** The owner's phone check (docs/alpha-test-checklist.md "Alpha 9") comes next.
 Next (do not start without being asked): Milestone 8 (global checklist default, drag reorder, table cell editing).
 
 ## Status
-- Unit tests: 1028, 0 failing (`./gradlew test`; random/property tests run a fifth locally, the full count with
-  `-Popenpad.fullProperties=true` as CI does); lint clean (0 errors); `assembleDebug` and `compileDebugAndroidTestKotlin` build.
+- Unit tests: 1062, 0 failing (`./gradlew test`; random/property tests run a fifth locally, the full count with
+  `-Popenpad.fullProperties=true` as CI does); lint clean (0 errors); ktlint clean; `assembleDebug`, `assembleAlpha` and `compileDebugAndroidTestKotlin` build.
 - Instrumented tests on GitHub (API 36 emulator): 149, grouped by feature (ChecklistUiTest, ChecklistPasteUiTest, ListConversionUiTest,
   ClipboardUiTest, RawBlocksUiTest, SearchUiTest, FoldersUiTest, GermanUiTest, LanguageUiTest, LayoutUiTest, ExternalFileUiTest, MiscUiTest,
   CaretHitTest, ChecklistScroll, ColdStart, EditorDensity, ExternalFlow, FontSize, NotesFlow, RichEditor, Selection, SessionFlow,
