@@ -1,6 +1,6 @@
 # Current task
 
-**Alpha 10 (`0.1.0-alpha.10`, not published yet): follow-up of the design and code review of 2026-11-09 - optimized `alpha` build
+**Alpha 10 (`0.1.0-alpha.10`, published 2026-11-10): follow-up of the design and code review of 2026-11-09 - optimized `alpha` build
 type for testers, own colour scheme and vector icons, cheap caret moves, notes opened off the main thread, text typed during a note
 switch is kept, frame-time diagnostics, busy line, search text cache, ktlint and an alpha smoke test in CI.** Details in CHANGELOG.md
 and docs/architecture.md "Alpha 10 additions". The owner's phone check (docs/alpha-test-checklist.md "Alpha 10") comes next; it
