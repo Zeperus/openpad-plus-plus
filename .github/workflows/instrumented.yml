@@ -47,8 +47,8 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         env:
           # the release the screenshots of this build are compared with (see scripts/ci-alpha-smoke.sh)
-          PREVIOUS_APK_URL: https://github.com/Zeperus/openpad-plus-plus/releases/download/v0.1.0-alpha.9/openpad-plus-plus-0.1.0-alpha.9.apk
-          PREVIOUS_APK_SHA256: 27a2f0b67e117390b21131413103af5eb3e9f6f1e25256c45964c45ecc2d15fe
+          PREVIOUS_APK_URL: https://github.com/Zeperus/openpad-plus-plus/releases/download/v0.1.0-alpha.10/openpad-plus-plus-0.1.0-alpha.10.apk
+          PREVIOUS_APK_SHA256: 59d29120298c9343e61c5fdbba41f342d534a46d4fa94c2e108d4f8c56fce8ef
         with:
           api-level: 36
           target: default

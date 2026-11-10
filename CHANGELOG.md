@@ -2,7 +2,9 @@
 
 All notable changes are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased] - will be 0.1.0-alpha.10 (pre-release / test build)
+## [Unreleased]
+
+## [0.1.0-alpha.10] - 2026-11-10 (pre-release / test build)
 
 Follow-up of the design and code review of 2026-11-09.
 
